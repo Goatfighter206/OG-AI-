@@ -5,12 +5,13 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 ## Features
 
 - 🤖 Basic conversational AI capabilities
-- 🌐 RESTful API with Flask for web deployment
+- 🌐 RESTful API with FastAPI for web deployment
 - 💬 Conversation history management
 - 💾 Save and load conversations to/from JSON
 - ⚙️ Configurable agent settings
 - 🔧 Extensible architecture for adding AI models
 - 🚀 Ready for deployment on Render and other platforms
+- 📱 Mobile-friendly web service with CORS support
 - 🖥️ CLI mode for local interactive usage
 
 ## Installation
@@ -26,29 +27,33 @@ cd OG-AI-
 pip install -r requirements.txt
 ```
 
-**Note:** Flask and Flask-CORS are required for running the web API. For CLI-only usage without the API, you can skip installing dependencies.
+**Note:** FastAPI and uvicorn are required for running the web API. For CLI-only usage without the API, you can skip installing these web dependencies.
 
 ## Usage
 
-### Web API Mode (Default)
+### Web API Mode
 
 Run the agent as a web service:
 
 ```bash
-python ai_agent.py
+python app.py
 ```
 
-The API server will start on `http://localhost:5000` by default. You can configure the port using the `PORT` environment variable.
+The API server will start on `http://localhost:8000` by default. You can configure the port using the `PORT` environment variable.
+
+The FastAPI service provides automatic interactive API documentation at:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
 ### Interactive CLI Mode
 
-Run the agent in interactive mode for a conversation:
+Run the agent in interactive mode for a direct conversation:
 
 ```bash
-python ai_agent.py --cli
+python example_usage.py
 ```
 
-Type your messages and the agent will respond. Type `quit` to exit.
+Type your messages and the agent will respond. This mode demonstrates the core agent functionality without the web API layer.
 
 ### Programmatic Usage
 
@@ -198,9 +203,11 @@ If you prefer manual setup:
    - **Name**: `og-ai-service` (or your preferred name)
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `python ai_agent.py`
+   - **Start Command**: `uvicorn app:app --host 0.0.0.0 --port $PORT`
    - **Instance Type**: Free tier or higher
 5. Click "Create Web Service"
+
+**Note:** The start command can also be set via the `Procfile` which is included in the repository.
 
 ### After Deployment
 
@@ -219,6 +226,16 @@ curl -X POST https://your-app-name.onrender.com/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello!"}'
 ```
+
+### Accessing from Mobile Devices
+
+The API is fully accessible from mobile devices:
+
+1. **Direct API Access**: Use any HTTP client app on your mobile device (e.g., Postman Mobile, HTTP Request Shortcuts)
+2. **Interactive Documentation**: Visit `https://your-app-name.onrender.com/docs` in your mobile browser for Swagger UI
+3. **Custom App Integration**: Integrate the API into your mobile app using standard HTTP requests
+
+The service includes CORS support, making it easy to build web and mobile applications that consume the API.
 
 ## API Reference
 
