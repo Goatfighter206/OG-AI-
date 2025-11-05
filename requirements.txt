@@ -1,6 +1,6 @@
 # Core dependencies for OG-AI Agent
-# No external dependencies required for basic version
-# Python 3.7+ standard library is sufficient
+Flask>=2.3.0
+Flask-CORS>=4.0.0
 
 # Optional dependencies for future enhancements:
 # openai>=1.0.0  # For OpenAI API integration
