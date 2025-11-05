@@ -174,33 +174,37 @@ Clear the conversation history.
 
 ## Deploying to Render
 
-This application is ready to deploy on [Render](https://render.com/). Follow these steps:
+This application is ready to deploy on [Render](https://render.com/) with two options:
 
-### 1. Connect Your GitHub Repository
+### Option 1: One-Click Deployment (Recommended) 🚀
+
+This repository includes a `render.yaml` file for automatic configuration:
+
+1. Log in to your [Render dashboard](https://dashboard.render.com/)
+2. Click "New +" and select "Blueprint"
+3. Connect your GitHub account and select the `Goatfighter206/OG-AI-` repository
+4. Click "Apply" - Render will automatically configure and deploy everything!
+
+That's it! Render will use the `render.yaml` configuration to set up your service automatically.
+
+### Option 2: Manual Configuration
+
+If you prefer manual setup:
 
 1. Log in to your [Render dashboard](https://dashboard.render.com/)
 2. Click "New +" and select "Web Service"
 3. Connect your GitHub account and select the `Goatfighter206/OG-AI-` repository
+4. Configure the service:
+   - **Name**: `og-ai-service` (or your preferred name)
+   - **Environment**: `Python 3`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `python ai_agent.py`
+   - **Instance Type**: Free tier or higher
+5. Click "Create Web Service"
 
-### 2. Configure the Web Service
+### After Deployment
 
-Use the following settings:
-
-- **Name**: `og-ai-service` (or your preferred name)
-- **Environment**: `Python 3`
-- **Build Command**: `pip install -r requirements.txt`
-- **Start Command**: `python ai_agent.py`
-- **Instance Type**: Free tier or higher
-
-### 3. Environment Variables (Optional)
-
-You can set the following environment variables in Render:
-
-- `PORT`: The port to run the service on (Render sets this automatically)
-
-### 4. Deploy
-
-Click "Create Web Service" and Render will automatically deploy your application. Once deployed, you'll receive a URL like `https://og-ai-service.onrender.com` where your API will be accessible.
+Once deployed, you'll receive a URL like `https://og-ai-service.onrender.com` where your API will be accessible.
 
 ### Testing Your Deployment
 
