@@ -18,7 +18,7 @@ def test_health():
     try:
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
-    except ValueError:
+    except json.JSONDecodeError:
         print(f"✗ Failed to parse JSON response from /health endpoint.")
         print(f"Raw response: {response.text}\n")
         return False
@@ -33,7 +33,7 @@ def test_root():
     try:
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
-    except ValueError:
+    except json.JSONDecodeError:
         print(f"✗ Failed to parse JSON response from / endpoint.")
         print(f"Raw response: {response.text}\n")
         return False
@@ -51,7 +51,7 @@ def test_chat(message):
     try:
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
-    except ValueError:
+    except json.JSONDecodeError:
         print(f"✗ Failed to parse JSON response from /chat endpoint.")
         print(f"Raw response: {response.text}\n")
         return False
@@ -67,7 +67,7 @@ def test_history():
         data = response.json()
         print(f"Message Count: {data.get('message_count', 0)}")
         print(f"Response: {json.dumps(data, indent=2)}\n")
-    except ValueError:
+    except json.JSONDecodeError:
         print(f"✗ Failed to parse JSON response from /history endpoint.")
         print(f"Raw response: {response.text}\n")
         return False
@@ -82,7 +82,7 @@ def test_reset():
     try:
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
-    except ValueError:
+    except json.JSONDecodeError:
         print(f"✗ Failed to parse JSON response from /reset endpoint.")
         print(f"Raw response: {response.text}\n")
         return False
@@ -136,7 +136,7 @@ def main():
     response = requests.get(f"{BASE_URL}/history")
     try:
         data = response.json()
-    except ValueError:
+    except json.JSONDecodeError:
         print("✗ Failed to parse JSON response from /history endpoint.")
         print(f"Raw response: {response.text}\n")
         data = {}

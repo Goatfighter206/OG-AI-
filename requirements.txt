@@ -1,6 +1,6 @@
 # Core dependencies for OG-AI Agent
 # Web service dependencies
-fastapi>=0.104.0
+fastapi>=0.109.1
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 
