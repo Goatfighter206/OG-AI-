@@ -1,0 +1,8 @@
+# Core dependencies for OG-AI Agent
+# No external dependencies required for basic version
+# Python 3.7+ standard library is sufficient
+
+# Optional dependencies for future enhancements:
+# openai>=1.0.0  # For OpenAI API integration
+# anthropic>=0.3.0  # For Claude API integration
+# requests>=2.28.0  # For API calls

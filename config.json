@@ -1,0 +1,7 @@
+{
+  "agent_name": "OG-AI",
+  "system_prompt": "You are OG-AI, a helpful and friendly AI assistant. You aim to be clear, concise, and helpful in all your responses.",
+  "max_history_length": 100,
+  "save_conversations": true,
+  "conversation_dir": "./conversations"
+}
