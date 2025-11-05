@@ -1,6 +1,6 @@
 # OG-AI - AI Agent
 
-A simple yet extensible conversational AI agent built with Python. This agent can maintain conversation context, save/load conversation history, and provide interactive responses.
+A simple yet extensible conversational AI agent built with Python. This agent can maintain conversation context, save/load conversation history, and provide interactive responses. Now available as a **REST API web service** deployable on Render!
 
 ## Features
 
@@ -9,7 +9,9 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 - 💾 Save and load conversations to/from JSON
 - ⚙️ Configurable agent settings
 - 🔧 Extensible architecture for adding AI models
-- 🐍 Pure Python implementation (no external dependencies required)
+- 🌐 **FastAPI REST API** for web service integration
+- ☁️ **Ready for deployment** on Render
+- 🐍 Pure Python implementation
 
 ## Installation
 
@@ -19,14 +21,36 @@ git clone https://github.com/Goatfighter206/OG-AI-.git
 cd OG-AI-
 ```
 
-2. (Optional) Install dependencies if you plan to extend with AI APIs:
+2. Create a virtual environment (recommended):
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
 ## Usage
 
-### Interactive Mode
+### Web Service Mode (Recommended)
+
+Start the FastAPI web service:
+
+```bash
+python app.py
+```
+
+Or use uvicorn directly:
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The API will be available at `http://localhost:8000`. Visit `http://localhost:8000/docs` for interactive API documentation.
+
+### Interactive CLI Mode
 
 Run the agent in interactive mode for a conversation:
 
@@ -66,6 +90,97 @@ This demonstrates:
 - Saving and loading conversations
 - Accessing conversation history
 
+### API Endpoints
+
+The web service exposes the following REST API endpoints:
+
+#### `GET /` or `GET /health`
+Check the service health status.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "agent_name": "OG-AI",
+  "message": "Service is running"
+}
+```
+
+#### `POST /chat`
+Send a message to the AI agent.
+
+**Request:**
+```json
+{
+  "message": "Hello! How are you?"
+}
+```
+
+**Response:**
+```json
+{
+  "response": "Hello! I'm OG-AI, your AI assistant. How can I help you today?",
+  "agent_name": "OG-AI",
+  "timestamp": "2025-11-05T20:00:00.000000"
+}
+```
+
+#### `GET /history`
+Get the conversation history.
+
+**Response:**
+```json
+{
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Hello!",
+      "timestamp": "2025-11-05T20:00:00.000000"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello! I'm OG-AI...",
+      "timestamp": "2025-11-05T20:00:01.000000"
+    }
+  ],
+  "message_count": 2
+}
+```
+
+#### `POST /reset`
+Clear the conversation history.
+
+**Response:**
+```json
+{
+  "status": "success",
+  "agent_name": "OG-AI",
+  "message": "Conversation history has been cleared"
+}
+```
+
+### Testing the API
+
+Use curl to test the endpoints:
+
+```bash
+# Test health
+curl http://localhost:8000/health
+
+# Send a message
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+
+# Get conversation history
+curl http://localhost:8000/history
+
+# Reset conversation
+curl -X POST http://localhost:8000/reset
+```
+
+Or visit `http://localhost:8000/docs` for interactive Swagger UI documentation.
+
 ### Configuration
 
 Edit `config.json` to customize the agent:
@@ -97,6 +212,123 @@ AIAgent(name: str = "OG-AI", config: Optional[Dict] = None)
 - `save_conversation(filepath: str)`: Save conversation to JSON file
 - `load_conversation(filepath: str)`: Load conversation from JSON file
 
+## Deployment on Render
+
+### Prerequisites
+- A [Render account](https://render.com/) (free tier available)
+- This repository pushed to GitHub
+
+### Deployment Steps
+
+1. **Login to Render** and click "New +" → "Web Service"
+
+2. **Connect your repository:**
+   - Select "Build and deploy from a Git repository"
+   - Connect your GitHub account
+   - Choose the `OG-AI-` repository
+
+3. **Configure the service:**
+   - **Name:** `og-ai-service` (or your preferred name)
+   - **Region:** Choose your preferred region
+   - **Branch:** `main` (or your default branch)
+   - **Root Directory:** Leave blank
+   - **Runtime:** `Python 3`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn app:app --host 0.0.0.0 --port $PORT`
+
+4. **Environment Variables (Optional):**
+   - Add any required environment variables
+   - `PORT` is automatically set by Render
+
+5. **Select Plan:**
+   - Free tier is sufficient for testing
+   - Upgrade to paid plan for production use
+
+6. **Deploy:**
+   - Click "Create Web Service"
+   - Render will build and deploy your service
+   - Wait for the deployment to complete (usually 2-5 minutes)
+
+7. **Access your service:**
+   - Your service will be available at `https://your-service-name.onrender.com`
+   - Visit `https://your-service-name.onrender.com/docs` for API documentation
+   - Test the API: `https://your-service-name.onrender.com/health`
+
+### Local Testing Before Deployment
+
+Before deploying to Render, test the service locally:
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the service
+python app.py
+```
+
+**Option 1: Use the automated test script (recommended):**
+
+In another terminal:
+
+```bash
+python test_api.py
+```
+
+This will run a comprehensive test suite covering all API endpoints.
+
+**Option 2: Manual testing with curl:**
+
+```bash
+# Test health
+curl http://localhost:8000/health
+
+# Send a message
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+
+# Get history
+curl http://localhost:8000/history
+
+# Reset conversation
+curl -X POST http://localhost:8000/reset
+```
+
+**Option 3: Interactive API documentation:**
+
+Visit `http://localhost:8000/docs` to explore the interactive Swagger UI documentation where you can test all endpoints directly in your browser.
+
+### Deployment Files
+
+This repository includes the following deployment files:
+
+- **`app.py`**: FastAPI web service application
+- **`requirements.txt`**: Python dependencies including FastAPI and uvicorn
+- **`Procfile`**: Process file for Render (alternative start command)
+- **`.env.example`**: Example environment variables file
+
+### Monitoring and Logs
+
+Once deployed on Render:
+- View logs in the Render dashboard under "Logs"
+- Monitor service health at `/health` endpoint
+- Set up alerts and notifications in Render settings
+
+### Troubleshooting
+
+**Service not starting:**
+- Check the build logs in Render dashboard
+- Verify all dependencies are in `requirements.txt`
+- Ensure `PORT` environment variable is properly configured
+
+**502 Bad Gateway:**
+- Service might still be starting (wait 1-2 minutes)
+- Check if the service is binding to `0.0.0.0` and using `$PORT`
+
+**Slow cold starts (Free tier):**
+- Free tier services spin down after 15 minutes of inactivity
+- First request after spin-down may take 30-60 seconds
+
 ## Future Enhancements
 
 - Integration with OpenAI GPT models
@@ -106,6 +338,8 @@ AIAgent(name: str = "OG-AI", config: Optional[Dict] = None)
 - Plugin system for extending capabilities
 - Web interface
 - Voice interaction support
+- User authentication and session management
+- Database integration for persistent storage
 
 ## Contributing
 
