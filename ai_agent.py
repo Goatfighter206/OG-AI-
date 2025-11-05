@@ -230,6 +230,11 @@ def chat():
         JSON response with agent's reply
     """
     try:
+        if api_agent is None:
+            return jsonify({
+                'error': 'AI agent not initialized'
+            }), 500
+        
         data = request.get_json()
         
         if not data or 'message' not in data:
@@ -253,9 +258,9 @@ def chat():
             'agent_name': api_agent.name
         })
     
-    except Exception as e:
+    except Exception:
         return jsonify({
-            'error': f'Error processing message: {str(e)}'
+            'error': 'Error processing message'
         }), 500
 
 
@@ -268,14 +273,19 @@ def get_history():
         JSON response with conversation history
     """
     try:
+        if api_agent is None:
+            return jsonify({
+                'error': 'AI agent not initialized'
+            }), 500
+        
         history = api_agent.get_conversation_history()
         return jsonify({
             'history': history,
             'message_count': len(history)
         })
-    except Exception as e:
+    except Exception:
         return jsonify({
-            'error': f'Error retrieving history: {str(e)}'
+            'error': 'Error retrieving history'
         }), 500
 
 
@@ -288,13 +298,18 @@ def clear_history():
         JSON response confirming the history was cleared
     """
     try:
+        if api_agent is None:
+            return jsonify({
+                'error': 'AI agent not initialized'
+            }), 500
+        
         api_agent.clear_history()
         return jsonify({
             'message': 'Conversation history cleared successfully'
         })
-    except Exception as e:
+    except Exception:
         return jsonify({
-            'error': f'Error clearing history: {str(e)}'
+            'error': 'Error clearing history'
         }), 500
 
 
