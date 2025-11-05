@@ -5,7 +5,7 @@ Exposes REST API endpoints for interacting with the AI agent.
 
 import json
 import os
-from typing import Optional, List, Dict
+from typing import List, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
@@ -19,11 +19,23 @@ app = FastAPI(
 )
 
 # Add CORS middleware to allow cross-origin requests
-# NOTE: For production, replace ["*"] with specific allowed origins
-# Example: allow_origins=["https://yourdomain.com"]
+# NOTE: For production, set the ALLOWED_ORIGINS environment variable to specific allowed origins
+# Example: ALLOWED_ORIGINS='["https://yourdomain.com"]'
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    try:
+        allowed_origins = json.loads(allowed_origins_env)
+        if not isinstance(allowed_origins, list):
+            raise ValueError("ALLOWED_ORIGINS must be a JSON array")
+    except Exception as e:
+        print(f"Warning: Invalid ALLOWED_ORIGINS environment variable: {e}. Falling back to ['*'].")
+        allowed_origins = ["*"]
+else:
+    allowed_origins = ["*"]  # Default for development/demo
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Development/demo setting - allows all origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

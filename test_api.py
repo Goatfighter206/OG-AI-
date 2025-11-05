@@ -15,7 +15,13 @@ def test_health():
     print("Testing /health endpoint...")
     response = requests.get(f"{BASE_URL}/health")
     print(f"Status Code: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}\n")
+    try:
+        data = response.json()
+        print(f"Response: {json.dumps(data, indent=2)}\n")
+    except ValueError:
+        print(f"✗ Failed to parse JSON response from /health endpoint.")
+        print(f"Raw response: {response.text}\n")
+        return False
     return response.status_code == 200
 
 
@@ -24,7 +30,13 @@ def test_root():
     print("Testing / endpoint...")
     response = requests.get(f"{BASE_URL}/")
     print(f"Status Code: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}\n")
+    try:
+        data = response.json()
+        print(f"Response: {json.dumps(data, indent=2)}\n")
+    except ValueError:
+        print(f"✗ Failed to parse JSON response from / endpoint.")
+        print(f"Raw response: {response.text}\n")
+        return False
     return response.status_code == 200
 
 
@@ -36,7 +48,13 @@ def test_chat(message):
         json={"message": message}
     )
     print(f"Status Code: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}\n")
+    try:
+        data = response.json()
+        print(f"Response: {json.dumps(data, indent=2)}\n")
+    except ValueError:
+        print(f"✗ Failed to parse JSON response from /chat endpoint.")
+        print(f"Raw response: {response.text}\n")
+        return False
     return response.status_code == 200
 
 
@@ -45,9 +63,14 @@ def test_history():
     print("Testing /history endpoint...")
     response = requests.get(f"{BASE_URL}/history")
     print(f"Status Code: {response.status_code}")
-    data = response.json()
-    print(f"Message Count: {data.get('message_count', 0)}")
-    print(f"Response: {json.dumps(data, indent=2)}\n")
+    try:
+        data = response.json()
+        print(f"Message Count: {data.get('message_count', 0)}")
+        print(f"Response: {json.dumps(data, indent=2)}\n")
+    except ValueError:
+        print(f"✗ Failed to parse JSON response from /history endpoint.")
+        print(f"Raw response: {response.text}\n")
+        return False
     return response.status_code == 200
 
 
@@ -56,7 +79,13 @@ def test_reset():
     print("Testing /reset endpoint...")
     response = requests.post(f"{BASE_URL}/reset")
     print(f"Status Code: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}\n")
+    try:
+        data = response.json()
+        print(f"Response: {json.dumps(data, indent=2)}\n")
+    except ValueError:
+        print(f"✗ Failed to parse JSON response from /reset endpoint.")
+        print(f"Raw response: {response.text}\n")
+        return False
     return response.status_code == 200
 
 
@@ -105,7 +134,12 @@ def main():
     tests_total += 1
     print("Verifying history is empty after reset...")
     response = requests.get(f"{BASE_URL}/history")
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        print("✗ Failed to parse JSON response from /history endpoint.")
+        print(f"Raw response: {response.text}\n")
+        data = {}
     if response.status_code == 200 and data.get('message_count', 0) == 0:
         print("✓ History successfully cleared\n")
         tests_passed += 1
