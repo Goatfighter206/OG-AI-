@@ -10,3 +10,8 @@ requests>=2.28.0
 # Optional dependencies for future enhancements:
 # openai>=1.0.0  # For OpenAI API integration
 # anthropic>=0.3.0  # For Claude API integration
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0  # For testing FastAPI endpoints
