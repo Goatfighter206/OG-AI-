@@ -3,8 +3,11 @@ OG-AI Agent - A simple conversational AI agent
 """
 
 import json
+import os
 from typing import List, Dict, Optional
 from datetime import datetime
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 
 class AIAgent:
@@ -150,6 +153,151 @@ class AIAgent:
             raise json.JSONDecodeError(f"Invalid JSON in conversation file: {filepath}", e.doc, e.pos)
 
 
+# Flask app setup for API
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
+
+# Global agent instance for the API
+api_agent = None
+
+
+def load_config():
+    """
+    Load configuration from config.json file.
+    
+    Returns:
+        Dictionary containing configuration settings
+    """
+    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    try:
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def initialize_agent():
+    """
+    Initialize the global API agent with configuration.
+    """
+    global api_agent
+    config = load_config()
+    agent_name = config.get('agent_name', 'OG-AI')
+    api_agent = AIAgent(name=agent_name, config=config)
+
+
+@app.route('/', methods=['GET'])
+def home():
+    """
+    Home endpoint providing API information.
+    """
+    return jsonify({
+        'name': 'OG-AI API',
+        'version': '1.0.0',
+        'status': 'running',
+        'endpoints': {
+            '/': 'GET - API information',
+            '/health': 'GET - Health check',
+            '/chat': 'POST - Send a message to the AI agent',
+            '/history': 'GET - Get conversation history',
+            '/clear': 'POST - Clear conversation history'
+        }
+    })
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """
+    Health check endpoint.
+    """
+    return jsonify({
+        'status': 'healthy',
+        'agent_name': api_agent.name if api_agent else 'Not initialized'
+    })
+
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """
+    Process a chat message from the user.
+    
+    Expected JSON body:
+    {
+        "message": "user message here"
+    }
+    
+    Returns:
+        JSON response with agent's reply
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'message' not in data:
+            return jsonify({
+                'error': 'Missing "message" field in request body'
+            }), 400
+        
+        user_message = data['message']
+        
+        if not user_message or not user_message.strip():
+            return jsonify({
+                'error': 'Message cannot be empty'
+            }), 400
+        
+        # Process the message
+        response = api_agent.process_message(user_message)
+        
+        return jsonify({
+            'message': user_message,
+            'response': response,
+            'agent_name': api_agent.name
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'error': f'Error processing message: {str(e)}'
+        }), 500
+
+
+@app.route('/history', methods=['GET'])
+def get_history():
+    """
+    Get the conversation history.
+    
+    Returns:
+        JSON response with conversation history
+    """
+    try:
+        history = api_agent.get_conversation_history()
+        return jsonify({
+            'history': history,
+            'message_count': len(history)
+        })
+    except Exception as e:
+        return jsonify({
+            'error': f'Error retrieving history: {str(e)}'
+        }), 500
+
+
+@app.route('/clear', methods=['POST'])
+def clear_history():
+    """
+    Clear the conversation history.
+    
+    Returns:
+        JSON response confirming the history was cleared
+    """
+    try:
+        api_agent.clear_history()
+        return jsonify({
+            'message': 'Conversation history cleared successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'error': f'Error clearing history: {str(e)}'
+        }), 500
+
+
 def main():
     """
     Example usage of the AI agent.
@@ -175,4 +323,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Check if we should run as API or CLI
+    import sys
+    
+    if '--cli' in sys.argv:
+        # Run in CLI mode
+        main()
+    else:
+        # Run as Flask API
+        initialize_agent()
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, debug=False)
