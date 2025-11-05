@@ -19,20 +19,30 @@ app = FastAPI(
 )
 
 # Add CORS middleware to allow cross-origin requests
+# NOTE: For production, replace ["*"] with specific allowed origins
+# Example: allow_origins=["https://yourdomain.com"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=["*"],  # Development/demo setting - allows all origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global agent instance (in production, consider session management)
+# Global agent instance
+# NOTE: This is a simplified implementation where all users share the same conversation history.
+# For production multi-user scenarios, implement per-session or per-user agent instances
+# using session cookies, JWT tokens, or a database-backed session store.
 agent = None
 
 
 def get_agent() -> AIAgent:
-    """Get or create the global agent instance."""
+    """
+    Get or create the global agent instance.
+    
+    Note: This returns a shared instance. For multi-user support, consider
+    implementing session-based agent management.
+    """
     global agent
     if agent is None:
         # Load config if exists

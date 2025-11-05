@@ -132,6 +132,11 @@ if __name__ == "__main__":
         print("Error: Could not connect to the API server.")
         print("Make sure the server is running: python app.py")
         sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nTest interrupted by user.")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
