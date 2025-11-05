@@ -7,13 +7,13 @@ import speech_recognition as sr
 from typing import Optional, Callable
 import threading
 
-# Try to import pyttsx3, but handle gracefully if TTS engine is not available
+# Try to import pyttsx3, but handle gracefully if not available
 try:
     import pyttsx3
     TTS_AVAILABLE = True
-except (ImportError, RuntimeError) as e:
+except ImportError as e:
     TTS_AVAILABLE = False
-    print(f"Warning: pyttsx3 TTS engine not available: {e}")
+    print(f"Warning: pyttsx3 not installed: {e}")
 
 
 class VoiceChat:
@@ -49,7 +49,9 @@ class VoiceChat:
                     voices = self.tts_engine.getProperty('voices')
                     if voice_id < len(voices):
                         self.tts_engine.setProperty('voice', voices[voice_id].id)
-            except Exception as e:
+            except (RuntimeError, OSError) as e:
+                # RuntimeError: TTS engine not properly installed
+                # OSError: Audio device issues
                 print(f"Warning: Could not initialize TTS engine: {e}")
                 self.tts_available = False
                 self.tts_engine = None
@@ -331,6 +333,7 @@ def main():
     """
     Demo of voice chat capabilities.
     """
+    # Import here to avoid circular dependency
     from ai_agent import AIAgent
     
     # Create agent with voice capabilities
