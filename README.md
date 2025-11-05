@@ -227,6 +227,16 @@ curl -X POST https://your-app-name.onrender.com/chat \
   -d '{"message": "Hello!"}'
 ```
 
+### Accessing from Mobile Devices
+
+The API is fully accessible from mobile devices:
+
+1. **Direct API Access**: Use any HTTP client app on your mobile device (e.g., Postman Mobile, HTTP Request Shortcuts)
+2. **Interactive Documentation**: Visit `https://your-app-name.onrender.com/docs` in your mobile browser for Swagger UI
+3. **Custom App Integration**: Integrate the API into your mobile app using standard HTTP requests
+
+The service includes CORS support, making it easy to build web and mobile applications that consume the API.
+
 ## API Reference
 
 ### AIAgent Class
