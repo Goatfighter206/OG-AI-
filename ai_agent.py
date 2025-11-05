@@ -3,7 +3,6 @@ OG-AI Agent - A simple conversational AI agent
 """
 
 import json
-import os
 from typing import List, Dict, Optional
 from datetime import datetime
 
@@ -24,6 +23,8 @@ class AIAgent:
         self.name = name
         self.config = config or {}
         self.conversation_history: List[Dict] = []
+        # System prompt is available for future AI model integration
+        # Currently used for configuration but can be passed to LLM APIs
         self.system_prompt = self.config.get(
             'system_prompt', 
             'You are a helpful AI assistant.'
@@ -113,12 +114,19 @@ class AIAgent:
         
         Args:
             filepath: Path to save the conversation
+            
+        Raises:
+            IOError: If the file cannot be written
+            PermissionError: If insufficient permissions to write file
         """
-        with open(filepath, 'w') as f:
-            json.dump({
-                'agent_name': self.name,
-                'conversation': self.conversation_history
-            }, f, indent=2)
+        try:
+            with open(filepath, 'w') as f:
+                json.dump({
+                    'agent_name': self.name,
+                    'conversation': self.conversation_history
+                }, f, indent=2)
+        except (IOError, PermissionError) as e:
+            raise IOError(f"Failed to save conversation to {filepath}: {e}")
     
     def load_conversation(self, filepath: str) -> None:
         """
@@ -126,10 +134,20 @@ class AIAgent:
         
         Args:
             filepath: Path to load the conversation from
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+            json.JSONDecodeError: If the file contains invalid JSON
+            IOError: If the file cannot be read
         """
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-            self.conversation_history = data.get('conversation', [])
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                self.conversation_history = data.get('conversation', [])
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Conversation file not found: {filepath}")
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(f"Invalid JSON in conversation file: {filepath}", e.doc, e.pos)
 
 
 def main():
