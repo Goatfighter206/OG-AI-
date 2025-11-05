@@ -3,7 +3,10 @@ Example usage of the OG-AI Agent
 """
 
 import json
-from ai_agent import AIAgent
+from ai_agent import AIAgent, VOICE_AVAILABLE
+
+if VOICE_AVAILABLE:
+    from voice_chat import VoiceChat, VoiceAssistant
 
 
 def example_basic_conversation():
@@ -97,11 +100,48 @@ def example_conversation_history():
         print(f"  Timestamp: {msg['timestamp']}\n")
 
 
+def example_voice_chat():
+    """
+    Demonstrate voice chat capabilities.
+    """
+    print("\n=== Example 5: Voice Chat Capabilities ===\n")
+    
+    if not VOICE_AVAILABLE:
+        print("Voice chat is not available. Install dependencies:")
+        print("  pip install SpeechRecognition pyttsx3")
+        return
+    
+    print("Creating agent with voice capabilities...")
+    agent = AIAgent(name="OG-AI Voice", enable_voice=True)
+    
+    if not agent.voice_enabled:
+        print("Failed to enable voice capabilities.")
+        return
+    
+    print("Voice agent created successfully!")
+    
+    # Demonstrate text-to-speech
+    print("\nDemonstrating text-to-speech...")
+    test_messages = [
+        "Hello! I can now speak!",
+        "Voice interaction makes conversations more natural."
+    ]
+    
+    for msg in test_messages:
+        print(f"Speaking: {msg}")
+        agent.voice_assistant.voice_chat.speak(msg)
+    
+    print("\nVoice chat example complete!")
+    print("Note: Voice input requires a microphone.")
+    print("Run 'python voice_chat.py' for full voice interaction demo.")
+
+
 if __name__ == "__main__":
     # Run all examples
     example_basic_conversation()
     example_with_config()
     example_save_and_load()
     example_conversation_history()
+    example_voice_chat()
     
     print("\n=== All Examples Complete ===")

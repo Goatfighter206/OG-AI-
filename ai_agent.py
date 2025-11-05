@@ -6,19 +6,27 @@ import json
 from typing import List, Dict, Optional
 from datetime import datetime
 
+# Voice chat is an optional feature
+try:
+    from voice_chat import VoiceChat, VoiceAssistant
+    VOICE_AVAILABLE = True
+except ImportError:
+    VOICE_AVAILABLE = False
+
 
 class AIAgent:
     """
     A basic AI agent that can process messages and maintain conversation context.
     """
     
-    def __init__(self, name: str = "OG-AI", config: Optional[Dict] = None):
+    def __init__(self, name: str = "OG-AI", config: Optional[Dict] = None, enable_voice: bool = False):
         """
         Initialize the AI agent.
         
         Args:
             name: The name of the agent
             config: Optional configuration dictionary
+            enable_voice: Enable voice chat capabilities (requires voice_chat module)
         """
         self.name = name
         self.config = config or {}
@@ -29,6 +37,17 @@ class AIAgent:
             'system_prompt', 
             'You are a helpful AI assistant.'
         )
+        
+        # Initialize voice capabilities if requested and available
+        self.voice_enabled = False
+        self.voice_assistant = None
+        if enable_voice:
+            if VOICE_AVAILABLE:
+                self.voice_assistant = VoiceAssistant(self)
+                self.voice_enabled = True
+            else:
+                print("Warning: Voice chat module not available. Install required dependencies.")
+                print("Run: pip install SpeechRecognition pyttsx3")
         
     def add_message(self, role: str, content: str) -> None:
         """
@@ -154,24 +173,44 @@ def main():
     """
     Example usage of the AI agent.
     """
+    import sys
+    
+    # Check if user wants voice mode
+    use_voice = '--voice' in sys.argv or '-v' in sys.argv
+    
+    if use_voice and not VOICE_AVAILABLE:
+        print("Voice mode requested but voice_chat module is not available.")
+        print("Install required dependencies: pip install SpeechRecognition pyttsx3")
+        print("Falling back to text mode.\n")
+        use_voice = False
+    
     # Create an agent instance
-    agent = AIAgent(name="OG-AI Master")
+    agent = AIAgent(name="OG-AI Master", enable_voice=use_voice)
     
-    print(f"=== {agent.name} - AI Agent Demo ===")
-    print("Type 'quit' to exit\n")
-    
-    while True:
-        user_input = input("You: ").strip()
+    if use_voice and agent.voice_enabled:
+        print("Starting in voice mode...")
+        agent.voice_assistant.enable_voice_mode()
+        agent.voice_assistant.interactive_session(use_voice_input=False)
+    else:
+        print(f"=== {agent.name} - AI Agent Demo ===")
+        print("Type 'quit' to exit")
+        if VOICE_AVAILABLE:
+            print("Tip: Run with --voice or -v flag to enable voice mode\n")
+        else:
+            print()
         
-        if user_input.lower() == 'quit':
-            print("Exiting...")
-            break
+        while True:
+            user_input = input("You: ").strip()
             
-        if not user_input:
-            continue
-            
-        response = agent.process_message(user_input)
-        print(f"{agent.name}: {response}\n")
+            if user_input.lower() == 'quit':
+                print("Exiting...")
+                break
+                
+            if not user_input:
+                continue
+                
+            response = agent.process_message(user_input)
+            print(f"{agent.name}: {response}\n")
 
 
 if __name__ == "__main__":

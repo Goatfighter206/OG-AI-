@@ -2,6 +2,11 @@
 # No external dependencies required for basic version
 # Python 3.7+ standard library is sufficient
 
+# Voice chat dependencies
+SpeechRecognition>=3.10.0  # For voice input (speech-to-text)
+pyttsx3>=2.90  # For voice output (text-to-speech)
+PyAudio>=0.2.11  # For audio input (required by SpeechRecognition)
+
 # Optional dependencies for future enhancements:
 # openai>=1.0.0  # For OpenAI API integration
 # anthropic>=0.3.0  # For Claude API integration
