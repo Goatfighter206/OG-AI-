@@ -42,4 +42,5 @@ Thumbs.db
 
 # Conversation files (examples)
 conversation_example.json
+demo_conversation.json
 conversations/
