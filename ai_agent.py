@@ -4,6 +4,7 @@ OG-AI Agent - A simple conversational AI agent
 
 import json
 import os
+import threading
 from typing import List, Dict, Optional
 from datetime import datetime
 from flask import Flask, request, jsonify
@@ -161,16 +162,24 @@ CORS(app)  # Enable CORS for all routes
 api_agent = None
 
 
+# Lock for thread-safe agent initialization
+_agent_lock = threading.Lock()
+
+
 def get_agent():
     """
     Get or initialize the global API agent.
+    Thread-safe lazy initialization.
     
     Returns:
         The initialized AIAgent instance
     """
     global api_agent
     if api_agent is None:
-        initialize_agent()
+        with _agent_lock:
+            # Double-check pattern to prevent race conditions
+            if api_agent is None:
+                initialize_agent()
     return api_agent
 
 
