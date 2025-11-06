@@ -169,17 +169,23 @@ _agent_lock = threading.Lock()
 def get_agent():
     """
     Get or initialize the global API agent.
-    Thread-safe lazy initialization.
+    Thread-safe lazy initialization using double-checked locking.
     
     Returns:
         The initialized AIAgent instance
+        
+    Raises:
+        RuntimeError: If agent initialization fails
     """
     global api_agent
     if api_agent is None:
         with _agent_lock:
             # Double-check pattern to prevent race conditions
             if api_agent is None:
-                initialize_agent()
+                try:
+                    initialize_agent()
+                except Exception as e:
+                    raise RuntimeError(f"Failed to initialize AI agent: {e}") from e
     return api_agent
 
 
@@ -357,7 +363,8 @@ if __name__ == "__main__":
         # Run in CLI mode
         main()
     else:
-        # Run as Flask API
-        # Agent will be initialized lazily on first request via get_agent()
+        # Run as Flask API (development server only)
+        # For production, use: gunicorn ai_agent:app
+        # Agent will be initialized lazily on first request per worker via get_agent()
         port = int(os.environ.get('PORT', 5000))
         app.run(host='0.0.0.0', port=port, debug=False)
