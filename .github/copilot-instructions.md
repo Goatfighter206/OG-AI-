@@ -121,7 +121,7 @@ When using multiple Gunicorn workers:
 
 ### Future Enhancements
 The codebase is designed for extensibility:
-- AI model integration ready (OpenAI, Anthropic)
+- AI model integration ready (OpenAI GPT, Anthropic Claude)
 - System prompts can be passed to LLM APIs
 - Simple response logic can be replaced with actual AI models
 
@@ -168,7 +168,9 @@ def new_endpoint():
         agent = get_agent()
         # Your logic here
         return jsonify({'result': 'success'})
-    except Exception:
+    except Exception as e:
+        # Log the exception for debugging
+        app.logger.error(f"Error in new_endpoint: {e}")
         return jsonify({'error': 'Error message'}), 500
 ```
 
