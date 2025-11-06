@@ -161,6 +161,19 @@ CORS(app)  # Enable CORS for all routes
 api_agent = None
 
 
+def get_agent():
+    """
+    Get or initialize the global API agent.
+    
+    Returns:
+        The initialized AIAgent instance
+    """
+    global api_agent
+    if api_agent is None:
+        initialize_agent()
+    return api_agent
+
+
 def load_config():
     """
     Load configuration from config.json file.
@@ -210,9 +223,10 @@ def health():
     """
     Health check endpoint.
     """
+    agent = get_agent()
     return jsonify({
         'status': 'healthy',
-        'agent_name': api_agent.name if api_agent else 'Not initialized'
+        'agent_name': agent.name
     })
 
 
@@ -230,10 +244,7 @@ def chat():
         JSON response with agent's reply
     """
     try:
-        if api_agent is None:
-            return jsonify({
-                'error': 'AI agent not initialized'
-            }), 500
+        agent = get_agent()
         
         data = request.get_json()
         
@@ -250,12 +261,12 @@ def chat():
             }), 400
         
         # Process the message
-        response = api_agent.process_message(user_message)
+        response = agent.process_message(user_message)
         
         return jsonify({
             'message': user_message,
             'response': response,
-            'agent_name': api_agent.name
+            'agent_name': agent.name
         })
     
     except Exception:
@@ -273,12 +284,8 @@ def get_history():
         JSON response with conversation history
     """
     try:
-        if api_agent is None:
-            return jsonify({
-                'error': 'AI agent not initialized'
-            }), 500
-        
-        history = api_agent.get_conversation_history()
+        agent = get_agent()
+        history = agent.get_conversation_history()
         return jsonify({
             'history': history,
             'message_count': len(history)
@@ -298,12 +305,8 @@ def clear_history():
         JSON response confirming the history was cleared
     """
     try:
-        if api_agent is None:
-            return jsonify({
-                'error': 'AI agent not initialized'
-            }), 500
-        
-        api_agent.clear_history()
+        agent = get_agent()
+        agent.clear_history()
         return jsonify({
             'message': 'Conversation history cleared successfully'
         })

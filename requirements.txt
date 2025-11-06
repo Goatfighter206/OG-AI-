@@ -1,6 +1,7 @@
 # Core dependencies for OG-AI Agent
 Flask>=2.3.0
 Flask-CORS>=4.0.0
+gunicorn>=21.2.0
 
 # Optional dependencies for future enhancements:
 # openai>=1.0.0  # For OpenAI API integration
