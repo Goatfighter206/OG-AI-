@@ -32,13 +32,29 @@ pip install -r requirements.txt
 
 ### Web API Mode (Default)
 
-Run the agent as a web service:
+For development and testing, run the agent as a web service:
 
 ```bash
 python ai_agent.py
 ```
 
+For production deployment, use Gunicorn (recommended):
+
+```bash
+gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 ai_agent:app
+```
+
 The API server will start on `http://localhost:5000` by default. You can configure the port using the `PORT` environment variable.
+
+**Important Note on Multiple Workers:**
+- Each Gunicorn worker maintains its own conversation history and agent state
+- Requests may be load-balanced across different workers, resulting in:
+  - Conversation history not being shared between requests
+  - Inconsistent context if subsequent requests go to different workers
+- For production with persistent conversation history, consider:
+  - Using a single worker (`--workers 1`)
+  - Implementing session-based routing (sticky sessions)
+  - Using a shared storage backend (Redis, database, etc.)
 
 ### Interactive CLI Mode
 

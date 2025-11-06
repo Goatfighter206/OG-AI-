@@ -4,6 +4,7 @@ OG-AI Agent - A simple conversational AI agent
 
 import json
 import os
+import threading
 from typing import List, Dict, Optional
 from datetime import datetime
 from flask import Flask, request, jsonify
@@ -161,6 +162,33 @@ CORS(app)  # Enable CORS for all routes
 api_agent = None
 
 
+# Lock for thread-safe agent initialization
+_agent_lock = threading.Lock()
+
+
+def get_agent():
+    """
+    Get or initialize the global API agent.
+    Thread-safe lazy initialization using double-checked locking.
+    
+    Returns:
+        The initialized AIAgent instance
+        
+    Raises:
+        RuntimeError: If agent initialization fails
+    """
+    global api_agent
+    if api_agent is None:
+        with _agent_lock:
+            # Double-check pattern to prevent race conditions
+            if api_agent is None:
+                try:
+                    initialize_agent()
+                except Exception as e:
+                    raise RuntimeError(f"Failed to initialize AI agent: {e}") from e
+    return api_agent
+
+
 def load_config():
     """
     Load configuration from config.json file.
@@ -210,9 +238,10 @@ def health():
     """
     Health check endpoint.
     """
+    agent = get_agent()
     return jsonify({
         'status': 'healthy',
-        'agent_name': api_agent.name if api_agent else 'Not initialized'
+        'agent_name': agent.name
     })
 
 
@@ -230,10 +259,7 @@ def chat():
         JSON response with agent's reply
     """
     try:
-        if api_agent is None:
-            return jsonify({
-                'error': 'AI agent not initialized'
-            }), 500
+        agent = get_agent()
         
         data = request.get_json()
         
@@ -250,12 +276,12 @@ def chat():
             }), 400
         
         # Process the message
-        response = api_agent.process_message(user_message)
+        response = agent.process_message(user_message)
         
         return jsonify({
             'message': user_message,
             'response': response,
-            'agent_name': api_agent.name
+            'agent_name': agent.name
         })
     
     except Exception:
@@ -273,12 +299,8 @@ def get_history():
         JSON response with conversation history
     """
     try:
-        if api_agent is None:
-            return jsonify({
-                'error': 'AI agent not initialized'
-            }), 500
-        
-        history = api_agent.get_conversation_history()
+        agent = get_agent()
+        history = agent.get_conversation_history()
         return jsonify({
             'history': history,
             'message_count': len(history)
@@ -298,12 +320,8 @@ def clear_history():
         JSON response confirming the history was cleared
     """
     try:
-        if api_agent is None:
-            return jsonify({
-                'error': 'AI agent not initialized'
-            }), 500
-        
-        api_agent.clear_history()
+        agent = get_agent()
+        agent.clear_history()
         return jsonify({
             'message': 'Conversation history cleared successfully'
         })
@@ -345,7 +363,8 @@ if __name__ == "__main__":
         # Run in CLI mode
         main()
     else:
-        # Run as Flask API
-        initialize_agent()
+        # Run as Flask API (development server only)
+        # For production, use: gunicorn ai_agent:app
+        # Agent will be initialized lazily on first request per worker via get_agent()
         port = int(os.environ.get('PORT', 5000))
         app.run(host='0.0.0.0', port=port, debug=False)
