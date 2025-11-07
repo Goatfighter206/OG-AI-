@@ -109,7 +109,7 @@ Edit `config.json` to customize:
 - No formal linter is currently configured for this project
 - When adding linting tools (e.g., `pylint`, `flake8`, `black`):
   - Create a separate `requirements-dev.txt` file for development dependencies
-  - Or use `setup.py` with optional dependencies
+  - Or use modern `pyproject.toml` with `[project.optional-dependencies]`
   - Document the commands to run them in this section
   - Configure them to follow PEP 8 standards
 
@@ -246,7 +246,9 @@ Modify `_generate_response()` method in the AIAgent class to add new pattern mat
 ### Dependency Security
 - Regularly update dependencies to patch security vulnerabilities
 - Use `pip list --outdated` to check for available updates
-- Use tools like `pip-audit` or `safety` for security-specific vulnerability scanning
+- Use security scanning tools (require separate installation):
+  - `pip-audit` for vulnerability scanning
+  - `safety` for security-specific checks
 - Review security advisories for Flask and other dependencies
 - When adding new dependencies, verify they are from trusted sources
 
@@ -286,7 +288,10 @@ Modify `_generate_response()` method in the AIAgent class to add new pattern mat
 - **Do not** change the conversation history data structure without migration plan
 - **Do not** add heavy ML dependencies without discussing performance impact
 - **Do not** modify the thread-safety mechanisms without careful consideration
-- **Do not** commit generated/temporary conversation files (files created during testing in the working directory)
+- **Do not** commit test conversation files:
+  - Files like `conversation_example.json` (created during testing)
+  - Files in the `conversations/` directory (already in .gitignore)
+  - Python cache files (`.pyc`, `__pycache__/`)
 - **Do not** make breaking changes to the AIAgent class public interface
 - **Do not** disable CORS without understanding security implications
 
