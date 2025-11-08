@@ -13,8 +13,15 @@ OG-AI-/
 ├── config.json          # Agent configuration
 ├── requirements.txt     # Python dependencies
 ├── render.yaml         # Render deployment configuration
+├── .gitignore          # Git ignore patterns
 └── README.md           # Documentation
 ```
+
+### Important Files
+- **ai_agent.py**: Main application file containing AIAgent class and Flask API
+- **config.json**: Configuration for agent behavior and settings
+- **requirements.txt**: Python package dependencies
+- **.gitignore**: Prevents committing generated files, virtual environments, and sensitive data
 
 ## Key Components
 
@@ -98,6 +105,14 @@ Edit `config.json` to customize:
 - Include docstrings for classes and methods (Google style)
 - Keep methods focused and single-purpose
 
+### Linting and Formatting
+- No formal linter is currently configured for this project
+- When adding linting tools (e.g., `pylint`, `flake8`, `black`):
+  - Create a separate `requirements-dev.txt` file for development dependencies
+  - Or use modern `pyproject.toml` with `[project.optional-dependencies]`
+  - Document the commands to run them in this section
+  - Configure them to follow PEP 8 standards
+
 ### Error Handling
 - Use appropriate exception types (IOError, FileNotFoundError, etc.)
 - Document exceptions in docstrings
@@ -110,6 +125,15 @@ Edit `config.json` to customize:
   - 200 for success
   - 400 for bad requests (missing/invalid input)
   - 500 for server errors
+
+### Git Workflow
+- **Branch naming**: Use descriptive names (e.g., `feature/add-auth`, `fix/conversation-bug`, `docs/update-readme`)
+- **Commit messages**: Use clear, descriptive commit messages in present tense (e.g., "Add user authentication", "Fix conversation history bug")
+- **Pull requests**: 
+  - Keep PRs focused on a single feature or fix
+  - Include a clear description of changes
+  - Reference related issues using `#issue_number`
+  - Ensure all tests pass before requesting review
 
 ## Important Notes
 
@@ -138,12 +162,28 @@ The codebase is designed for extensibility:
 
 ## When Making Changes
 
+### Issue Workflow
+- **Before starting work:**
+  - Ensure the issue is clearly defined with acceptance criteria
+  - Comment on the issue to claim it or discuss approach
+  - Create a feature branch from the main branch
+- **Well-scoped issues should include:**
+  - Clear objective and description
+  - Specific files or modules to change
+  - Expected behavior after the change
+  - Test criteria
+- **For complex issues:**
+  - Break them down into smaller, manageable tasks
+  - Create sub-issues if needed
+  - Discuss approach before implementation
+
 ### Adding New Features
 1. Update the AIAgent class methods if modifying core functionality
 2. Add new API endpoints following existing patterns
 3. Update README.md with new features/endpoints
 4. Add examples to `example_usage.py` if appropriate
 5. Ensure thread-safety for API endpoints
+6. Update this copilot-instructions.md if adding new conventions
 
 ### Modifying Existing Code
 1. Maintain backward compatibility
@@ -192,3 +232,77 @@ def new_method(self, param: str) -> str:
 
 ### Extend response logic
 Modify `_generate_response()` method in the AIAgent class to add new pattern matching or integrate AI models.
+
+## Security Best Practices
+
+### API Security
+- Never commit API keys, tokens, or secrets to the repository
+- Use environment variables for sensitive configuration
+- When adding authentication:
+  - Use established libraries (e.g., `Flask-Login`, `JWT`)
+  - Implement rate limiting to prevent abuse
+  - Add input validation to prevent injection attacks
+
+### Dependency Security
+- Regularly update dependencies to patch security vulnerabilities
+- Use `pip list --outdated` to check for available updates
+- Use security scanning tools (require separate installation):
+  - `pip-audit` for vulnerability scanning
+  - `safety` for security-specific checks
+- Review security advisories for Flask and other dependencies
+- When adding new dependencies, verify they are from trusted sources
+
+### Data Handling
+- Never log sensitive user data (passwords, tokens, personal information)
+- Sanitize all user inputs before processing
+- Use HTTPS in production deployments
+- Implement proper error handling that doesn't expose system internals
+
+## Troubleshooting
+
+### Common Issues
+
+**Flask app won't start:**
+- Verify all dependencies are installed: `pip install -r requirements.txt`
+- Check port 5000 is not already in use
+- Ensure Python 3.7+ is being used
+
+**Conversation history not persisting:**
+- When using multiple Gunicorn workers, each worker has separate state
+- Solution: Use `--workers 1` or implement shared storage (Redis, database)
+- For development testing, use the built-in Flask server
+
+**Import errors:**
+- Make sure you're in the correct directory
+- Verify virtual environment is activated (if using one)
+- Re-install dependencies
+
+**CLI mode not working:**
+- Ensure you're using the `--cli` flag: `python ai_agent.py --cli`
+- Check for any syntax errors in recent changes
+
+## Constraints and Limitations
+
+### What NOT to Do
+- **Do not** remove or modify existing API endpoints without updating documentation
+- **Do not** change the conversation history data structure without migration plan
+- **Do not** add heavy ML dependencies without discussing performance impact
+- **Do not** modify the thread-safety mechanisms without careful consideration
+- **Do not** commit test conversation files:
+  - Files like `conversation_example.json` (created during testing)
+  - Files in the `conversations/` directory (already in .gitignore)
+  - Python cache files (`.pyc`, `__pycache__/`)
+- **Do not** make breaking changes to the AIAgent class public interface
+- **Do not** disable CORS without understanding security implications
+
+### Performance Considerations
+- Keep conversation history bounded (use `max_history_length` config)
+- Avoid blocking operations in API endpoints
+- Consider async operations for future AI model integrations
+- Monitor memory usage when handling multiple concurrent users
+
+### Backward Compatibility
+- Maintain compatibility with existing conversation JSON format
+- Preserve existing API endpoint contracts
+- Document any deprecations before removing functionality
+- Provide migration guides for breaking changes
