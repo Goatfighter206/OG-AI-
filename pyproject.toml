@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "og-ai-agent"
+version = "1.0.0"
+description = "A simple yet extensible conversational AI agent with RESTful API"
+readme = "README.md"
+authors = [
+    {name = "Goatfighter206", email = "237623808+Goatfighter206@users.noreply.github.com"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: Flask",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Communications :: Chat",
+]
+keywords = ["ai", "agent", "chatbot", "conversational-ai", "flask", "api"]
+
+dependencies = [
+    "Flask>=2.3.0",
+    "Flask-CORS>=4.0.0",
+    "gunicorn>=21.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.0.0",
+    "twine>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Goatfighter206/OG-AI-"
+Repository = "https://github.com/Goatfighter206/OG-AI-"
+Issues = "https://github.com/Goatfighter206/OG-AI-/issues"
+
+[project.scripts]
+og-ai = "ai_agent:main"
+og-ai-server = "ai_agent:app"
+
+[tool.setuptools]
+py-modules = ["ai_agent"]
+
+[tool.setuptools.package-data]
+"*" = ["config.json"]

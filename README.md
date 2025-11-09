@@ -20,20 +20,59 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 
 ## Installation
 
-1. Clone this repository:
+### Option 1: Install from PyPI (Recommended)
+
+Once published to PyPI, install with pip:
+
 ```bash
-git clone https://github.com/Goatfighter206/OG-AI-.git
-cd OG-AI-
+pip install og-ai-agent
 ```
 
-2. Install dependencies:
+### Option 2: Install from GitHub
+
 ```bash
+# Install latest version
+pip install git+https://github.com/Goatfighter206/OG-AI-.git
+
+# Or install specific branch
+pip install git+https://github.com/Goatfighter206/OG-AI-.git@copilot/deploy-agent-feature
+```
+
+### Option 3: Clone and Install from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/Goatfighter206/OG-AI-.git
+cd OG-AI-
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-**Note:** Flask and Flask-CORS are required for running the web API. For CLI-only usage without the API, you can skip installing dependencies.
+**Note:** For publishing to PyPI yourself, see [PYPI_PUBLISHING.md](PYPI_PUBLISHING.md).
 
 ## Usage
+
+### After Installing from PyPI or GitHub
+
+Once installed via pip, you can use the agent as a Python module:
+
+```python
+from ai_agent import AIAgent
+
+# Create an agent
+agent = AIAgent(name="My Assistant")
+
+# Process messages
+response = agent.process_message("Hello!")
+print(response)
+```
+
+Or run the CLI directly:
+
+```bash
+og-ai --cli
+```
 
 ### Web API Mode (Default)
 
