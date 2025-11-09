@@ -10,8 +10,13 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 - 💾 Save and load conversations to/from JSON
 - ⚙️ Configurable agent settings
 - 🔧 Extensible architecture for adding AI models
-- 🚀 Ready for deployment on Render and other platforms
+- 🚀 Ready for deployment on multiple platforms:
+  - ✅ Render (Blueprint & Manual)
+  - ✅ Heroku (Procfile included)
+  - ✅ Docker & Docker Compose
+  - ✅ AWS, GCP, Azure (see [DEPLOYMENT.md](DEPLOYMENT.md))
 - 🖥️ CLI mode for local interactive usage
+- 🏥 Health check endpoint for monitoring
 
 ## Installation
 
@@ -188,11 +193,15 @@ Clear the conversation history.
 }
 ```
 
-## Deploying to Render
+## Deployment
+
+For comprehensive deployment instructions covering multiple platforms (Render, Heroku, Docker, AWS, GCP, Azure, and more), see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+### Quick Deploy to Render 🚀
 
 This application is ready to deploy on [Render](https://render.com/) with two options:
 
-### Option 1: One-Click Deployment (Recommended) 🚀
+### Option 1: One-Click Deployment (Recommended)
 
 This repository includes a `render.yaml` file for automatic configuration:
 
