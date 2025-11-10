@@ -47,7 +47,7 @@ class VoiceChat:
                 # Set voice if specified
                 if voice_id is not None:
                     voices = self.tts_engine.getProperty('voices')
-                    if voice_id < len(voices):
+                    if 0 <= voice_id < len(voices):
                         self.tts_engine.setProperty('voice', voices[voice_id].id)
             except (RuntimeError, OSError) as e:
                 # RuntimeError: TTS engine not properly installed
