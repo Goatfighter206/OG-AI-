@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Voice chat is an optional feature
 try:
-    from voice_chat import VoiceChat, VoiceAssistant
+    from voice_chat import VoiceAssistant
     VOICE_AVAILABLE = True
 except ImportError:
     VOICE_AVAILABLE = False
