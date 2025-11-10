@@ -155,7 +155,7 @@ class VoiceChat:
             self.tts_engine.setProperty('volume', volume)
         if voice_id is not None:
             voices = self.tts_engine.getProperty('voices')
-            if voice_id < len(voices):
+            if 0 <= voice_id < len(voices):
                 self.tts_engine.setProperty('voice', voices[voice_id].id)
     
     def list_available_voices(self) -> list:
