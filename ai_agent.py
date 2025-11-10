@@ -10,19 +10,27 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
+# Voice chat is an optional feature
+try:
+    from voice_chat import VoiceAssistant
+    VOICE_AVAILABLE = True
+except ImportError:
+    VOICE_AVAILABLE = False
+
 
 class AIAgent:
     """
     A basic AI agent that can process messages and maintain conversation context.
     """
     
-    def __init__(self, name: str = "OG-AI", config: Optional[Dict] = None):
+    def __init__(self, name: str = "OG-AI", config: Optional[Dict] = None, enable_voice: bool = False):
         """
         Initialize the AI agent.
         
         Args:
             name: The name of the agent
             config: Optional configuration dictionary
+            enable_voice: Enable voice chat capabilities (requires voice_chat module)
         """
         self.name = name
         self.config = config or {}
@@ -33,6 +41,17 @@ class AIAgent:
             'system_prompt', 
             'You are a helpful AI assistant.'
         )
+        
+        # Initialize voice capabilities if requested and available
+        self.voice_enabled = False
+        self.voice_assistant = None
+        if enable_voice:
+            if VOICE_AVAILABLE:
+                self.voice_assistant = VoiceAssistant(self)
+                self.voice_enabled = True
+            else:
+                print("Warning: Voice chat module not available. Install required dependencies.")
+                print("Run: pip install SpeechRecognition pyttsx3 PyAudio")
         
     def add_message(self, role: str, content: str) -> None:
         """

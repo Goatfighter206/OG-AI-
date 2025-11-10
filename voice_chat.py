@@ -6,6 +6,7 @@ Provides voice input and output capabilities for the AI agent.
 import speech_recognition as sr
 from typing import Optional
 import threading
+import logging
 
 # Try to import pyttsx3, but handle gracefully if not available
 try:
@@ -13,7 +14,7 @@ try:
     TTS_AVAILABLE = True
 except ImportError as e:
     TTS_AVAILABLE = False
-    print(f"Warning: pyttsx3 not installed: {e}")
+    logging.warning(f"pyttsx3 not installed: {e}")
 
 
 class VoiceChat:
@@ -34,6 +35,10 @@ class VoiceChat:
         self.recognizer = sr.Recognizer()
         self.tts_available = TTS_AVAILABLE
         self.tts_engine = None
+        
+        # Validate volume parameter
+        if not 0.0 <= volume <= 1.0:
+            raise ValueError(f"Volume must be between 0.0 and 1.0, got {volume}")
         
         # Initialize TTS engine if available
         if TTS_AVAILABLE:
@@ -149,14 +154,18 @@ class VoiceChat:
             print("TTS engine not available, cannot set properties.")
             return
         
-        if rate is not None:
-            self.tts_engine.setProperty('rate', rate)
-        if volume is not None:
-            self.tts_engine.setProperty('volume', volume)
-        if voice_id is not None:
-            voices = self.tts_engine.getProperty('voices')
-            if 0 <= voice_id < len(voices):
-                self.tts_engine.setProperty('voice', voices[voice_id].id)
+        with self._tts_lock:
+            if rate is not None:
+                self.tts_engine.setProperty('rate', rate)
+            if volume is not None:
+                if 0.0 <= volume <= 1.0:
+                    self.tts_engine.setProperty('volume', volume)
+                else:
+                    print(f"Warning: Volume {volume} is out of range [0.0, 1.0]. Skipping volume update.")
+            if voice_id is not None:
+                voices = self.tts_engine.getProperty('voices')
+                if 0 <= voice_id < len(voices):
+                    self.tts_engine.setProperty('voice', voices[voice_id].id)
     
     def list_available_voices(self) -> list:
         """

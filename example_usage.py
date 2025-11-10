@@ -3,7 +3,7 @@ Example usage of the OG-AI Agent
 """
 
 import json
-from ai_agent import AIAgent
+from ai_agent import AIAgent, VOICE_AVAILABLE
 
 
 def example_basic_conversation():
@@ -97,11 +97,44 @@ def example_conversation_history():
         print(f"  Timestamp: {msg['timestamp']}\n")
 
 
+def example_with_voice():
+    """
+    Demonstrate using voice capabilities (if available).
+    """
+    print("\n=== Example 5: Voice Capabilities ===\n")
+    
+    if not VOICE_AVAILABLE:
+        print("Voice chat module not available.")
+        print("To enable voice features, install: pip install SpeechRecognition pyttsx3 PyAudio")
+        return
+    
+    # Create an agent with voice enabled
+    agent = AIAgent(name="VoiceBot", enable_voice=True)
+    
+    if agent.voice_enabled:
+        print("Voice capabilities are enabled!")
+        print("You can use text input with voice output.")
+        
+        # Enable voice mode for spoken responses
+        agent.voice_assistant.enable_voice_mode()
+        
+        # Process text with voice output
+        response = agent.voice_assistant.process_text_with_voice("Hello! This is a test of voice output.")
+        print(f"Agent response: {response}\n")
+        
+        # Disable voice mode
+        agent.voice_assistant.disable_voice_mode()
+        print("Voice mode disabled.")
+    else:
+        print("Failed to initialize voice capabilities.")
+
+
 if __name__ == "__main__":
     # Run all examples
     example_basic_conversation()
     example_with_config()
     example_save_and_load()
     example_conversation_history()
+    example_with_voice()
     
     print("\n=== All Examples Complete ===")
