@@ -19,11 +19,23 @@ app = FastAPI(
 )
 
 # Add CORS middleware to allow cross-origin requests
-# NOTE: For production, replace ["*"] with specific allowed origins
-# Example: allow_origins=["https://yourdomain.com"]
+# NOTE: For production, set the ALLOWED_ORIGINS environment variable to specific allowed origins
+# Example: ALLOWED_ORIGINS='["https://yourdomain.com"]'
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    try:
+        allowed_origins = json.loads(allowed_origins_env)
+        if not isinstance(allowed_origins, list):
+            raise ValueError
+    except Exception:
+        print("Warning: Invalid ALLOWED_ORIGINS environment variable. Falling back to ['*'].")
+        allowed_origins = ["*"]
+else:
+    allowed_origins = ["*"]  # Default for development/demo
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Development/demo setting - allows all origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
