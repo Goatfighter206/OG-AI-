@@ -112,24 +112,27 @@ class VoiceChat:
             text: Text to speak
             async_mode: If True, speak asynchronously (non-blocking)
         """
-        if not self.tts_available or self.tts_engine is None:
-            print(f"[TTS Not Available] Would speak: {text}")
-            return
+        # Acquire lock to check and capture engine reference atomically
+        with self._tts_lock:
+            if not self.tts_available or self.tts_engine is None:
+                print(f"[TTS Not Available] Would speak: {text}")
+                return
+            tts_engine = self.tts_engine
         
-        def _speak():
+        def _speak(engine):
             with self._tts_lock:
                 try:
-                    self.tts_engine.say(text)
-                    self.tts_engine.runAndWait()
+                    engine.say(text)
+                    engine.runAndWait()
                 except Exception as e:
                     print(f"Error during text-to-speech: {e}")
         
         if async_mode:
-            thread = threading.Thread(target=_speak)
+            thread = threading.Thread(target=_speak, args=(tts_engine,))
             thread.daemon = True
             thread.start()
         else:
-            _speak()
+            _speak(tts_engine)
     
     def set_voice_properties(self, rate: Optional[int] = None, 
                             volume: Optional[float] = None,
