@@ -5,7 +5,7 @@ Exposes REST API endpoints for interacting with the AI agent.
 
 import json
 import os
-from typing import Optional, List, Dict
+from typing import List, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
