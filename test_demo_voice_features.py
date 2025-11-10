@@ -131,7 +131,7 @@ class TestDemoVoiceSettings(unittest.TestCase):
         self.assertTrue(any('not available' in str(c).lower() for c in calls))
     
     @patch('demo_voice_features.VOICE_AVAILABLE', True)
-    @patch('demo_voice_features.VoiceChat')
+    @patch('voice_chat.VoiceChat')
     @patch('demo_voice_features.print_section')
     @patch('builtins.print')
     def test_demo_voice_settings_available(self, _mock_print, _mock_print_section, mock_voice_chat_class):
