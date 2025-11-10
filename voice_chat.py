@@ -91,7 +91,7 @@ class VoiceChat:
             print("No speech detected. Timeout reached.")
             return None
         except sr.UnknownValueError:
-            print("Could not understand audio. Please speak clearly.")
+            print("Could not recognize speech. Please try again or check for background noise.")
             return None
         except sr.RequestError as e:
             print(f"Could not request results from speech recognition service: {e}")
