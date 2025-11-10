@@ -4,7 +4,7 @@ Provides voice input and output capabilities for the AI agent.
 """
 
 import speech_recognition as sr
-from typing import Optional, Callable
+from typing import Optional
 import threading
 
 # Try to import pyttsx3, but handle gracefully if not available
