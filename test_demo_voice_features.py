@@ -4,7 +4,7 @@ Tests the demo functions to ensure they work correctly.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 import sys
 from io import StringIO
 
