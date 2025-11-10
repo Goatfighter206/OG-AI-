@@ -6,7 +6,7 @@ import json
 from ai_agent import AIAgent, VOICE_AVAILABLE
 
 if VOICE_AVAILABLE:
-    from voice_chat import VoiceChat, VoiceAssistant
+    pass
 
 
 def example_basic_conversation():
