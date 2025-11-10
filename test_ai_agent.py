@@ -4,7 +4,7 @@ Tests AIAgent class with focus on voice integration and core functionality.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 import json
 import tempfile
 import os
