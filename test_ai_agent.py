@@ -394,7 +394,7 @@ class TestAIAgentFileOperations(unittest.TestCase):
         loaded_history = new_agent.get_conversation_history()
         
         self.assertEqual(len(loaded_history), len(original_history))
-        for orig, loaded in zip(original_history, loaded_history, strict=True):
+        for orig, loaded in zip(original_history, loaded_history):
             self.assertEqual(orig['role'], loaded['role'])
             self.assertEqual(orig['content'], loaded['content'])
 
