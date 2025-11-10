@@ -10,25 +10,69 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 - 💾 Save and load conversations to/from JSON
 - ⚙️ Configurable agent settings
 - 🔧 Extensible architecture for adding AI models
-- 🚀 Ready for deployment on Render and other platforms
+- 🚀 Ready for deployment on multiple platforms:
+  - ✅ Render (Blueprint & Manual)
+  - ✅ Heroku (Procfile included)
+  - ✅ Docker & Docker Compose
+  - ✅ AWS, GCP, Azure (see [DEPLOYMENT.md](DEPLOYMENT.md))
 - 🖥️ CLI mode for local interactive usage
+- 🏥 Health check endpoint for monitoring
 
 ## Installation
 
-1. Clone this repository:
+### Option 1: Install from PyPI (Recommended)
+
+Once published to PyPI, install with pip:
+
 ```bash
-git clone https://github.com/Goatfighter206/OG-AI-.git
-cd OG-AI-
+pip install og-ai-agent
 ```
 
-2. Install dependencies:
+### Option 2: Install from GitHub
+
 ```bash
+# Install latest version
+pip install git+https://github.com/Goatfighter206/OG-AI-.git
+
+# Or install specific branch
+pip install git+https://github.com/Goatfighter206/OG-AI-.git@copilot/deploy-agent-feature
+```
+
+### Option 3: Clone and Install from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/Goatfighter206/OG-AI-.git
+cd OG-AI-
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-**Note:** Flask and Flask-CORS are required for running the web API. For CLI-only usage without the API, you can skip installing dependencies.
+**Note:** For publishing to PyPI yourself, see [PYPI_PUBLISHING.md](PYPI_PUBLISHING.md).
 
 ## Usage
+
+### After Installing from PyPI or GitHub
+
+Once installed via pip, you can use the agent as a Python module:
+
+```python
+from ai_agent import AIAgent
+
+# Create an agent
+agent = AIAgent(name="My Assistant")
+
+# Process messages
+response = agent.process_message("Hello!")
+print(response)
+```
+
+Or run the CLI directly:
+
+```bash
+og-ai --cli
+```
 
 ### Web API Mode (Default)
 
@@ -188,11 +232,15 @@ Clear the conversation history.
 }
 ```
 
-## Deploying to Render
+## Deployment
+
+For comprehensive deployment instructions covering multiple platforms (Render, Heroku, Docker, AWS, GCP, Azure, and more), see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+
+### Quick Deploy to Render 🚀
 
 This application is ready to deploy on [Render](https://render.com/) with two options:
 
-### Option 1: One-Click Deployment (Recommended) 🚀
+### Option 1: One-Click Deployment (Recommended)
 
 This repository includes a `render.yaml` file for automatic configuration:
 

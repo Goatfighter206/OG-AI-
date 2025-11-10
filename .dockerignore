@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+dist
+build
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Test files
+*.log
+conversation_example.json
+conversations/
+
+# Documentation
+README.md
+*.md
+!copilot-instructions.md
+
+# Example files
+example_usage.py
+
+# Deployment configs for other platforms
+render.yaml
+Procfile
+docker-compose.yml

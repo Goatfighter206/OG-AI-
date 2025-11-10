@@ -1,0 +1,23 @@
+include README.md
+include LICENSE
+include config.json
+include requirements.txt
+include DEPLOYMENT.md
+
+# Exclude deployment-specific files
+exclude Procfile
+exclude Dockerfile
+exclude docker-compose.yml
+exclude .dockerignore
+exclude runtime.txt
+exclude render.yaml
+
+# Exclude example and test files
+exclude example_usage.py
+
+# Exclude CI/CD and git files
+recursive-exclude .github *
+recursive-exclude .git *
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
