@@ -1,7 +1,7 @@
 # Core dependencies for OG-AI Agent
 Flask>=2.3.0
 Flask-CORS>=4.0.0
-gunicorn>=21.2.0
+gunicorn>=22.0.0
 
 # Voice chat dependencies (optional)
 SpeechRecognition>=3.10.0  # For voice input (speech-to-text)

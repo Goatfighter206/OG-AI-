@@ -121,9 +121,9 @@ class AIAgent:
         Get the full conversation history.
         
         Returns:
-            List of conversation messages
+            List of conversation messages (copy to prevent external modification)
         """
-        return self.conversation_history
+        return self.conversation_history.copy()
     
     def clear_history(self) -> None:
         """
