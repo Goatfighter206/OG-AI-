@@ -4,7 +4,7 @@ Tests VoiceChat and VoiceAssistant classes with various scenarios.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch, MagicMock
 import threading
 import time
 from io import StringIO
