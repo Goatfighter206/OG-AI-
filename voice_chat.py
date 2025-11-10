@@ -23,6 +23,12 @@ class VoiceChat:
     for the AI agent.
     """
     
+    @staticmethod
+    def _validate_volume(volume: float) -> None:
+        """Validate volume parameter is in valid range."""
+        if not 0.0 <= volume <= 1.0:
+            raise ValueError(f"Volume must be between 0.0 and 1.0, got {volume}")
+    
     def __init__(self, rate: int = 150, volume: float = 0.9, voice_id: Optional[int] = None):
         """
         Initialize the voice chat system.
@@ -37,8 +43,7 @@ class VoiceChat:
         self.tts_engine = None
         
         # Validate volume parameter
-        if not 0.0 <= volume <= 1.0:
-            raise ValueError(f"Volume must be between 0.0 and 1.0, got {volume}")
+        self._validate_volume(volume)
         
         # Initialize TTS engine if available
         if TTS_AVAILABLE:
@@ -57,7 +62,7 @@ class VoiceChat:
             except (RuntimeError, OSError) as e:
                 # RuntimeError: TTS engine not properly installed
                 # OSError: Audio device issues
-                print(f"Warning: Could not initialize TTS engine: {e}")
+                logging.warning(f"Could not initialize TTS engine: {e}")
                 self.tts_available = False
                 self.tts_engine = None
         
@@ -151,17 +156,18 @@ class VoiceChat:
             voice_id: Voice ID to use
         """
         if not self.tts_available or self.tts_engine is None:
-            print("TTS engine not available, cannot set properties.")
+            logging.warning("TTS engine not available, cannot set properties.")
             return
         
         with self._tts_lock:
             if rate is not None:
                 self.tts_engine.setProperty('rate', rate)
             if volume is not None:
-                if 0.0 <= volume <= 1.0:
+                try:
+                    self._validate_volume(volume)
                     self.tts_engine.setProperty('volume', volume)
-                else:
-                    print(f"Warning: Volume {volume} is out of range [0.0, 1.0]. Skipping volume update.")
+                except ValueError as e:
+                    logging.warning(f"Invalid volume value: {e}. Skipping volume update.")
             if voice_id is not None:
                 voices = self.tts_engine.getProperty('voices')
                 if 0 <= voice_id < len(voices):

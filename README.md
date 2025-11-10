@@ -1,10 +1,11 @@
 # OG-AI - AI Agent
 
-A simple yet extensible conversational AI agent built with Python. This agent can maintain conversation context, save/load conversation history, and provide interactive responses.
+A simple yet extensible conversational AI agent built with Python. This agent can maintain conversation context, save/load conversation history, and provide interactive responses with optional voice chat capabilities.
 
 ## Features
 
 - 🤖 Basic conversational AI capabilities
+- 🎤 **Voice chat with speech recognition and text-to-speech** (optional)
 - 🌐 RESTful API with Flask for web deployment
 - 💬 Conversation history management
 - 💾 Save and load conversations to/from JSON
@@ -19,6 +20,35 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 - 🏥 Health check endpoint for monitoring
 
 ## Installation
+
+### Basic Installation
+
+For text-only functionality:
+
+```bash
+pip install -r requirements.txt
+```
+
+Or install just the core dependencies:
+
+```bash
+pip install Flask Flask-CORS gunicorn
+```
+
+### Voice Chat Installation (Optional)
+
+To enable voice input and output capabilities:
+
+```bash
+# Install voice dependencies
+pip install SpeechRecognition pyttsx3 PyAudio
+```
+
+**Note for PyAudio:** On some systems, you may need to install additional system packages:
+
+- **Ubuntu/Debian:** `sudo apt-get install portaudio19-dev python3-pyaudio`
+- **macOS:** `brew install portaudio`
+- **Windows:** PyAudio wheels are available at [Unofficial Windows Binaries](https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio)
 
 ### Option 1: Install from PyPI (Recommended)
 
@@ -126,6 +156,78 @@ print(response)
 history = agent.get_conversation_history()
 ```
 
+### Voice Chat Features
+
+If you have installed the voice dependencies, you can enable voice input and output:
+
+```python
+from ai_agent import AIAgent, VOICE_AVAILABLE
+
+# Check if voice is available
+print(f"Voice available: {VOICE_AVAILABLE}")
+
+# Create an agent with voice enabled
+agent = AIAgent(name="VoiceBot", enable_voice=True)
+
+if agent.voice_enabled:
+    # Enable voice output mode
+    agent.voice_assistant.enable_voice_mode()
+    
+    # Process text with voice output
+    response = agent.voice_assistant.process_text_with_voice("Hello! This is a test.")
+    
+    # Process voice input (requires microphone)
+    response = agent.voice_assistant.process_voice_input(timeout=10)
+    
+    # Disable voice mode
+    agent.voice_assistant.disable_voice_mode()
+```
+
+#### Voice Interaction Modes
+
+The voice assistant supports four interaction modes:
+
+1. **Text Input → Text Output** (default)
+2. **Text Input → Voice Output** (enable_voice_mode)
+3. **Voice Input → Text Output** (process_voice_input with voice mode off)
+4. **Voice Input → Voice Output** (process_voice_input with voice mode on)
+
+#### Voice Configuration
+
+You can customize voice properties:
+
+```python
+# Access the voice chat instance
+voice_chat = agent.voice_assistant.voice_chat
+
+# Adjust speech rate (words per minute)
+voice_chat.set_voice_properties(rate=150)
+
+# Adjust volume (0.0 to 1.0)
+voice_chat.set_voice_properties(volume=0.9)
+
+# List available voices
+voices = voice_chat.list_available_voices()
+for i, voice in enumerate(voices):
+    print(f"{i}: {voice.name}")
+
+# Set voice by ID
+voice_chat.set_voice_properties(voice_id=0)
+```
+
+#### Running Voice Demo
+
+Try the comprehensive voice features demo:
+
+```bash
+python demo_voice_features.py
+```
+
+**Note:** Voice features require:
+- A working microphone for voice input
+- Audio output device for voice output
+- Internet connection for Google Speech Recognition API
+
 ### Examples
 
 Run the example script to see various usage patterns:
@@ -139,6 +241,7 @@ This demonstrates:
 - Using custom configuration
 - Saving and loading conversations
 - Accessing conversation history
+- Voice capabilities (if voice dependencies are installed)
 
 ### Configuration
 
