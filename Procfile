@@ -1,1 +1,1 @@
-web: gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 ai_agent:app
+web: uvicorn app:app --host 0.0.0.0 --port $PORT
