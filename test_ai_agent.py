@@ -18,7 +18,7 @@ sys_modules_patch = patch.dict('sys.modules', {
 })
 sys_modules_patch.start()
 
-from ai_agent import AIAgent, VOICE_AVAILABLE
+from ai_agent import AIAgent
 
 
 class TestAIAgentInitialization(unittest.TestCase):
