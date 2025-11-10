@@ -293,6 +293,7 @@ class VoiceAssistant:
                     print("\n[Voice Input Mode - Speak your message]")
                     user_input = self.voice_chat.listen(timeout=10)
                     if user_input is None:
+                        print("No speech detected, please try again.")
                         continue
                     print(f"You said: {user_input}")
                 else:
