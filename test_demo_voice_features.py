@@ -167,7 +167,7 @@ class TestDemoConversationModes(unittest.TestCase):
     
     @patch('demo_voice_features.VOICE_AVAILABLE', True)
     @patch('demo_voice_features.AIAgent')
-    @patch('demo_voice_features.VoiceAssistant')
+    @patch('voice_chat.VoiceAssistant')
     @patch('demo_voice_features.print_section')
     @patch('builtins.print')
     def test_demo_conversation_modes_available(self, _mock_print, _mock_print_section, 
