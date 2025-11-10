@@ -14,7 +14,7 @@ import sys
 sys.modules['speech_recognition'] = MagicMock()
 sys.modules['pyttsx3'] = MagicMock()
 
-from voice_chat import VoiceChat, VoiceAssistant, TTS_AVAILABLE
+from voice_chat import VoiceChat, VoiceAssistant
 from ai_agent import AIAgent
 
 
