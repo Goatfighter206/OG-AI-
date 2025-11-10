@@ -105,7 +105,12 @@ def main():
     tests_total += 1
     print("Verifying history is empty after reset...")
     response = requests.get(f"{BASE_URL}/history")
-    data = response.json()
+    try:
+        data = response.json()
+    except ValueError:
+        print("✗ Failed to parse JSON response from /history endpoint.")
+        print(f"Raw response: {response.text}\n")
+        data = {}
     if response.status_code == 200 and data.get('message_count', 0) == 0:
         print("✓ History successfully cleared\n")
         tests_passed += 1
