@@ -5,110 +5,55 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 ## Features
 
 - 🤖 Basic conversational AI capabilities
-- 🌐 RESTful API with Flask for web deployment
+- 🌐 RESTful API with FastAPI for web deployment
 - 💬 Conversation history management
 - 💾 Save and load conversations to/from JSON
 - ⚙️ Configurable agent settings
 - 🔧 Extensible architecture for adding AI models
-- 🚀 Ready for deployment on multiple platforms:
-  - ✅ Render (Blueprint & Manual)
-  - ✅ Heroku (Procfile included)
-  - ✅ Docker & Docker Compose
-  - ✅ AWS, GCP, Azure (see [DEPLOYMENT.md](DEPLOYMENT.md))
+- 🚀 Ready for deployment on Render and other platforms
+- 📱 Mobile-friendly web service with CORS support
 - 🖥️ CLI mode for local interactive usage
-- 🏥 Health check endpoint for monitoring
 
 ## Installation
 
-### Option 1: Install from PyPI (Recommended)
-
-Once published to PyPI, install with pip:
-
+1. Clone this repository:
 ```bash
-pip install og-ai-agent
-```
-
-### Option 2: Install from GitHub
-
-```bash
-# Install latest version
-pip install git+https://github.com/Goatfighter206/OG-AI-.git
-
-# Or install specific branch
-pip install git+https://github.com/Goatfighter206/OG-AI-.git@copilot/deploy-agent-feature
-```
-
-### Option 3: Clone and Install from Source
-
-```bash
-# Clone the repository
 git clone https://github.com/Goatfighter206/OG-AI-.git
 cd OG-AI-
+```
 
-# Install dependencies
+2. Install dependencies:
+```bash
 pip install -r requirements.txt
 ```
 
-**Note:** For publishing to PyPI yourself, see [PYPI_PUBLISHING.md](PYPI_PUBLISHING.md).
+**Note:** FastAPI and uvicorn are required for running the web API. For CLI-only usage without the API, you can skip installing these web dependencies.
 
 ## Usage
 
-### After Installing from PyPI or GitHub
+### Web API Mode
 
-Once installed via pip, you can use the agent as a Python module:
-
-```python
-from ai_agent import AIAgent
-
-# Create an agent
-agent = AIAgent(name="My Assistant")
-
-# Process messages
-response = agent.process_message("Hello!")
-print(response)
-```
-
-Or run the CLI directly:
+Run the agent as a web service:
 
 ```bash
-og-ai --cli
+python app.py
 ```
 
-### Web API Mode (Default)
+The API server will start on `http://localhost:8000` by default. You can configure the port using the `PORT` environment variable.
 
-For development and testing, run the agent as a web service:
-
-```bash
-python ai_agent.py
-```
-
-For production deployment, use Gunicorn (recommended):
-
-```bash
-gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 ai_agent:app
-```
-
-The API server will start on `http://localhost:5000` by default. You can configure the port using the `PORT` environment variable.
-
-**Important Note on Multiple Workers:**
-- Each Gunicorn worker maintains its own conversation history and agent state
-- Requests may be load-balanced across different workers, resulting in:
-  - Conversation history not being shared between requests
-  - Inconsistent context if subsequent requests go to different workers
-- For production with persistent conversation history, consider:
-  - Using a single worker (`--workers 1`)
-  - Implementing session-based routing (sticky sessions)
-  - Using a shared storage backend (Redis, database, etc.)
+The FastAPI service provides automatic interactive API documentation at:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
 ### Interactive CLI Mode
 
-Run the agent in interactive mode for a conversation:
+Run the agent in interactive mode for a direct conversation:
 
 ```bash
-python ai_agent.py --cli
+python example_usage.py
 ```
 
-Type your messages and the agent will respond. Type `quit` to exit.
+Type your messages and the agent will respond. This mode demonstrates the core agent functionality without the web API layer.
 
 ### Programmatic Usage
 
@@ -232,15 +177,11 @@ Clear the conversation history.
 }
 ```
 
-## Deployment
-
-For comprehensive deployment instructions covering multiple platforms (Render, Heroku, Docker, AWS, GCP, Azure, and more), see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
-
-### Quick Deploy to Render 🚀
+## Deploying to Render
 
 This application is ready to deploy on [Render](https://render.com/) with two options:
 
-### Option 1: One-Click Deployment (Recommended)
+### Option 1: One-Click Deployment (Recommended) 🚀
 
 This repository includes a `render.yaml` file for automatic configuration:
 
@@ -262,9 +203,11 @@ If you prefer manual setup:
    - **Name**: `og-ai-service` (or your preferred name)
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `python ai_agent.py`
+   - **Start Command**: `uvicorn app:app --host 0.0.0.0 --port $PORT`
    - **Instance Type**: Free tier or higher
 5. Click "Create Web Service"
+
+**Note:** The start command can also be set via the `Procfile` which is included in the repository.
 
 ### After Deployment
 
@@ -283,6 +226,16 @@ curl -X POST https://your-app-name.onrender.com/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello!"}'
 ```
+
+### Accessing from Mobile Devices
+
+The API is fully accessible from mobile devices:
+
+1. **Direct API Access**: Use any HTTP client app on your mobile device (e.g., Postman Mobile, HTTP Request Shortcuts)
+2. **Interactive Documentation**: Visit `https://your-app-name.onrender.com/docs` in your mobile browser for Swagger UI
+3. **Custom App Integration**: Integrate the API into your mobile app using standard HTTP requests
+
+The service includes CORS support, making it easy to build web and mobile applications that consume the API.
 
 ## API Reference
 

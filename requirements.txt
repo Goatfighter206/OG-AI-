@@ -1,9 +1,17 @@
 # Core dependencies for OG-AI Agent
-Flask>=2.3.0
-Flask-CORS>=4.0.0
-gunicorn>=21.2.0
+# Web service dependencies
+fastapi>=0.109.1
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+# Testing dependencies
+requests>=2.28.0
 
 # Optional dependencies for future enhancements:
 # openai>=1.0.0  # For OpenAI API integration
 # anthropic>=0.3.0  # For Claude API integration
-# requests>=2.28.0  # For API calls
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.24.0  # For testing FastAPI endpoints
