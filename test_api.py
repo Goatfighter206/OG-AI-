@@ -10,6 +10,22 @@ import sys
 BASE_URL = "http://localhost:8000"
 
 
+def handle_json_decode_error(endpoint_name, response):
+    """
+    Helper function to handle JSON decode errors consistently.
+    
+    Args:
+        endpoint_name: Name of the endpoint being tested
+        response: The response object from the request
+        
+    Returns:
+        Empty dict if JSON decode fails
+    """
+    print(f"✗ Failed to parse JSON response from {endpoint_name} endpoint.")
+    print(f"Raw response: {response.text}\n")
+    return {}
+
+
 def test_health():
     """Test the health endpoint."""
     print("Testing /health endpoint...")
@@ -19,8 +35,7 @@ def test_health():
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
     except json.JSONDecodeError:
-        print(f"✗ Failed to parse JSON response from /health endpoint.")
-        print(f"Raw response: {response.text}\n")
+        handle_json_decode_error("/health", response)
         return False
     return response.status_code == 200
 
@@ -34,8 +49,7 @@ def test_root():
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
     except json.JSONDecodeError:
-        print(f"✗ Failed to parse JSON response from / endpoint.")
-        print(f"Raw response: {response.text}\n")
+        handle_json_decode_error("/", response)
         return False
     return response.status_code == 200
 
@@ -52,8 +66,7 @@ def test_chat(message):
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
     except json.JSONDecodeError:
-        print(f"✗ Failed to parse JSON response from /chat endpoint.")
-        print(f"Raw response: {response.text}\n")
+        handle_json_decode_error("/chat", response)
         return False
     return response.status_code == 200
 
@@ -68,8 +81,7 @@ def test_history():
         print(f"Message Count: {data.get('message_count', 0)}")
         print(f"Response: {json.dumps(data, indent=2)}\n")
     except json.JSONDecodeError:
-        print(f"✗ Failed to parse JSON response from /history endpoint.")
-        print(f"Raw response: {response.text}\n")
+        handle_json_decode_error("/history", response)
         return False
     return response.status_code == 200
 
@@ -83,8 +95,7 @@ def test_reset():
         data = response.json()
         print(f"Response: {json.dumps(data, indent=2)}\n")
     except json.JSONDecodeError:
-        print(f"✗ Failed to parse JSON response from /reset endpoint.")
-        print(f"Raw response: {response.text}\n")
+        handle_json_decode_error("/reset", response)
         return False
     return response.status_code == 200
 
@@ -137,9 +148,7 @@ def main():
     try:
         data = response.json()
     except json.JSONDecodeError:
-        print("✗ Failed to parse JSON response from /history endpoint.")
-        print(f"Raw response: {response.text}\n")
-        data = {}
+        data = handle_json_decode_error("/history", response)
     if response.status_code == 200 and data.get('message_count', 0) == 0:
         print("✓ History successfully cleared\n")
         tests_passed += 1

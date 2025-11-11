@@ -16,6 +16,9 @@ from ai_agent import AIAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Check if running in development mode (for error detail control)
+DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
+
 # Initialize FastAPI app
 app = FastAPI(
     title="OG-AI Agent API",
@@ -33,7 +36,7 @@ if allowed_origins_env:
         if not isinstance(allowed_origins, list):
             raise ValueError("ALLOWED_ORIGINS must be a JSON array")
     except Exception as e:
-        print(f"Warning: Invalid ALLOWED_ORIGINS environment variable: {e}. Falling back to ['*'].")
+        logger.warning(f"Invalid ALLOWED_ORIGINS environment variable: {e}. Falling back to ['*'].")
         allowed_origins = ["*"]
 else:
     allowed_origins = ["*"]  # Default for development/demo
@@ -72,7 +75,7 @@ def get_agent() -> AIAgent:
                 with open('config.json', 'r') as f:
                     config = json.load(f)
             except Exception as e:
-                print(f"Warning: Could not load config.json: {e}")
+                logger.warning(f"Could not load config.json: {e}")
         
         agent_name = config.get('agent_name', 'OG-AI')
         agent = AIAgent(name=agent_name, config=config)
@@ -209,7 +212,8 @@ async def chat(request: ChatRequest):
         }
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
-        raise HTTPException(status_code=500, detail="An error occurred while processing your message")
+        detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
+        raise HTTPException(status_code=500, detail=detail)
 
 
 @app.get("/history", response_model=HistoryResponse)
@@ -231,7 +235,8 @@ async def get_history():
         }
     except Exception as e:
         logger.error(f"Error retrieving history: {str(e)}")
-        raise HTTPException(status_code=500, detail="An error occurred while retrieving conversation history")
+        detail = f"An error occurred while retrieving conversation history: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while retrieving conversation history"
+        raise HTTPException(status_code=500, detail=detail)
 
 
 @app.post("/reset", response_model=StatusResponse)
@@ -253,7 +258,8 @@ async def reset_conversation():
         }
     except Exception as e:
         logger.error(f"Error resetting conversation: {str(e)}")
-        raise HTTPException(status_code=500, detail="An error occurred while resetting conversation")
+        detail = f"An error occurred while resetting conversation: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while resetting conversation"
+        raise HTTPException(status_code=500, detail=detail)
 
 
 @app.post("/clear", response_model=StatusResponse)
