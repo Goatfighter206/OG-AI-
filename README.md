@@ -40,7 +40,10 @@ pip install Flask Flask-CORS gunicorn
 To enable voice input and output capabilities:
 
 ```bash
-# Install voice dependencies
+# Install voice dependencies from requirements file
+pip install -r requirements-voice.txt
+
+# Or install manually
 pip install SpeechRecognition pyttsx3 PyAudio
 ```
 
@@ -55,7 +58,11 @@ pip install SpeechRecognition pyttsx3 PyAudio
 Once published to PyPI, install with pip:
 
 ```bash
+# Basic installation (text-only)
 pip install og-ai-agent
+
+# With voice support
+pip install og-ai-agent[voice]
 ```
 
 ### Option 2: Install from GitHub
