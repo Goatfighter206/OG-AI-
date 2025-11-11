@@ -326,7 +326,7 @@ Once deployed on Render:
 - Check if the service is binding to `0.0.0.0` and using `$PORT`
 
 **Slow cold starts (Free tier):**
-- Free tier services spin down after 15 minutes of inactivity
+- Free tier services spin down after periods of inactivity
 - First request after spin-down may take 30-60 seconds
 
 ## Future Enhancements
