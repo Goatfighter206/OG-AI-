@@ -6,7 +6,6 @@ Tests cover all API endpoints, request validation, error handling, and edge case
 import pytest
 import json
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 from app import app, get_agent
 from ai_agent import AIAgent
 
