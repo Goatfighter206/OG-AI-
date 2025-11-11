@@ -25,11 +25,13 @@ allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
 if allowed_origins_env:
     try:
         allowed_origins = json.loads(allowed_origins_env)
-        if not isinstance(allowed_origins, list):
-            raise ValueError
-    except Exception:
-        print("Warning: Invalid ALLOWED_ORIGINS environment variable. Falling back to ['*'].")
+    except json.JSONDecodeError:
+        print("Warning: Invalid JSON in ALLOWED_ORIGINS. Falling back to ['*'].")
         allowed_origins = ["*"]
+    else:
+        if not isinstance(allowed_origins, list):
+            allowed_origins = ["*"]
+            print("Warning: ALLOWED_ORIGINS must be a JSON list. Falling back to ['*'].")
 else:
     allowed_origins = ["*"]  # Default for development/demo
 
