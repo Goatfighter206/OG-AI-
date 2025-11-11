@@ -65,8 +65,12 @@ def get_agent() -> AIAgent:
             try:
                 with open('config.json', 'r') as f:
                     config = json.load(f)
-            except Exception as e:
-                print(f"Warning: Could not load config.json: {e}")
+            except FileNotFoundError:
+                print("Warning: config.json not found. Using default configuration.")
+            except PermissionError:
+                print("Warning: Permission denied when accessing config.json. Using default configuration.")
+            except json.JSONDecodeError as e:
+                print(f"Warning: config.json contains invalid JSON: {e}. Using default configuration.")
         
         agent_name = config.get('agent_name', 'OG-AI')
         agent = AIAgent(name=agent_name, config=config)
