@@ -234,7 +234,8 @@ AIAgent(name: str = "OG-AI", config: Optional[Dict] = None)
    - **Root Directory:** Leave blank
    - **Runtime:** `Python 3`
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn app:app --host 0.0.0.0 --port $PORT`
+   - **Start Command:** `uvicorn app:app --host 0.0.0.0 --port $PORT --workers 4 --proxy-headers --forwarded-allow-ips='*'`
+     > **Note:** Using multiple workers (`--workers 4`) will cause each worker to have separate conversation state. For consistent history, use `--workers 1` or implement shared storage (see concurrency note in `ai_agent.py`).
 
 4. **Environment Variables (Optional):**
    - Add any required environment variables
