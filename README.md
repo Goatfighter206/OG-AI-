@@ -45,15 +45,15 @@ The FastAPI service provides automatic interactive API documentation at:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-### Interactive CLI Mode
+### Example Demonstrations
 
-Run the agent in interactive mode for a direct conversation:
+Run the example script to see demonstration conversations:
 
 ```bash
 python example_usage.py
 ```
 
-Type your messages and the agent will respond. This mode demonstrates the core agent functionality without the web API layer.
+This script runs pre-defined examples that demonstrate the core agent functionality without the web API layer.
 
 ### Programmatic Usage
 
