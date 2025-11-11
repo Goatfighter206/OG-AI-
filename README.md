@@ -12,7 +12,7 @@ A simple yet extensible conversational AI agent built with Python. This agent ca
 - 🔧 Extensible architecture for adding AI models
 - 🚀 Ready for deployment on Render and other platforms
 - 📱 Mobile-friendly web service with CORS support
-- 🖥️ CLI mode for local interactive usage
+- 🖥️ Example demonstrations for testing locally
 
 ## Installation
 
@@ -45,15 +45,15 @@ The FastAPI service provides automatic interactive API documentation at:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-### Interactive CLI Mode
+### Example Demonstrations
 
-Run the agent in interactive mode for a direct conversation:
+Run pre-built examples that demonstrate the agent's capabilities:
 
 ```bash
 python example_usage.py
 ```
 
-Type your messages and the agent will respond. This mode demonstrates the core agent functionality without the web API layer.
+This script runs automated demonstrations with pre-defined messages, showcasing the core agent functionality without the web API layer.
 
 ### Programmatic Usage
 
