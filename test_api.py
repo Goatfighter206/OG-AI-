@@ -107,7 +107,7 @@ def main():
     response = requests.get(f"{BASE_URL}/history")
     try:
         data = response.json()
-    except ValueError:
+    except requests.exceptions.JSONDecodeError:
         print("✗ Failed to parse JSON response from /history endpoint.")
         print(f"Raw response: {response.text}\n")
         data = {}
