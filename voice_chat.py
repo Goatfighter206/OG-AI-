@@ -56,6 +56,8 @@ class VoiceChat:
                 
                 # Set voice if specified
                 if voice_id is not None:
+                    if voice_id < 0:
+                        raise ValueError(f"voice_id must be non-negative, got {voice_id}")
                     voices = self.tts_engine.getProperty('voices')
                     if 0 <= voice_id < len(voices):
                         self.tts_engine.setProperty('voice', voices[voice_id].id)
