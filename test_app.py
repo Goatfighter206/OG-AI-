@@ -6,9 +6,9 @@ Tests cover all API endpoints, request validation, error handling, and edge case
 import pytest
 import json
 from fastapi.testclient import TestClient
-import app as app_module
 from app import app, get_agent
 from ai_agent import AIAgent
+import app as app_module
 
 
 # Create test client
