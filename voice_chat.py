@@ -61,12 +61,16 @@ class VoiceChat:
         
     def listen(self, timeout: int = 5, phrase_time_limit: int = 10) -> Optional[str]:
         """
-        Listen for voice input and convert it to text.
+        Listen for voice input and convert it to text using the Google Speech Recognition API.
+        
+        This method requires an active internet connection, as speech recognition is performed
+        via Google's cloud service. Note that usage may be subject to rate limits or costs
+        imposed by Google. This is not a local/offline solution.
         
         Args:
             timeout: Maximum time to wait for speech to start (seconds)
             phrase_time_limit: Maximum time for a phrase (seconds)
-            
+        
         Returns:
             Recognized text or None if recognition failed
         """
