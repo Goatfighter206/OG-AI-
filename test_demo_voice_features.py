@@ -317,7 +317,7 @@ class TestDemoIntegration(unittest.TestCase):
     @patch('demo_voice_features.VOICE_AVAILABLE', True)
     @patch('demo_voice_features.AIAgent')
     @patch('demo_voice_features.VoiceChat')
-    @patch('demo_voice_features.VoiceAssistant')
+    @patch('voice_chat.VoiceAssistant')
     @patch('time.sleep')
     @patch('builtins.print')
     def test_demos_work_together(self, _mock_print, _mock_sleep, mock_va_class,
