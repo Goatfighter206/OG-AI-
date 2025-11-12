@@ -536,7 +536,7 @@ class TestCORSConfiguration:
     @pytest.mark.usefixtures("reset_agent")
     def test_cors_headers_present(self):
         """Test that CORS headers are present in response."""
-        response = client.get("/health")
+        response = client.get("/health", headers={"Origin": "http://example.com"})
         
         assert "access-control-allow-origin" in response.headers
     
