@@ -1,0 +1,12 @@
+# Voice chat dependencies (optional)
+# These dependencies are required only if you want to use voice features
+# Install with: pip install -r requirements-voice.txt
+
+SpeechRecognition>=3.10.0  # For voice input (speech-to-text)
+pyttsx3>=2.90  # For voice output (text-to-speech)
+PyAudio>=0.2.11  # For audio input (required by SpeechRecognition)
+
+# Note: PyAudio requires PortAudio system library
+# Ubuntu/Debian: sudo apt-get install portaudio19-dev python3-pyaudio
+# macOS: brew install portaudio
+# Windows: Download PyAudio wheel from https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio

@@ -34,6 +34,11 @@ dev = [
     "build>=1.0.0",
     "twine>=4.0.0",
 ]
+voice = [
+    "SpeechRecognition>=3.10.0",
+    "pyttsx3>=2.90",
+    "PyAudio>=0.2.11",
+]
 
 [project.urls]
 Homepage = "https://github.com/Goatfighter206/OG-AI-"

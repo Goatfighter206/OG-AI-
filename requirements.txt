@@ -3,12 +3,10 @@ Flask>=2.3.0
 Flask-CORS>=4.0.0
 gunicorn>=22.0.0
 
-# Voice chat dependencies (optional)
-SpeechRecognition>=3.10.0  # For voice input (speech-to-text)
-pyttsx3>=2.90  # For voice output (text-to-speech)
-PyAudio>=0.2.11  # For audio input (required by SpeechRecognition)
-
 # Optional dependencies for future enhancements:
 # openai>=1.0.0  # For OpenAI API integration
 # anthropic>=0.3.0  # For Claude API integration
 # requests>=2.28.0  # For API calls
+
+# Note: Voice chat dependencies have been moved to requirements-voice.txt
+# Install with: pip install -r requirements-voice.txt

@@ -2,6 +2,7 @@ include README.md
 include LICENSE
 include config.json
 include requirements.txt
+include requirements-voice.txt
 include DEPLOYMENT.md
 
 # Exclude deployment-specific files
