@@ -44,7 +44,7 @@ Write-Host ""
 
 # Prompt for token if not provided
 if ([string]::IsNullOrWhiteSpace($RunnerToken)) {
-    Write-Host "🔑 To get your runner token:" -ForegroundColor Yellow
+    Write-Host "To get your runner token:" -ForegroundColor Yellow
     Write-Host "   1. Go to: https://github.com/Goatfighter206/OG-AI-/settings/actions/runners/new" -ForegroundColor Yellow
     Write-Host "   2. Copy the token from the configuration command" -ForegroundColor Yellow
     Write-Host ""
@@ -57,7 +57,7 @@ if ([string]::IsNullOrWhiteSpace($RunnerToken)) {
 }
 
 # Create installation directory
-Write-Host "📁 Creating installation directory..." -ForegroundColor Green
+Write-Host "Creating installation directory..." -ForegroundColor Green
 if (Test-Path $InstallPath) {
     Write-Warning "Directory already exists: $InstallPath"
     $overwrite = Read-Host "Do you want to remove it and continue? (y/n)"
@@ -74,10 +74,10 @@ New-Item -ItemType Directory -Force -Path $InstallPath | Out-Null
 Set-Location $InstallPath
 
 # Download runner package
-Write-Host "⬇️  Downloading GitHub Actions Runner v$RunnerVersion..." -ForegroundColor Green
+Write-Host "Downloading GitHub Actions Runner v$RunnerVersion..." -ForegroundColor Green
 try {
     Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -UseBasicParsing
-    Write-Host "✓ Download complete" -ForegroundColor Green
+    Write-Host "Download complete" -ForegroundColor Green
 }
 catch {
     Write-Error "Failed to download runner package: $_"
@@ -85,17 +85,17 @@ catch {
 }
 
 # Verify checksum (optional but recommended)
-Write-Host "🔐 Verifying download integrity..." -ForegroundColor Green
+Write-Host "Verifying download integrity..." -ForegroundColor Green
 $hash = (Get-FileHash -Path $zipFile -Algorithm SHA256).Hash
 Write-Host "   SHA256: $hash" -ForegroundColor Gray
 
 # Extract runner package
-Write-Host "📦 Extracting runner package..." -ForegroundColor Green
+Write-Host "Extracting runner package..." -ForegroundColor Green
 try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::ExtractToDirectory("$PWD\$zipFile", "$PWD")
     Remove-Item $zipFile
-    Write-Host "✓ Extraction complete" -ForegroundColor Green
+    Write-Host "Extraction complete" -ForegroundColor Green
 }
 catch {
     Write-Error "Failed to extract runner package: $_"
@@ -103,7 +103,7 @@ catch {
 }
 
 # Configure the runner
-Write-Host "⚙️  Configuring runner..." -ForegroundColor Green
+Write-Host "Configuring runner..." -ForegroundColor Green
 try {
     $configArgs = @(
         "--url", $repoUrl,
@@ -123,7 +123,7 @@ try {
         throw "Configuration failed with exit code $LASTEXITCODE"
     }
     
-    Write-Host "✓ Runner configured successfully" -ForegroundColor Green
+    Write-Host "Runner configured successfully" -ForegroundColor Green
 }
 catch {
     Write-Error "Failed to configure runner: $_"
@@ -132,14 +132,14 @@ catch {
 
 # Install and start as service if requested
 if ($InstallAsService) {
-    Write-Host "🔧 Installing runner as Windows service..." -ForegroundColor Green
+    Write-Host "Installing runner as Windows service..." -ForegroundColor Green
     try {
         & "$InstallPath\svc.sh" install
-        Write-Host "✓ Service installed" -ForegroundColor Green
+        Write-Host "Service installed" -ForegroundColor Green
         
-        Write-Host "▶️  Starting runner service..." -ForegroundColor Green
+        Write-Host "Starting runner service..." -ForegroundColor Green
         & "$InstallPath\svc.sh" start
-        Write-Host "✓ Service started" -ForegroundColor Green
+        Write-Host "Service started" -ForegroundColor Green
     }
     catch {
         Write-Error "Failed to install/start service: $_"
@@ -148,7 +148,7 @@ if ($InstallAsService) {
 }
 else {
     Write-Host ""
-    Write-Host "✅ Runner setup complete!" -ForegroundColor Green
+    Write-Host "Runner setup complete!" -ForegroundColor Green
     Write-Host ""
     Write-Host "To start the runner, run:" -ForegroundColor Yellow
     Write-Host "   cd $InstallPath" -ForegroundColor Cyan
@@ -180,5 +180,5 @@ Set-Location "$InstallPath"
 "@
 
 $startScript | Out-File -FilePath "$InstallPath\start-runner.ps1" -Encoding UTF8
-Write-Host "📝 Created quick start script: $InstallPath\start-runner.ps1" -ForegroundColor Green
+Write-Host "Created quick start script: $InstallPath\start-runner.ps1" -ForegroundColor Green
 Write-Host ""
