@@ -1,0 +1,17 @@
+# Safety Configuration
+# Check Python dependencies for known security vulnerabilities
+
+[safety]
+# Ignore specific vulnerabilities (use with caution)
+# Format: CVE-YEAR-NUMBER or vulnerability ID
+ignore-vulnerabilities = []
+
+# Set minimum severity level
+# Options: critical, high, medium, low
+min-severity = medium
+
+# Exclude specific packages from scanning
+exclude-packages = []
+
+# Continue on error
+continue-on-error = false

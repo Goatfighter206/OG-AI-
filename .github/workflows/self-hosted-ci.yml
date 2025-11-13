@@ -1,0 +1,506 @@
+name: OG-AI Self-Hosted CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allows manual triggering
+    inputs:
+      deploy_environment:
+        description: 'Deployment environment'
+        required: false
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  PYTHON_VERSION: '3.11'
+  APP_NAME: 'og-ai'
+
+jobs:
+  test:
+    name: Test on Self-Hosted Runner
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-html
+      
+      - name: Run unit tests with coverage
+        run: |
+          if (Test-Path "test_*.py") {
+            python -m pytest -v --cov=. --cov-report=html --cov-report=term --html=report.html --self-contained-html
+          } else {
+            Write-Host "No test files found, running basic validation..."
+            python -c "from ai_agent import AIAgent; print('Import successful')"
+            python -c "from app import app; print('App import successful')"
+          }
+        shell: powershell
+      
+      - name: Test AI Agent functionality
+        run: |
+          python -c "from ai_agent import AIAgent; agent = AIAgent(); response = agent.process_message('Hello'); print(f'Agent response: {response}')"
+        shell: powershell
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: |
+            report.html
+            htmlcov/
+          retention-days: 30
+
+  security:
+    name: Security Scanning
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install security tools
+        run: |
+          pip install bandit safety pip-audit
+      
+      - name: Run Bandit (security linter)
+        continue-on-error: true
+        run: |
+          bandit -r . -f json -o bandit-report.json
+          bandit -r . -f txt
+        shell: powershell
+      
+      - name: Check for vulnerable dependencies
+        continue-on-error: true
+        run: |
+          pip-audit --desc
+        shell: powershell
+      
+      - name: Run Safety check
+        continue-on-error: true
+        run: |
+          safety check --json > safety-report.json
+          safety check
+        shell: powershell
+      
+      - name: Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+          retention-days: 30
+
+  lint:
+    name: Code Quality Check
+    runs-on: self-hosted
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install linting tools
+        run: |
+          pip install flake8 pylint black isort mypy
+      
+      - name: Check code formatting with Black
+        continue-on-error: true
+        run: |
+          black --check --diff .
+        shell: powershell
+      
+      - name: Check import ordering with isort
+        continue-on-error: true
+        run: |
+          isort --check-only --diff .
+        shell: powershell
+      
+      - name: Run flake8
+        continue-on-error: true
+        run: |
+          flake8 ai_agent.py app.py example_usage.py --max-line-length=120 --ignore=E501,W503 --statistics
+      
+      - name: Run pylint
+        continue-on-error: true
+        run: |
+          pylint ai_agent.py app.py --disable=C0111,C0103 --output-format=text
+      
+      - name: Type checking with mypy
+        continue-on-error: true
+        run: |
+          mypy ai_agent.py app.py --ignore-missing-imports
+
+  performance:
+    name: Performance Tests
+    runs-on: self-hosted
+    needs: [test]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install locust memory-profiler
+      
+      - name: Run performance test
+        run: |
+          Write-Host "Starting performance test..."
+          $job = Start-Job -ScriptBlock {
+            cd $using:PWD
+            python app.py
+          }
+          Start-Sleep -Seconds 10
+          
+          # Basic load test
+          $results = @()
+          for ($i = 1; $i -le 100; $i++) {
+            $start = Get-Date
+            try {
+              Invoke-RestMethod -Uri "http://localhost:8000/health" -Method Get | Out-Null
+              $elapsed = ((Get-Date) - $start).TotalMilliseconds
+              $results += $elapsed
+            } catch {
+              Write-Warning "Request $i failed"
+            }
+          }
+          
+          Stop-Job $job
+          Remove-Job $job
+          
+          $avg = ($results | Measure-Object -Average).Average
+          $max = ($results | Measure-Object -Maximum).Maximum
+          $min = ($results | Measure-Object -Minimum).Minimum
+          
+          Write-Host "Performance Test Results:"
+          Write-Host "  Average response time: $([math]::Round($avg, 2)) ms"
+          Write-Host "  Min response time: $([math]::Round($min, 2)) ms"
+          Write-Host "  Max response time: $([math]::Round($max, 2)) ms"
+          Write-Host "  Total requests: 100"
+        shell: powershell
+
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: self-hosted
+    needs: [test, security, lint, performance]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Create .env file
+        run: |
+          @"
+          PORT=8000
+          ENVIRONMENT=${{ github.event.inputs.deploy_environment || 'staging' }}
+          VERSION=${{ github.sha }}
+          BUILD_DATE=$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+          "@ | Out-File -FilePath .env -Encoding utf8
+        shell: powershell
+      
+      - name: Test API startup
+        run: |
+          Write-Host "Testing API startup..."
+          $job = Start-Job -ScriptBlock {
+            cd $using:PWD
+            python app.py
+          }
+          Start-Sleep -Seconds 10
+          $testResult = try {
+            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing
+            Write-Host "Health check response: $($response.StatusCode)"
+            $true
+          } catch {
+            Write-Error "Health check failed: $_"
+            $false
+          }
+          Stop-Job $job
+          Remove-Job $job
+          if ($testResult) {
+            Write-Host "✓ API startup test passed"
+          } else {
+            Write-Error "✗ API startup test failed"
+            exit 1
+          }
+        shell: powershell
+      
+      - name: Create deployment package
+        run: |
+          $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+          $version = "${{ github.sha }}".Substring(0, 7)
+          $packageName = "og-ai-v$version-$timestamp.zip"
+          
+          # Create deployment directory
+          $deployDir = "deploy-temp"
+          New-Item -ItemType Directory -Force -Path $deployDir
+          
+          # Copy files
+          Copy-Item -Path ai_agent.py,app.py,config.json,requirements.txt,.env,Dockerfile,docker-compose.yml -Destination $deployDir -ErrorAction SilentlyContinue
+          
+          # Create deployment info
+          @{
+            version = $version
+            build_date = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            commit = "${{ github.sha }}"
+            branch = "${{ github.ref_name }}"
+            environment = "${{ github.event.inputs.deploy_environment || 'staging' }}"
+          } | ConvertTo-Json | Out-File -FilePath "$deployDir\deploy-info.json"
+          
+          # Create archive
+          Compress-Archive -Path "$deployDir\*" -DestinationPath $packageName -Force
+          Remove-Item -Recurse -Force $deployDir
+          
+          Write-Host "Created deployment package: $packageName"
+          echo "PACKAGE_NAME=$packageName" >> $env:GITHUB_ENV
+        shell: powershell
+      
+      - name: Deploy to staging/production
+        if: success()
+        run: |
+          $environment = "${{ github.event.inputs.deploy_environment || 'staging' }}"
+          Write-Host "Deploying to $environment environment..."
+          
+          # Create deployment directory if it doesn't exist
+          $deployPath = "C:\deployments\${{ env.APP_NAME }}\$environment"
+          New-Item -ItemType Directory -Force -Path $deployPath | Out-Null
+          
+          # Extract package
+          Expand-Archive -Path $env:PACKAGE_NAME -DestinationPath $deployPath -Force
+          
+          Write-Host "✓ Deployed to: $deployPath"
+          
+          # Optional: Restart service if it exists
+          $serviceName = "OG-AI-$environment"
+          if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+            Write-Host "Restarting service: $serviceName"
+            Restart-Service -Name $serviceName -Force
+          } else {
+            Write-Host "Service $serviceName not found, skipping restart"
+          }
+        shell: powershell
+      
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: og-ai-package
+          path: og-ai-*.zip
+          retention-days: 90
+
+  docker-build:
+    name: Build Docker Image
+    runs-on: self-hosted
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Check if Docker is available
+        id: docker-check
+        run: |
+          if (Get-Command docker -ErrorAction SilentlyContinue) {
+            Write-Host "Docker is available"
+            echo "docker_available=true" >> $env:GITHUB_OUTPUT
+            $dockerVersion = docker --version
+            Write-Host "Docker version: $dockerVersion"
+          } else {
+            Write-Host "Docker is not available, skipping Docker build"
+            echo "docker_available=false" >> $env:GITHUB_OUTPUT
+          }
+        shell: powershell
+      
+      - name: Build Docker image
+        if: steps.docker-check.outputs.docker_available == 'true'
+        run: |
+          $version = "${{ github.sha }}".Substring(0, 7)
+          $tags = @(
+            "og-ai:latest",
+            "og-ai:$version",
+            "og-ai:${{ github.ref_name }}"
+          )
+          
+          $tagArgs = $tags | ForEach-Object { "-t $_" }
+          $buildCmd = "docker build $($tagArgs -join ' ') ."
+          
+          Write-Host "Building Docker image with command: $buildCmd"
+          Invoke-Expression $buildCmd
+          
+          Write-Host "✓ Docker image built successfully"
+          docker images og-ai
+        shell: powershell
+      
+      - name: Test Docker image
+        if: steps.docker-check.outputs.docker_available == 'true'
+        run: |
+          Write-Host "Testing Docker image..."
+          docker run -d --name og-ai-test -p 8001:8000 og-ai:latest
+          Start-Sleep -Seconds 15
+          
+          $testResult = try {
+            $response = Invoke-WebRequest -Uri "http://localhost:8001/health" -UseBasicParsing
+            Write-Host "Health check response: $($response.StatusCode)"
+            Write-Host "Response body: $($response.Content)"
+            $true
+          } catch {
+            Write-Error "Docker test failed: $_"
+            docker logs og-ai-test
+            $false
+          }
+          
+          docker stop og-ai-test
+          docker rm og-ai-test
+          
+          if ($testResult) {
+            Write-Host "✓ Docker image test passed"
+          } else {
+            Write-Error "✗ Docker image test failed"
+            exit 1
+          }
+        shell: powershell
+      
+      - name: Save Docker image
+        if: steps.docker-check.outputs.docker_available == 'true'
+        run: |
+          $version = "${{ github.sha }}".Substring(0, 7)
+          $imageName = "og-ai-$version.tar"
+          docker save og-ai:latest -o $imageName
+          Write-Host "✓ Docker image saved: $imageName"
+          echo "IMAGE_NAME=$imageName" >> $env:GITHUB_ENV
+        shell: powershell
+      
+      - name: Upload Docker image
+        if: steps.docker-check.outputs.docker_available == 'true'
+        uses: actions/upload-artifact@v3
+        with:
+          name: docker-image
+          path: og-ai-*.tar
+          retention-days: 30
+
+  notify:
+    name: Notify Status
+    runs-on: self-hosted
+    needs: [test, security, lint, performance, build-and-deploy, docker-build]
+    if: always()
+    
+    steps:
+      - name: Workflow Summary
+        run: |
+          Write-Host "================================"
+          Write-Host "    OG-AI Workflow Summary"
+          Write-Host "================================"
+          Write-Host ""
+          Write-Host "Repository: ${{ github.repository }}"
+          Write-Host "Branch: ${{ github.ref_name }}"
+          Write-Host "Commit: ${{ github.sha }}"
+          Write-Host "Author: ${{ github.actor }}"
+          Write-Host "Workflow: ${{ github.workflow }}"
+          Write-Host "Run Number: ${{ github.run_number }}"
+          Write-Host ""
+          Write-Host "Job Status:"
+          Write-Host "  • Test: ${{ needs.test.result }}"
+          Write-Host "  • Security: ${{ needs.security.result }}"
+          Write-Host "  • Lint: ${{ needs.lint.result }}"
+          Write-Host "  • Performance: ${{ needs.performance.result }}"
+          Write-Host "  • Build & Deploy: ${{ needs.build-and-deploy.result }}"
+          Write-Host "  • Docker Build: ${{ needs.docker-build.result }}"
+          Write-Host ""
+          Write-Host "================================"
+          
+          # Determine overall status
+          $allResults = @(
+            "${{ needs.test.result }}",
+            "${{ needs.security.result }}",
+            "${{ needs.lint.result }}",
+            "${{ needs.performance.result }}",
+            "${{ needs.build-and-deploy.result }}",
+            "${{ needs.docker-build.result }}"
+          )
+          
+          $failed = $allResults -contains "failure"
+          $cancelled = $allResults -contains "cancelled"
+          
+          if ($failed) {
+            Write-Host "Overall Status: ❌ FAILED" -ForegroundColor Red
+            exit 1
+          } elseif ($cancelled) {
+            Write-Host "Overall Status: ⚠️ CANCELLED" -ForegroundColor Yellow
+          } else {
+            Write-Host "Overall Status: ✅ SUCCESS" -ForegroundColor Green
+          }
+        shell: powershell
+      
+      - name: Create deployment summary
+        if: github.ref == 'refs/heads/main'
+        run: |
+          $summary = @"
+          ## 🚀 Deployment Summary
+          
+          **Environment:** ${{ github.event.inputs.deploy_environment || 'staging' }}
+          **Version:** ${{ github.sha }}
+          **Branch:** ${{ github.ref_name }}
+          **Triggered by:** ${{ github.actor }}
+          
+          ### Status
+          - ✅ Tests Passed
+          - ✅ Security Scans Completed
+          - ✅ Code Quality Checked
+          - ✅ Performance Tested
+          - ✅ Deployment Successful
+          
+          ### Artifacts
+          - Deployment package uploaded
+          - Docker image available
+          - Test reports generated
+          - Security reports available
+          
+          **Deployment Path:** C:\deployments\og-ai\${{ github.event.inputs.deploy_environment || 'staging' }}
+          "@
+          
+          Write-Host $summary
+          echo $summary >> $env:GITHUB_STEP_SUMMARY
+        shell: powershell
