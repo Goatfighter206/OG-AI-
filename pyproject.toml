@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
     {name = "Goatfighter206", email = "237623808+Goatfighter206@users.noreply.github.com"}
 ]
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 4 - Beta",

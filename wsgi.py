@@ -14,6 +14,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 from app import app
 
 # For ASGI to WSGI bridge (if needed for legacy servers)
+# Note: FastAPI is an ASGI application, not WSGI
+# For deployment, use: gunicorn app:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
 application = None
 try:
     from asgiref.wsgi import WsgiToAsgi

@@ -33,7 +33,11 @@
                     body: JSON.stringify({ prompt: promptText })
                 });
                 const data = await response.json();
-                responseDiv.textContent = data.content;
+                if (data.error) {
+                    responseDiv.textContent = `Error: ${data.error}`;
+                } else {
+                    responseDiv.textContent = data.content;
+                }
             } catch (error) {
                 responseDiv.textContent = 'Error: Could not connect to the agent.';
                 console.error('Error:', error);

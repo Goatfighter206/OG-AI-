@@ -1,0 +1,12 @@
+﻿# Bandit Configuration
+# Security linter for Python code
+
+exclude_dirs:
+  - test
+  - .venv
+  - venv
+  - .git
+  - __pycache__
+  - htmlcov
+  - dist
+  - build

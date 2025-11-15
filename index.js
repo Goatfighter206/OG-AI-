@@ -12,7 +12,7 @@ const apiKey = "your_api_key_here";
 
 if (apiKey === "your_api_key_here") {
     console.error("Please replace 'your_api_key_here' with your actual OpenAI API key in index.js");
-    process.exit(1);
+    // We don't exit here so the user can still see the front-end
 }
 
 const openai = new OpenAI({ apiKey });
@@ -26,6 +26,9 @@ app.get('/', (req, res) => {
 });
 
 app.post('/prompt', async (req, res) => {
+  if (apiKey === "your_api_key_here") {
+    return res.status(400).json({ error: "OpenAI API key not set in index.js" });
+  }
   const { prompt } = req.body;
 
   try {
