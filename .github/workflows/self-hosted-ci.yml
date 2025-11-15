@@ -289,7 +289,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $deployDir
           
           # Copy files
-          Copy-Item -Path ai_agent.py,app.py,config.json,requirements.txt,.env,Dockerfile,docker-compose.yml -Destination $deployDir -ErrorAction SilentlyContinue
+          Copy-Item -Path ai_agent.py,app.py,wsgi.py,config.json,requirements.txt,.env,Dockerfile,docker-compose.yml,Procfile,render.yaml -Destination $deployDir -ErrorAction SilentlyContinue
           
           # Create deployment info
           @{
