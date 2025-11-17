@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OG-AI - Mobile Access QR Code</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Orbitron', Arial, sans-serif;
+            background: linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #000000 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            text-align: center;
+            background: rgba(10,10,10,0.8);
+            border: 2px solid #00d9ff;
+            border-radius: 30px;
+            padding: 40px;
+            box-shadow: 0 0 50px rgba(0,217,255,0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #ff6b00, #00d9ff, #b900ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            color: #00d9ff;
+            margin-bottom: 30px;
+        }
+
+        .qr-section {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            margin: 30px 0;
+            display: inline-block;
+        }
+
+        .qr-code {
+            width: 300px;
+            height: 300px;
+            margin: 0 auto;
+        }
+
+        .url-box {
+            background: rgba(0,217,255,0.1);
+            border: 2px solid #00d9ff;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            font-size: 1.5em;
+            font-family: monospace;
+            color: #00d9ff;
+            word-break: break-all;
+        }
+
+        .instructions {
+            text-align: left;
+            background: rgba(185,0,255,0.1);
+            border: 2px solid #b900ff;
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+        }
+
+        .instructions h2 {
+            color: #b900ff;
+            margin-bottom: 15px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, rgba(0,255,0,0.2), rgba(0,217,255,0.2));
+            border: 2px solid #0f0;
+            border-radius: 20px;
+            margin: 20px 0;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            background: #0f0;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+            animation: blink 2s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .button {
+            background: linear-gradient(135deg, #ff6b00, #ff0000);
+            border: none;
+            padding: 15px 40px;
+            color: white;
+            font-size: 1.1em;
+            border-radius: 25px;
+            cursor: pointer;
+            margin: 10px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(255,107,0,0.5);
+        }
+
+        .tip {
+            background: rgba(255,107,0,0.1);
+            border-left: 4px solid #ff6b00;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .tip strong {
+            color: #ff6b00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 OG-AI Mobile Access 📱</h1>
+        <p class="subtitle">Scan QR Code or Use URL Below</p>
+
+        <div class="status">
+            <span class="status-dot"></span>
+            <span>Server Running</span>
+        </div>
+
+        <!-- QR Code Section -->
+        <div class="qr-section">
+            <img class="qr-code" id="qrCode" alt="QR Code">
+            <p style="color: #333; margin-top: 10px;">Scan with your phone camera</p>
+        </div>
+
+        <!-- URL Display -->
+        <div class="url-box" id="urlDisplay">
+            Loading...
+        </div>
+
+        <!-- Instructions -->
+        <div class="instructions">
+            <h2>📲 How to Access on Your Phone:</h2>
+            <ol>
+                <li><strong>Make sure</strong> your phone and computer are on the <strong>same WiFi network</strong></li>
+                <li><strong>Option 1:</strong> Open your phone's camera and scan the QR code above</li>
+                <li><strong>Option 2:</strong> Open your phone's browser and type the URL shown above</li>
+                <li><strong>Allow microphone access</strong> when prompted (for voice features)</li>
+                <li><strong>Start chatting!</strong> Try "Voice to Voice" mode 🎤🔊</li>
+            </ol>
+        </div>
+
+        <!-- Tips -->
+        <div class="tip">
+            <strong>💡 Pro Tip:</strong> Add to your phone's home screen for quick access!
+            <br>On iPhone: Safari → Share → Add to Home Screen
+            <br>On Android: Chrome → ⋮ → Add to Home screen
+        </div>
+
+        <div class="tip">
+            <strong>🔥 Mobile Features:</strong> Full voice chat, fire effects, robot avatars, web search, code execution - everything works on mobile!
+        </div>
+
+        <!-- Buttons -->
+        <div>
+            <a href="/" class="button">Open on This Device</a>
+            <a href="/docs" class="button" style="background: linear-gradient(135deg, #00d9ff, #b900ff);">API Docs</a>
+        </div>
+
+        <!-- Footer Info -->
+        <p style="margin-top: 30px; opacity: 0.7; font-size: 0.9em;">
+            Your IP Address: <span id="ipAddress">Loading...</span><br>
+            Access from any device on your WiFi network
+        </p>
+    </div>
+
+    <script>
+        // Get server info and generate QR code
+        async function init() {
+            try {
+                // Get the current hostname and port
+                const hostname = window.location.hostname;
+                const port = window.location.port || '8000';
+                const protocol = window.location.protocol;
+
+                // Construct the URL
+                const url = `${protocol}//${hostname}:${port}`;
+
+                // Display URL
+                document.getElementById('urlDisplay').textContent = url;
+
+                // Generate QR Code using API
+                const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}`;
+                document.getElementById('qrCode').src = qrApiUrl;
+
+                // Try to get actual IP address
+                const response = await fetch('/api');
+                if (response.ok) {
+                    // Extract IP from current URL
+                    document.getElementById('ipAddress').textContent = hostname;
+                }
+            } catch (error) {
+                console.error('Error initializing:', error);
+                document.getElementById('urlDisplay').textContent = window.location.origin;
+                document.getElementById('ipAddress').textContent = window.location.hostname;
+            }
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

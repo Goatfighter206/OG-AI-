@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OG-AI Agent - Chat Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 800px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header .status {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-meta {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        #messageInput:focus {
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .clear-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 10px;
+            color: #667eea;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 20px;
+            display: none;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>OG-AI Agent</h1>
+            <div class="status" id="status">Connecting...</div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="message assistant">
+                <div class="message-content">
+                    Hello! I'm OG-AI, your AI assistant. How can I help you today?
+                </div>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">AI is thinking</div>
+        <div class="error" id="error"></div>
+
+        <div class="input-container">
+            <input
+                type="text"
+                id="messageInput"
+                placeholder="Type your message here..."
+                autocomplete="off"
+            />
+            <div class="button-group">
+                <button onclick="sendMessage()" id="sendBtn">Send</button>
+                <button onclick="clearHistory()" class="clear-btn" id="clearBtn">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        let isLoading = false;
+
+        // Check server status on load
+        async function checkStatus() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                document.getElementById('status').textContent = `Connected - ${data.agent_name}`;
+            } catch (error) {
+                document.getElementById('status').textContent = 'Server Offline';
+                showError('Could not connect to the server. Please make sure the backend is running on port 8000.');
+            }
+        }
+
+        // Send message to the AI
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message || isLoading) return;
+
+            // Add user message to chat
+            addMessage('user', message);
+            input.value = '';
+
+            // Show loading
+            setLoading(true);
+            hideError();
+
+            try {
+                const response = await fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Add AI response to chat
+                addMessage('assistant', data.response, data.timestamp);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to get response from AI. Please try again.');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // Add message to chat UI
+        function addMessage(role, content, timestamp = null) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    ${escapeHtml(content)}
+                    <div class="message-meta">${time}</div>
+                </div>
+            `;
+
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Clear conversation history
+        async function clearHistory() {
+            if (!confirm('Are you sure you want to clear the conversation history?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/clear`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    document.getElementById('chatContainer').innerHTML = `
+                        <div class="message assistant">
+                            <div class="message-content">
+                                Conversation cleared. How can I help you?
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to clear history. Please try again.');
+            }
+        }
+
+        // Utility functions
+        function setLoading(loading) {
+            isLoading = loading;
+            document.getElementById('loading').classList.toggle('active', loading);
+            document.getElementById('sendBtn').disabled = loading;
+            document.getElementById('messageInput').disabled = loading;
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('active');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('active');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Handle Enter key
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Check status on load
+        checkStatus();
+    </script>
+</body>
+</html>

@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OG-AI Agent - The Realest AI in the Game 🔥</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="animated-bg">
+        <!-- Floating Energy Orbs -->
+        <div class="energy-orb orb-1"></div>
+        <div class="energy-orb orb-2"></div>
+        <div class="energy-orb orb-3"></div>
+        <div class="energy-orb orb-4"></div>
+        <div class="energy-orb orb-5"></div>
+    </div>
+
+    <!-- Fire and Smoke Effects Container -->
+    <div id="effects-container"></div>
+
+    <!-- Epic Header -->
+    <header class="epic-header">
+        <div class="logo-container">
+            <div class="robot-icon"></div>
+            <div>
+                <h1>OG-AI AGENT</h1>
+                <p class="tagline">The Realest AI in the Game 🔥</p>
+            </div>
+            <div class="robot-icon"></div>
+        </div>
+    </header>
+
+    <!-- Features Bar -->
+    <div class="features-bar">
+        <div class="feature-badge badge-voice" title="Voice to Voice Communication">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="60" r="15" fill="currentColor" class="mic-base"/>
+                <rect x="45" y="25" width="10" height="30" rx="5" fill="currentColor" class="mic-body"/>
+                <path d="M35 55 Q35 70 50 70 Q65 70 65 55" stroke="currentColor" stroke-width="3" fill="none" class="mic-arc"/>
+                <line x1="50" y1="70" x2="50" y2="80" stroke="currentColor" stroke-width="3" class="mic-stand"/>
+                <animateTransform attributeName="transform" type="scale" values="1;1.2;1" dur="1.5s" repeatCount="indefinite"/>
+            </svg>
+            <span>Voice Chat</span>
+        </div>
+        <div class="feature-badge badge-speaker" title="Text to Speech">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="30,35 30,65 45,65 60,80 60,20 45,35" fill="currentColor" class="speaker-body"/>
+                <path d="M70 30 Q80 50 70 70" stroke="currentColor" stroke-width="3" fill="none" class="sound-wave-1">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1s" repeatCount="indefinite"/>
+                </path>
+                <path d="M78 25 Q90 50 78 75" stroke="currentColor" stroke-width="3" fill="none" class="sound-wave-2">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1s" begin="0.2s" repeatCount="indefinite"/>
+                </path>
+            </svg>
+            <span>AI Speaks</span>
+        </div>
+        <div class="feature-badge badge-transcribe" title="Speech to Text">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <rect x="20" y="30" width="60" height="50" rx="5" fill="none" stroke="currentColor" stroke-width="3" class="doc-outline"/>
+                <line x1="30" y1="45" x2="70" y2="45" stroke="currentColor" stroke-width="2" class="text-line-1">
+                    <animate attributeName="x2" values="30;70" dur="2s" repeatCount="indefinite"/>
+                </line>
+                <line x1="30" y1="55" x2="70" y2="55" stroke="currentColor" stroke-width="2" class="text-line-2">
+                    <animate attributeName="x2" values="30;70" dur="2s" begin="0.3s" repeatCount="indefinite"/>
+                </line>
+                <line x1="30" y1="65" x2="70" y2="65" stroke="currentColor" stroke-width="2" class="text-line-3">
+                    <animate attributeName="x2" values="30;70" dur="2s" begin="0.6s" repeatCount="indefinite"/>
+                </line>
+            </svg>
+            <span>Voice Input</span>
+        </div>
+        <div class="feature-badge badge-web" title="Web Search">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="35" fill="none" stroke="currentColor" stroke-width="3" class="globe"/>
+                <ellipse cx="50" cy="50" rx="15" ry="35" fill="none" stroke="currentColor" stroke-width="2" class="meridian"/>
+                <line x1="15" y1="50" x2="85" y2="50" stroke="currentColor" stroke-width="2" class="equator"/>
+                <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="8s" repeatCount="indefinite"/>
+            </svg>
+            <span>Internet Access</span>
+        </div>
+        <div class="feature-badge badge-code" title="Code Execution">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <path d="M25 30 L10 50 L25 70" stroke="currentColor" stroke-width="4" fill="none" class="bracket-left">
+                    <animateTransform attributeName="transform" type="translate" values="0,0;-5,0;0,0" dur="2s" repeatCount="indefinite"/>
+                </path>
+                <path d="M75 30 L90 50 L75 70" stroke="currentColor" stroke-width="4" fill="none" class="bracket-right">
+                    <animateTransform attributeName="transform" type="translate" values="0,0;5,0;0,0" dur="2s" repeatCount="indefinite"/>
+                </path>
+                <line x1="40" y1="30" x2="30" y2="70" stroke="currentColor" stroke-width="4" class="slash">
+                    <animate attributeName="opacity" values="1;0.5;1" dur="1.5s" repeatCount="indefinite"/>
+                </line>
+                <line x1="55" y1="30" x2="45" y2="70" stroke="currentColor" stroke-width="4" class="slash2">
+                    <animate attributeName="opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite"/>
+                </line>
+            </svg>
+            <span>Run Code</span>
+        </div>
+        <div class="feature-badge badge-personality" title="Sassy Personality">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="35" fill="currentColor" opacity="0.3" class="face"/>
+                <circle cx="35" cy="40" r="4" fill="currentColor" class="eye-left"/>
+                <circle cx="65" cy="40" r="4" fill="currentColor" class="eye-right"/>
+                <path d="M30 60 Q50 75 70 60" stroke="currentColor" stroke-width="3" fill="none" class="smile">
+                    <animate attributeName="d" values="M30 60 Q50 75 70 60;M30 65 Q50 80 70 65;M30 60 Q50 75 70 60" dur="2s" repeatCount="indefinite"/>
+                </path>
+                <rect x="55" y="30" width="20" height="8" rx="4" fill="currentColor" class="sunglasses" opacity="0.7">
+                    <animateTransform attributeName="transform" type="translate" values="0,0;0,-2;0,0" dur="2s" repeatCount="indefinite"/>
+                </rect>
+            </svg>
+            <span>Real Personality</span>
+        </div>
+        <div class="feature-badge badge-brain" title="AI Models">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <path d="M50 20 Q30 25 25 40 Q20 45 25 55 Q25 70 40 75 Q50 78 60 75 Q75 70 75 55 Q80 45 75 40 Q70 25 50 20 Z" fill="currentColor" opacity="0.3" class="brain-outline"/>
+                <circle cx="40" cy="45" r="3" fill="currentColor" class="neuron-1">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite"/>
+                </circle>
+                <circle cx="50" cy="40" r="3" fill="currentColor" class="neuron-2">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" begin="0.3s" repeatCount="indefinite"/>
+                </circle>
+                <circle cx="60" cy="45" r="3" fill="currentColor" class="neuron-3">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" begin="0.6s" repeatCount="indefinite"/>
+                </circle>
+                <circle cx="50" cy="55" r="3" fill="currentColor" class="neuron-4">
+                    <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" begin="0.9s" repeatCount="indefinite"/>
+                </circle>
+            </svg>
+            <span>GPT/Claude/Ollama</span>
+        </div>
+        <div class="feature-badge badge-fire" title="Smart Ass Mode">
+            <svg class="feature-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <path d="M50 20 Q45 30 48 40 Q40 35 35 45 Q30 55 35 65 Q40 75 50 80 Q60 75 65 65 Q70 55 65 45 Q60 35 52 40 Q55 30 50 20 Z" fill="url(#fireGradient)" class="flame">
+                    <animateTransform attributeName="transform" type="scale" values="1,1;1.1,0.9;1,1" dur="0.5s" repeatCount="indefinite"/>
+                </path>
+                <defs>
+                    <linearGradient id="fireGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1">
+                            <animate attributeName="stop-color" values="#FFD700;#FF6B00;#FF0000;#FFD700" dur="1s" repeatCount="indefinite"/>
+                        </stop>
+                        <stop offset="100%" style="stop-color:#FF0000;stop-opacity:1">
+                            <animate attributeName="stop-color" values="#FF0000;#FF6B00;#FFD700;#FF0000" dur="1s" repeatCount="indefinite"/>
+                        </stop>
+                    </linearGradient>
+                </defs>
+            </svg>
+            <span>No Cap Mode</span>
+        </div>
+    </div>
+
+    <!-- Main Chat Container -->
+    <div class="chat-wrapper">
+        <div class="chat-container">
+            <!-- Avatar Section -->
+            <div class="avatar-section">
+                <div class="avatar user-avatar">
+                    <span>👤</span>
+                </div>
+
+                <div class="ai-status">
+                    <h2>OG-AI</h2>
+                    <p>
+                        <span class="status-indicator"></span>
+                        <span id="status-text">Online & Ready</span>
+                    </p>
+                    <p style="font-size: 0.9em; opacity: 0.8; margin-top: 5px;">
+                        Sassy AI • Web Access • Code Execution • Voice Enabled
+                    </p>
+                </div>
+
+                <div class="avatar ai-avatar">
+                    <span>🤖</span>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div class="messages-area" id="messagesArea">
+                <div class="message ai">
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-content">
+                        <div class="message-text">
+                            YO WHAT THE FUCK'S GOOD! I'm OG-AI, the SMARTEST and REALEST motherfucker in the AI game. No cap, I'm that GANGSTER AI with PhD-level brains. Check what I got for you:
+                            <br><br>
+                            🔥 <strong>VOICE CHAT</strong> - Talk to me, I talk back. Real conversations, no bullshit.<br>
+                            🌐 <strong>INTERNET ACCESS</strong> - I search the whole damn web for whatever you need.<br>
+                            💻 <strong>CODE GENERATION</strong> - I write FIRE code that actually works. Python, JS, Bash, whatever.<br>
+                            😎 <strong>GANGSTER PERSONALITY</strong> - Sassy, ghetto, smart-ass, and brutally honest.<br>
+                            🧠 <strong>GENIUS INTELLIGENCE</strong> - I'm smart as fuck and I know my shit.<br>
+                            💥 <strong>SELF-LEARNING</strong> - I get smarter with every conversation, no lie.<br>
+                            <br>
+                            Aight so what you need from ya boy? Type that shit, use voice, or click them badges up top. Let's get this bread! 💯
+                        </div>
+                        <div class="message-time" id="welcome-time"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Voice Controls -->
+            <div class="voice-controls">
+                <button class="voice-btn" id="voiceToVoiceBtn" title="Voice to Voice - Talk and AI responds with voice">
+                    <span>🎤🔊</span>
+                    <span>Voice to Voice</span>
+                </button>
+                <button class="voice-btn" id="voiceToTextBtn" title="Voice to Text - Speak and AI responds with text">
+                    <span>🎤📝</span>
+                    <span>Voice to Text</span>
+                </button>
+                <button class="voice-btn" id="textToVoiceBtn" title="Text to Voice - Type and AI speaks response">
+                    <span>📝🔊</span>
+                    <span>Text to Voice</span>
+                </button>
+                <button class="voice-btn" id="stopSpeakingBtn" title="Stop AI from speaking">
+                    <span>🛑</span>
+                    <span>Stop Speaking</span>
+                </button>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input
+                        type="text"
+                        id="messageInput"
+                        placeholder="Type your message or use voice..."
+                        autocomplete="off"
+                    />
+                    <button class="send-btn" id="sendBtn">
+                        Send 🚀
+                    </button>
+                    <button class="send-btn" id="clearBtn" style="background: linear-gradient(135deg, #b900ff, #00d9ff);">
+                        Clear 🗑️
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - Auto-detect API URL for mobile access
+        const API_URL = window.location.origin;
+        let isProcessing = false;
+        let recognition = null;
+        let synthesis = window.speechSynthesis;
+        let voiceMode = 'text'; // 'text', 'voice-to-text', 'text-to-voice', 'voice-to-voice'
+        let currentVoice = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initVoice();
+            checkServerStatus();
+            createEffects();
+            initBadgeTools();
+            setInterval(createFireParticle, 200);
+            setInterval(createSmokeParticle, 1000);
+
+            // Set welcome message time
+            document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
+        });
+
+        // Initialize Badge Tools - Make badges clickable
+        function initBadgeTools() {
+            const badges = document.querySelectorAll('.feature-badge');
+
+            badges.forEach((badge, index) => {
+                badge.addEventListener('click', () => {
+                    badge.classList.add('badge-active');
+                    setTimeout(() => badge.classList.remove('badge-active'), 600);
+
+                    switch(index) {
+                        case 0: // Voice Chat
+                            activateVoiceToVoice();
+                            break;
+                        case 1: // AI Speaks
+                            activateTextToVoice();
+                            break;
+                        case 2: // Voice Input
+                            activateVoiceToText();
+                            break;
+                        case 3: // Web Search
+                            activateWebSearch();
+                            break;
+                        case 4: // Code Execution
+                            activateCodeMode();
+                            break;
+                        case 5: // Personality Mode
+                            activatePersonalityMode();
+                            break;
+                        case 6: // AI Models
+                            showAIModels();
+                            break;
+                        case 7: // No Cap Mode
+                            activateNoCapMode();
+                            break;
+                    }
+                });
+            });
+        }
+
+        // Badge Tool Functions
+        function activateVoiceToVoice() {
+            updateStatus('Voice to Voice mode activated! Tap mic to start.');
+            addMessage('ai', 'Voice to Voice mode on! Tap the Voice to Voice button to start talking.');
+            voiceMode = 'voice-to-voice';
+        }
+
+        function activateTextToVoice() {
+            updateStatus('Text to Voice mode activated! Type and I\'ll speak.');
+            addMessage('ai', 'Text to Voice mode activated! Type your message and I\'ll speak the response.');
+            voiceMode = 'text-to-voice';
+        }
+
+        function activateVoiceToText() {
+            updateStatus('Voice to Text mode activated! Speak to me.');
+            addMessage('ai', 'Voice to Text mode on! Tap the Voice to Text button to start.');
+            voiceMode = 'voice-to-text';
+        }
+
+        function activateWebSearch() {
+            const input = document.getElementById('messageInput');
+            input.value = 'Search the web for ';
+            input.focus();
+            input.setSelectionRange(19, 19);
+            updateStatus('Web Search mode - Type what to search');
+            addMessage('ai', 'Web search ready! Type what you want me to search for.');
+        }
+
+        function activateCodeMode() {
+            const input = document.getElementById('messageInput');
+            input.value = 'Write code to ';
+            input.focus();
+            input.setSelectionRange(14, 14);
+            updateStatus('Code mode - Ask me to write code');
+            addMessage('ai', 'Code mode activated! Tell me what code to write. I can do Python, JavaScript, or Bash!');
+        }
+
+        function activatePersonalityMode() {
+            updateStatus('Sassy mode activated!');
+            addMessage('ai', 'Yo what\'s good? I\'m bringing the sass now! Ask me anything and I\'ll keep it real.');
+        }
+
+        function showAIModels() {
+            updateStatus('AI Models Info');
+            addMessage('ai', 'I\'m powered by multiple AI models:\n• GPT (OpenAI)\n• Claude (Anthropic)\n• Ollama (Local)\n\nCurrently using: Fallback mode with web search and code execution!');
+        }
+
+        function activateNoCapMode() {
+            updateStatus('No Cap Mode - 100% Real');
+            addMessage('ai', 'No cap mode activated! I\'m keeping it 100% real now. No filter, all facts, straight up! 🔥');
+        }
+
+        // Request Microphone Permission (for voice recognition)
+        async function requestMicrophonePermission() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('Microphone permission granted');
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            } catch (error) {
+                console.error('Microphone permission denied:', error);
+                alert('Please allow microphone access to use voice features!\n\nIn your browser:\n1. Click the lock icon in address bar\n2. Allow microphone\n3. Reload the page');
+                return false;
+            }
+        }
+
+        // Voice Recognition Setup
+        async function initVoice() {
+            // Request microphone permission first
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                const hasPermission = await requestMicrophonePermission();
+                if (!hasPermission) {
+                    console.warn('Voice features disabled - no microphone permission');
+                    return;
+                }
+            }
+
+            // Check for speech recognition support
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                try {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    recognition = new SpeechRecognition();
+                    recognition.continuous = false;
+                    recognition.interimResults = false;
+                    recognition.lang = 'en-US';
+                    recognition.maxAlternatives = 1;
+
+                    recognition.onstart = () => {
+                        console.log('Speech recognition started');
+                        updateStatus('Listening... (Speak now!)');
+                    };
+
+                    recognition.onresult = (event) => {
+                        const transcript = event.results[0][0].transcript;
+                        console.log('Recognized:', transcript);
+                        document.getElementById('messageInput').value = transcript;
+
+                        // Don't manually add message, sendMessage will do it
+                        if (voiceMode === 'voice-to-text') {
+                            sendMessage(false);
+                        } else if (voiceMode === 'voice-to-voice') {
+                            sendMessage(true);
+                        }
+                    };
+
+                    recognition.onerror = (event) => {
+                        console.error('Speech recognition error:', event.error);
+                        let errorMsg = 'Voice error. ';
+
+                        switch(event.error) {
+                            case 'no-speech':
+                                errorMsg += 'No speech detected. Try again.';
+                                break;
+                            case 'audio-capture':
+                                errorMsg += 'No microphone found. Check permissions.';
+                                break;
+                            case 'not-allowed':
+                                errorMsg += 'Microphone permission denied. Allow in settings.';
+                                alert('Please allow microphone access in your browser settings!');
+                                break;
+                            case 'network':
+                                errorMsg += 'Network error. Check connection.';
+                                break;
+                            default:
+                                errorMsg += 'Try again or check mic permissions.';
+                        }
+
+                        updateStatus(errorMsg);
+                        document.querySelectorAll('.voice-btn').forEach(btn => {
+                            btn.classList.remove('recording');
+                        });
+                    };
+
+                    recognition.onend = () => {
+                        console.log('Speech recognition ended');
+                        document.querySelectorAll('.voice-btn').forEach(btn => {
+                            btn.classList.remove('recording');
+                        });
+                        if (updateStatus) {
+                            updateStatus('Online & Ready');
+                        }
+                    };
+
+                    console.log('Speech recognition initialized successfully');
+                } catch (error) {
+                    console.error('Error initializing speech recognition:', error);
+                    alert('Voice recognition setup failed: ' + error.message);
+                }
+            } else {
+                console.warn('Speech recognition not supported in this browser');
+                const message = 'Voice recognition not supported. Use Chrome, Edge, or Safari.';
+                setTimeout(() => {
+                    alert(message);
+                }, 2000);
+            }
+
+            // Get available voices for text-to-speech
+            if (synthesis) {
+                // Load voices
+                let voices = synthesis.getVoices();
+                if (voices.length > 0) {
+                    currentVoice = voices.find(v => v.lang.startsWith('en-')) || voices[0];
+                }
+
+                synthesis.onvoiceschanged = () => {
+                    voices = synthesis.getVoices();
+                    currentVoice = voices.find(v => v.lang.startsWith('en-')) || voices[0];
+                    console.log('Voices loaded:', voices.length, 'Using:', currentVoice?.name);
+                };
+            }
+        }
+
+        // Check Server Status
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                updateStatus(`Connected - ${data.agent_name}`);
+            } catch (error) {
+                updateStatus('Server Offline - Start backend on port 8000');
+            }
+        }
+
+        function updateStatus(text) {
+            document.getElementById('status-text').textContent = text;
+        }
+
+        // Voice Controls
+        document.getElementById('voiceToVoiceBtn').addEventListener('click', () => {
+            if (!recognition) {
+                alert('Voice recognition not supported in your browser');
+                return;
+            }
+            voiceMode = 'voice-to-voice';
+            document.getElementById('voiceToVoiceBtn').classList.add('recording');
+            updateStatus('Listening... (Voice to Voice mode)');
+            recognition.start();
+        });
+
+        document.getElementById('voiceToTextBtn').addEventListener('click', () => {
+            if (!recognition) {
+                alert('Voice recognition not supported in your browser');
+                return;
+            }
+            voiceMode = 'voice-to-text';
+            document.getElementById('voiceToTextBtn').classList.add('recording');
+            updateStatus('Listening... (Voice to Text mode)');
+            recognition.start();
+        });
+
+        document.getElementById('textToVoiceBtn').addEventListener('click', () => {
+            const msg = document.getElementById('messageInput').value.trim();
+            if (!msg) {
+                alert('Type a message first!');
+                return;
+            }
+            sendMessage(true);
+        });
+
+        document.getElementById('stopSpeakingBtn').addEventListener('click', () => {
+            if (synthesis.speaking) {
+                synthesis.cancel();
+                updateStatus('Stopped speaking');
+            }
+        });
+
+        // Send Message
+        async function sendMessage(speakResponse = false) {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message || isProcessing) return;
+
+            // Add user message
+            addMessage('user', message);
+            input.value = '';
+            isProcessing = true;
+            updateStatus('AI is thinking...');
+
+            try {
+                const response = await fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+                const data = await response.json();
+                addMessage('ai', data.response, data.timestamp);
+
+                if (speakResponse) {
+                    speakText(data.response);
+                }
+
+                updateStatus('Online & Ready');
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
+                updateStatus('Error - Check connection');
+            } finally {
+                isProcessing = false;
+            }
+        }
+
+        // Text to Speech
+        function speakText(text) {
+            if (!synthesis) return;
+
+            synthesis.cancel(); // Stop any current speech
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = currentVoice;
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            utterance.onstart = () => {
+                updateStatus('AI is speaking...');
+                document.getElementById('textToVoiceBtn').classList.add('speaking');
+            };
+
+            utterance.onend = () => {
+                updateStatus('Online & Ready');
+                document.getElementById('textToVoiceBtn').classList.remove('speaking');
+            };
+
+            synthesis.speak(utterance);
+        }
+
+        // Add Message to Chat
+        function addMessage(role, content, timestamp = null) {
+            const messagesArea = document.getElementById('messagesArea');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+            const avatar = role === 'user' ? '👤' : '🤖';
+
+            messageDiv.innerHTML = `
+                <div class="message-avatar">${avatar}</div>
+                <div class="message-content">
+                    <div class="message-text">${escapeHtml(content)}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            `;
+
+            messagesArea.appendChild(messageDiv);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        // Clear Chat
+        document.getElementById('clearBtn').addEventListener('click', async () => {
+            if (!confirm('Clear conversation history?')) return;
+
+            try {
+                await fetch(`${API_URL}/clear`, { method: 'POST' });
+                document.getElementById('messagesArea').innerHTML = '';
+                addMessage('ai', 'Conversation cleared. What you need fam?');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        // Enter key to send
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(voiceMode === 'text-to-voice');
+            }
+        });
+
+        // Send button
+        document.getElementById('sendBtn').addEventListener('click', () => {
+            sendMessage(voiceMode === 'text-to-voice');
+        });
+
+        // Utility
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML.replace(/\n/g, '<br>');
+        }
+
+        // Visual Effects
+        function createEffects() {
+            const container = document.getElementById('effects-container');
+            container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
+        }
+
+        function createFireParticle() {
+            const container = document.getElementById('effects-container');
+            const particle = document.createElement('div');
+            particle.className = 'fire-particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.bottom = '0';
+            particle.style.animationDelay = Math.random() * 2 + 's';
+            container.appendChild(particle);
+
+            setTimeout(() => particle.remove(), 3000);
+        }
+
+        function createSmokeParticle() {
+            const container = document.getElementById('effects-container');
+            const particle = document.createElement('div');
+            particle.className = 'smoke-particle';
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.bottom = '0';
+            particle.style.animationDelay = Math.random() * 3 + 's';
+            container.appendChild(particle);
+
+            setTimeout(() => particle.remove(), 8000);
+        }
+
+        // EXPLOSION EFFECTS - GANGSTER LEVEL
+        function createExplosion(x, y) {
+            const container = document.getElementById('effects-container');
+            const explosion = document.createElement('div');
+            explosion.className = 'explosion-particle';
+            explosion.style.left = x + 'px';
+            explosion.style.top = y + 'px';
+            explosion.style.animation = 'explosion 0.6s ease-out';
+            container.appendChild(explosion);
+
+            // Add multiple explosion rings for more intensity
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    const ring = document.createElement('div');
+                    ring.className = 'explosion-particle';
+                    ring.style.left = (x + Math.random() * 100 - 50) + 'px';
+                    ring.style.top = (y + Math.random() * 100 - 50) + 'px';
+                    ring.style.animation = 'explosion 0.4s ease-out';
+                    ring.style.animationDelay = (i * 0.1) + 's';
+                    container.appendChild(ring);
+                    setTimeout(() => ring.remove(), 600);
+                }, i * 100);
+            }
+
+            setTimeout(() => explosion.remove(), 600);
+        }
+
+        // Random explosions in the background
+        function randomExplosion() {
+            const x = Math.random() * window.innerWidth;
+            const y = Math.random() * window.innerHeight;
+            createExplosion(x, y);
+        }
+
+        // Trigger explosions periodically
+        setInterval(randomExplosion, 15000); // Every 15 seconds
+
+        // Lightning bolt effect
+        function createLightning() {
+            const container = document.getElementById('effects-container');
+            const bolt = document.createElement('div');
+            bolt.className = 'lightning-bolt';
+            bolt.style.left = Math.random() * 100 + '%';
+            bolt.style.top = '0';
+            bolt.style.animation = 'lightning 0.3s';
+            container.appendChild(bolt);
+
+            setTimeout(() => bolt.remove(), 300);
+        }
+
+        // Random lightning
+        setInterval(() => {
+            if (Math.random() > 0.7) { // 30% chance
+                createLightning();
+            }
+        }, 5000);
+
+        // Explosion on message send (for dramatic effect)
+        const originalSendMessage = sendMessage;
+        sendMessage = function(...args) {
+            // Create explosion at a random location
+            if (Math.random() > 0.5) { // 50% chance
+                const x = Math.random() * window.innerWidth;
+                const y = Math.random() * (window.innerHeight / 2);
+                createExplosion(x, y);
+            }
+            return originalSendMessage.apply(this, args);
+        };
+    </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-# Safety Configuration
+ n # Safety Configuration
 # Check Python dependencies for known security vulnerabilities
 
 [safety]

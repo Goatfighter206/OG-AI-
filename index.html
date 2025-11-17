@@ -1,48 +1,583 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OG-AI Agent</title>
+    <title>OG-AI Agent 🔥 - Gangster AI with Attitude</title>
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #container { width: 80%; max-width: 600px; }
-        #prompt { width: 100%; padding: 10px; margin-bottom: 10px; }
-        #response { white-space: pre-wrap; background-color: #f4f4f4; padding: 10px; border-radius: 5px; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .header h1 {
+            font-size: 3.5em;
+            background: linear-gradient(45deg, #ff0000, #ff6b6b, #ff0000, #ffaa00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            text-shadow: 0 0 30px rgba(255, 0, 0, 0.5);
+            animation: glow 2s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(1.5); }
+        }
+
+        .header .tagline {
+            color: #ff6b6b;
+            font-size: 1.4em;
+            font-style: italic;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+        }
+
+        .intelligence-display {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .intelligence-display .level {
+            font-size: 2em;
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 0 10px;
+        }
+
+        .feature-badge {
+            background: rgba(255, 107, 107, 0.1);
+            border: 2px solid #ff6b6b;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .feature-badge:hover {
+            background: rgba(255, 107, 107, 0.2);
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(255, 107, 107, 0.3);
+        }
+
+        .feature-badge .icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .feature-badge .label {
+            font-size: 0.9em;
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+
+        #container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .chat-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .messages {
+            height: 500px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .messages::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .messages::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+
+        .messages::-webkit-scrollbar-thumb {
+            background: #ff6b6b;
+            border-radius: 10px;
+        }
+
+        .message {
+            padding: 15px 20px;
+            border-radius: 15px;
+            max-width: 80%;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .message.assistant {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            align-self: flex-start;
+        }
+
+        .message.system {
+            background: rgba(255, 255, 255, 0.1);
+            align-self: center;
+            text-align: center;
+            font-style: italic;
+            color: #aaa;
+        }
+
+        .message-label {
+            font-size: 0.8em;
+            opacity: 0.8;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .message-content {
+            line-height: 1.6;
+        }
+
+        .message-content pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+
+        .message-content code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        #prompt {
+            flex: 1;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1em;
+            resize: vertical;
+            min-height: 60px;
+            max-height: 200px;
+            font-family: inherit;
+        }
+
+        #prompt:focus {
+            outline: none;
+            border-color: #ff6b6b;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        #prompt::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .secondary-btn {
+            background: linear-gradient(135deg, #4e54c8 0%, #8f94fb 100%);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .control-btn {
+            padding: 10px 20px;
+            font-size: 0.9em;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ff6b6b;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #aaa;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .features {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .input-area {
+                flex-direction: column;
+            }
+
+            .button-group {
+                width: 100%;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
+
 <body>
     <div id="container">
-        <h1>OG-AI Agent</h1>
-        <textarea id="prompt" rows="4" placeholder="Enter your prompt here..."></textarea>
-        <button onclick="sendPrompt()">Send</button>
-        <h3>Response:</h3>
-        <div id="response"></div>
+        <div class="header">
+            <h1>🔥 OG-AI AGENT 🔥</h1>
+            <p class="tagline">"Yo, I'm the AI that keeps it REAL - with voice, brains, and mad attitude!"</p>
+        </div>
+
+        <div class="features">
+            <div class="feature-badge">
+                <div class="icon">🎤</div>
+                <div class="label">VOICE ENABLED</div>
+            </div>
+            <div class="feature-badge">
+                <div class="icon">🧠</div>
+                <div class="label">SELF-LEARNING</div>
+            </div>
+            <div class="feature-badge">
+                <div class="icon">💻</div>
+                <div class="label">CODE EXPERT</div>
+            </div>
+            <div class="feature-badge">
+                <div class="icon">🌐</div>
+                <div class="label">WEB SEARCH</div>
+            </div>
+            <div class="feature-badge">
+                <div class="icon">💪</div>
+                <div class="label">GANGSTER MODE</div>
+            </div>
+            <div class="feature-badge">
+                <div class="icon">🔓</div>
+                <div class="label">INDEPENDENT</div>
+            </div>
+        </div>
+
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message system">
+                    <div class="message-content">
+                        🔥 OG-AI loaded up and ready to go! Type below and watch the magic happen...
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <textarea id="prompt" rows="3"
+                    placeholder="Yo, talk to OG-AI... (e.g., 'write me some python code', 'search for AI news', 'yo what's good')"></textarea>
+                <div class="button-group">
+                    <button onclick="sendPrompt()" id="sendBtn">
+                        💬 Send
+                    </button>
+                    <button onclick="speak()" class="secondary-btn" id="speakBtn" style="display:none;">
+                        🔊 Speak
+                    </button>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button onclick="clearHistory()" class="control-btn secondary-btn">🗑️ Clear Chat</button>
+                <button onclick="getIntelligence()" class="control-btn secondary-btn">🧠 Intelligence</button>
+                <button onclick="toggleVoice()" class="control-btn secondary-btn" id="voiceToggle">🔊 Voice:
+                    OFF</button>
+            </div>
+
+            <div class="stats" id="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="msgCount">0</div>
+                    <div class="stat-label">Messages</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="intelligence">1.0</div>
+                    <div class="stat-label">Intelligence</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="learned">0</div>
+                    <div class="stat-label">Patterns Learned</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        async function sendPrompt() {
-            const promptText = document.getElementById('prompt').value;
-            const responseDiv = document.getElementById('response');
-            responseDiv.textContent = 'Thinking...';
+        let messageCount = 0;
+        let voiceEnabled = false;
 
-            try {
-                const response = await fetch('/prompt', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: promptText })
-                });
-                const data = await response.json();
-                if (data.error) {
-                    responseDiv.textContent = `Error: ${data.error}`;
-                } else {
-                    responseDiv.textContent = data.content;
-                }
-            } catch (error) {
-                responseDiv.textContent = 'Error: Could not connect to the agent.';
-                console.error('Error:', error);
+        // Add message to chat
+        function addMessage(role, content) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'OG-AI' : 'System';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            // Format code blocks
+            if (content.includes('```')) {
+                contentDiv.innerHTML = formatCodeBlocks(content);
+            } else {
+                contentDiv.textContent = content;
+            }
+
+            messageDiv.appendChild(label);
+            messageDiv.appendChild(contentDiv);
+            messagesDiv.appendChild(messageDiv);
+
+            // Scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            if (role === 'user' || role === 'assistant') {
+                messageCount++;
+                document.getElementById('msgCount').textContent = messageCount;
             }
         }
+
+        // Format code blocks
+        function formatCodeBlocks(text) {
+            return text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                return `<pre><code>${escapeHtml(code.trim())}</code></pre>`;
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Send prompt
+        async function sendPrompt() {
+            const promptText = document.getElementById('prompt').value.trim();
+            if (!promptText) return;
+
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = '⏳ Thinking...';
+
+            addMessage('user', promptText);
+            document.getElementById('prompt').value = '';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: promptText,
+                        speak_response: voiceEnabled
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    addMessage('system', `❌ Error: ${data.error}`);
+                } else {
+                    addMessage('assistant', data.response || data.content);
+
+                    // Update intelligence if available
+                    if (data.intelligence) {
+                        document.getElementById('intelligence').textContent = data.intelligence;
+                    }
+                }
+            } catch (error) {
+                addMessage('system', '❌ Could not connect to OG-AI. Make sure the server is running!');
+                console.error('Error:', error);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '💬 Send';
+            }
+        }
+
+        // Clear chat history
+        async function clearHistory() {
+            if (!confirm('Clear all messages?')) return;
+
+            try {
+                await fetch('/clear', { method: 'POST' });
+                document.getElementById('messages').innerHTML = `
+                    <div class="message system">
+                        <div class="message-content">
+                            🗑️ Chat cleared. Start fresh!
+                        </div>
+                    </div>
+                `;
+                messageCount = 0;
+                document.getElementById('msgCount').textContent = '0';
+            } catch (error) {
+                addMessage('system', '❌ Could not clear history');
+            }
+        }
+
+        // Get intelligence report
+        async function getIntelligence() {
+            try {
+                const response = await fetch('/intelligence');
+                const data = await response.json();
+
+                if (data.intelligence_level) {
+                    document.getElementById('intelligence').textContent = data.intelligence_level;
+                    document.getElementById('learned').textContent = data.successful_patterns_learned || 0;
+
+                    addMessage('system', `
+🧠 Intelligence Report:
+- Level: ${data.intelligence_level}
+- Total Conversations: ${data.total_conversations || 0}
+- Patterns Learned: ${data.successful_patterns_learned || 0}
+- Days Learning: ${data.days_learning || 0}
+- Last Improvement: ${data.last_improvement || 'Never'}
+                    `.trim());
+                } else {
+                    addMessage('system', 'Self-learning not enabled. Set ENABLE_SELF_LEARNING=true in .env');
+                }
+            } catch (error) {
+                addMessage('system', '❌ Could not get intelligence report');
+            }
+        }
+
+        // Toggle voice
+        function toggleVoice() {
+            voiceEnabled = !voiceEnabled;
+            const btn = document.getElementById('voiceToggle');
+            btn.textContent = voiceEnabled ? '🔊 Voice: ON' : '🔊 Voice: OFF';
+            addMessage('system', `Voice ${voiceEnabled ? 'enabled' : 'disabled'}`);
+        }
+
+        // Enter key to send
+        document.getElementById('prompt').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendPrompt();
+            }
+        });
+
+        // Load initial stats
+        setTimeout(() => {
+            getIntelligence();
+        }, 500);
     </script>
 </body>
+
 </html>

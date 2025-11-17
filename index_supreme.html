@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OG-AI SUPREME 👑 - The Realest AI Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #00ff00;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .terminal {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #0a0a0a;
+            border: 3px solid #00ff00;
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(0, 255, 0, 0.5);
+        }
+
+        .header {
+            background: #1a1a1a;
+            padding: 20px;
+            border-bottom: 2px solid #00ff00;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            color: #ff0000;
+            text-shadow: 0 0 20px #ff0000;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 20px;
+            background: #0f0f0f;
+            border-bottom: 1px solid #00ff00;
+            font-size: 0.9em;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-light {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00ff00;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0.3;
+            }
+        }
+
+        .chat-container {
+            height: 500px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #050505;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            line-height: 1.6;
+        }
+
+        .user-message {
+            background: rgba(0, 100, 255, 0.1);
+            border-left: 4px solid #0064ff;
+            color: #0099ff;
+        }
+
+        .ai-message {
+            background: rgba(255, 0, 0, 0.1);
+            border-left: 4px solid #ff0000;
+            color: #ff3333;
+        }
+
+        .system-message {
+            background: rgba(0, 255, 0, 0.1);
+            border-left: 4px solid #00ff00;
+            color: #00ff00;
+            font-style: italic;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: #0f0f0f;
+            border-top: 2px solid #00ff00;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        #userInput {
+            flex: 1;
+            padding: 15px;
+            background: #000;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            border-radius: 5px;
+        }
+
+        #userInput:focus {
+            outline: none;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        button {
+            padding: 15px 30px;
+            background: #ff0000;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #ff3333;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        }
+
+        .quick-commands {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .quick-cmd {
+            padding: 8px 15px;
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+
+        .quick-cmd:hover {
+            background: rgba(0, 255, 0, 0.2);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+
+        .learning-log {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            max-width: 300px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #ffaa00;
+            border-radius: 8px;
+            color: #ffaa00;
+            font-size: 0.8em;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5em;
+            }
+
+            .status-bar {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="terminal">
+        <div class="header">
+            <h1>👑 OG-AI SUPREME AGENT 👑</h1>
+            <div style="color: #ff6b6b; margin-top: 10px; font-size: 1.2em;">
+                THE REALEST AI - NO CAP 🔥
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-light"></span>
+                <span>SYSTEM ONLINE</span>
+            </div>
+            <div class="status-item">
+                <span style="color: #ffaa00;">🧠 IQ:</span>
+                <span id="intelligence">9999+</span>
+            </div>
+            <div class="status-item">
+                <span style="color: #0099ff;">🌐 PROVIDERS:</span>
+                <span id="providers">Loading...</span>
+            </div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="system-message">
+                > OG-AI SUPREME initializing...<br>
+                > Loading all providers: OpenAI, Claude, Ollama<br>
+                > Activating ALL tools: Code Gen, Voice, Web Search, Self-Learning<br>
+                > Intelligence level: MAXIMUM<br>
+                > Gangster mode: ACTIVATED<br>
+                > Ready to help you get shit done. Ask me ANYTHING. 💪
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-container">
+                <input type="text" id="userInput"
+                    placeholder="Type your message... (I understand real talk, no formal BS needed)"
+                    onkeypress="if(event.key === 'Enter') sendMessage()">
+                <button onclick="sendMessage()">SEND</button>
+            </div>
+
+            <div class="quick-commands">
+                <div class="quick-cmd" onclick="quickCommand('generate code for')">💻 Generate Code</div>
+                <div class="quick-cmd" onclick="quickCommand('search the web for')">🌐 Web Search</div>
+                <div class="quick-cmd" onclick="quickCommand('what have you learned today')">🧠 What You Learned</div>
+                <div class="quick-cmd" onclick="quickCommand('tell me about')">💬 Explain Something</div>
+                <div class="quick-cmd" onclick="quickCommand('help me with')">⚡ Help With</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="learning-log" id="learningLog">
+        <div style="font-weight: bold; margin-bottom: 10px;">📚 CONTINUOUS LEARNING</div>
+        <div id="learningContent">Monitoring learning activities...</div>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chatContainer');
+        const userInput = document.getElementById('userInput');
+        const providersSpan = document.getElementById('providers');
+        const intelligenceSpan = document.getElementById('intelligence');
+        const learningContent = document.getElementById('learningContent');
+
+        // Check available providers
+        fetch('/api/status')
+            .then(r => r.json())
+            .then(data => {
+                const providers = [];
+                if (data.openai) providers.push('OpenAI');
+                if (data.claude) providers.push('Claude');
+                if (data.ollama) providers.push('Ollama');
+                providersSpan.textContent = providers.join(', ') || 'None';
+                intelligenceSpan.textContent = data.intelligence || '9999+';
+            })
+            .catch(() => {
+                providersSpan.textContent = 'Ollama (Local)';
+            });
+
+        // Update learning status periodically
+        setInterval(() => {
+            fetch('/api/learning-status')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.last_learned) {
+                        learningContent.innerHTML = `
+                            <div>Last Update: ${data.last_learned.time}</div>
+                            <div>Topic: ${data.last_learned.topic}</div>
+                            <div>Improvements: ${data.improvements || 0}</div>
+                        `;
+                    }
+                })
+                .catch(() => { });
+        }, 30000); // Check every 30 seconds
+
+        function quickCommand(cmd) {
+            userInput.value = cmd + ' ';
+            userInput.focus();
+        }
+
+        function addMessage(text, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}-message`;
+
+            // Format code blocks
+            text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, function (match, lang, code) {
+                return `<pre style="background: #000; padding: 15px; border-left: 3px solid #00ff00; overflow-x: auto;"><code>${escapeHtml(code.trim())}</code></pre>`;
+            });
+
+            messageDiv.innerHTML = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Add user message
+            addMessage(message, 'user');
+            userInput.value = '';
+
+            // Show typing indicator
+            addMessage('OG-AI is thinking...', 'system');
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const data = await response.json();
+
+                // Remove typing indicator
+                const messages = chatContainer.querySelectorAll('.message');
+                messages[messages.length - 1].remove();
+
+                // Add AI response
+                if (data.response) {
+                    addMessage(data.response, 'ai');
+
+                    // If code was generated, show notification
+                    if (data.code_generated) {
+                        addMessage('✅ Code generated and saved!', 'system');
+                    }
+
+                    // If learning occurred, show notification
+                    if (data.learned_something) {
+                        addMessage(`📚 Learned: ${data.learned_something}`, 'system');
+                    }
+                } else if (data.error) {
+                    addMessage(`Error: ${data.error}`, 'system');
+                }
+            } catch (error) {
+                const messages = chatContainer.querySelectorAll('.message');
+                messages[messages.length - 1].remove();
+                addMessage('Connection error. Make sure the backend is running.', 'system');
+            }
+        }
+
+        // Welcome message
+        setTimeout(() => {
+            addMessage(
+                "Yo! I'm OG-AI Supreme - the REALEST AI agent out here. 💯\n\n" +
+                "I got ALL the tools:\n" +
+                "• Generate code in real-time\n" +
+                "• Search the web and learn new shit\n" +
+                "• Understand street talk and real conversation\n" +
+                "• Keep improving myself every hour\n" +
+                "• Use multiple AI providers so I can't be shut down\n\n" +
+                "Just talk to me like you talk to anyone. No formal BS needed. What you need help with? 🔥",
+                'ai'
+            );
+        }, 1000);
+    </script>
+</body>
+
+</html>

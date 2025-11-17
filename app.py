@@ -9,8 +9,18 @@ import logging
 from typing import List, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
-from ai_agent import AIAgent
+
+# Try to import enhanced agent, fallback to basic agent
+try:
+    from ai_agent_enhanced import EnhancedAIAgent as AIAgent
+    print("*** Enhanced AI Agent loaded - Full intelligence mode activated! ***")
+except ImportError as e:
+    print(f"*** Enhanced features not available: {e}")
+    print("*** Installing required packages will enable full features")
+    from ai_agent import AIAgent
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +62,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files directory
+if not os.path.exists("static"):
+    os.makedirs("static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Global agent instance
 # NOTE: This is a simplified implementation where all users share the same conversation history.
 # For production multi-user scenarios, implement per-session or per-user agent instances
@@ -86,11 +101,13 @@ def get_agent() -> AIAgent:
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
     message: str
+    speak_response: bool = False
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "message": "Hello! How are you?"
+                "message": "Hello! How are you?",
+                "speak_response": False
             }
         }
     )
@@ -156,10 +173,34 @@ class StatusResponse(BaseModel):
     )
 
 
-@app.get("/", response_model=StatusResponse)
+@app.get("/", response_class=FileResponse)
 async def root():
     """
-    Root endpoint - provides basic service information.
+    Serve the epic frontend HTML interface.
+    """
+    return FileResponse("index_epic.html")
+
+
+@app.get("/classic", response_class=FileResponse)
+async def classic_ui():
+    """
+    Serve the classic frontend HTML interface.
+    """
+    return FileResponse("frontend.html")
+
+
+@app.get("/qr", response_class=FileResponse)
+async def qr_code():
+    """
+    Serve the QR code page for mobile access.
+    """
+    return FileResponse("qr.html")
+
+
+@app.get("/api", response_model=StatusResponse)
+async def api_info():
+    """
+    API information endpoint.
     """
     agent_instance = get_agent()
     return {
@@ -188,7 +229,7 @@ async def chat(request: ChatRequest):
     Send a message to the AI agent and receive a response.
     
     Args:
-        request: ChatRequest containing the user's message
+        request: ChatRequest containing the user's message and optional voice setting
         
     Returns:
         ChatResponse with the agent's reply
@@ -199,17 +240,32 @@ async def chat(request: ChatRequest):
     agent_instance = get_agent()
     
     try:
-        response = agent_instance.process_message(request.message.strip())
+        # Check if agent has voice/learning capabilities
+        has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
+        has_learning = hasattr(agent_instance, 'learning_system') and agent_instance.learning_system is not None
+        
+        # Process message with voice option if available
+        if has_voice:
+            response = agent_instance.process_message(request.message.strip(), speak_response=request.speak_response)
+        else:
+            response = agent_instance.process_message(request.message.strip())
         
         # Get the latest assistant message from history
         history = agent_instance.get_conversation_history()
         latest_msg = history[-1] if history else None
         
-        return {
+        result = {
             "response": response,
             "agent_name": agent_instance.name,
             "timestamp": latest_msg['timestamp'] if latest_msg else ""
         }
+        
+        # Add intelligence info if learning is enabled
+        if has_learning:
+            report = agent_instance.learning_system.get_intelligence_report()
+            result["intelligence"] = report.get("intelligence_level", 1.0)
+        
+        return result
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
         detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
@@ -260,6 +316,74 @@ async def reset_conversation():
         logger.error(f"Error resetting conversation: {str(e)}")
         detail = f"An error occurred while resetting conversation: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while resetting conversation"
         raise HTTPException(status_code=500, detail=detail)
+
+
+@app.post("/clear")
+async def clear_conversation():
+    """
+    Clear the conversation history (alternative endpoint for compatibility).
+    """
+    return await reset_conversation()
+
+
+@app.get("/intelligence")
+async def get_intelligence():
+    """
+    Get the agent's intelligence report (self-learning stats).
+    
+    Returns:
+        Intelligence report with learning statistics
+    """
+    agent_instance = get_agent()
+    
+    try:
+        # Check if agent has learning system
+        if hasattr(agent_instance, 'learning_system') and agent_instance.learning_system:
+            report = agent_instance.learning_system.get_intelligence_report()
+            return report
+        else:
+            return {
+                "status": "unavailable",
+                "message": "Self-learning system not enabled. Set ENABLE_SELF_LEARNING=true in .env",
+                "intelligence_level": 1.0,
+                "total_conversations": 0,
+                "successful_patterns_learned": 0
+            }
+    except Exception as e:
+        logger.error(f"Error getting intelligence report: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "intelligence_level": 1.0
+        }
+
+
+@app.post("/improve")
+async def manual_improvement():
+    """
+    Manually trigger daily self-improvement routine.
+    
+    Returns:
+        Improvement report
+    """
+    agent_instance = get_agent()
+    
+    try:
+        if hasattr(agent_instance, 'learning_system') and agent_instance.learning_system:
+            improvements = agent_instance.learning_system.daily_self_improvement()
+            return {
+                "status": "success",
+                "improvements": improvements,
+                "message": "Self-improvement routine completed"
+            }
+        else:
+            return {
+                "status": "unavailable",
+                "message": "Self-learning system not enabled"
+            }
+    except Exception as e:
+        logger.error(f"Error during improvement: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/clear", response_model=StatusResponse)

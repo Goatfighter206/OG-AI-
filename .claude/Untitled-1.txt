@@ -1,0 +1,2 @@
+cd c:\Users\willi\ai-agents-deploy\OG-AI-
+python setup_og_ai.py
