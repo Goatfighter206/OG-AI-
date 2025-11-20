@@ -55,11 +55,11 @@ Write-Host "✓ Environment file created" -ForegroundColor Green
 $deployScript = @"
 # Deployment Script for OG-AI - $Environment
 param(
-    [Parameter(Mandatory=`$false)]
-    [string]`$PackagePath
+    [Parameter(Mandatory=$false)]
+    [string]$PackagePath
 )
 
-`$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 Write-Host "================================" -ForegroundColor Cyan
 Write-Host "Deploying OG-AI to $Environment" -ForegroundColor Cyan
@@ -67,26 +67,26 @@ Write-Host "================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Stop existing service if running
-`$serviceName = "$serviceName"
-if (Get-Service -Name `$serviceName -ErrorAction SilentlyContinue) {
-    Write-Host "Stopping service: `$serviceName..." -ForegroundColor Yellow
-    Stop-Service -Name `$serviceName -Force
+$serviceName = "$serviceName"
+if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+    Write-Host "Stopping service: $serviceName..." -ForegroundColor Yellow
+    Stop-Service -Name $serviceName -Force
     Write-Host "✓ Service stopped" -ForegroundColor Green
 }
 
 # Backup current deployment
 if (Test-Path "$envDeployPath\ai_agent.py") {
-    `$backupPath = "$envDeployPath\backup-`$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    Write-Host "Creating backup: `$backupPath..." -ForegroundColor Yellow
-    New-Item -ItemType Directory -Force -Path `$backupPath | Out-Null
-    Copy-Item -Path "$envDeployPath\*" -Destination `$backupPath -Recurse -Exclude "backup-*","_work","logs" -ErrorAction SilentlyContinue
+    $backupPath = "$envDeployPath\backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Write-Host "Creating backup: $backupPath..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Force -Path $backupPath | Out-Null
+    Copy-Item -Path "$envDeployPath\*" -Destination $backupPath -Recurse -Exclude "backup-*","_work","logs" -ErrorAction SilentlyContinue
     Write-Host "✓ Backup created" -ForegroundColor Green
 }
 
 # Extract new package if provided
-if (`$PackagePath -and (Test-Path `$PackagePath)) {
-    Write-Host "Extracting package: `$PackagePath..." -ForegroundColor Yellow
-    Expand-Archive -Path `$PackagePath -DestinationPath "$envDeployPath" -Force
+if ($PackagePath -and (Test-Path $PackagePath)) {
+    Write-Host "Extracting package: $PackagePath..." -ForegroundColor Yellow
+    Expand-Archive -Path $PackagePath -DestinationPath "$envDeployPath" -Force
     Write-Host "✓ Package extracted" -ForegroundColor Green
 }
 
@@ -97,18 +97,18 @@ pip install -r requirements.txt --quiet
 Write-Host "✓ Dependencies installed" -ForegroundColor Green
 
 # Start service if it exists
-if (Get-Service -Name `$serviceName -ErrorAction SilentlyContinue) {
-    Write-Host "Starting service: `$serviceName..." -ForegroundColor Yellow
-    Start-Service -Name `$serviceName
+if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+    Write-Host "Starting service: $serviceName..." -ForegroundColor Yellow
+    Start-Service -Name $serviceName
     Write-Host "✓ Service started" -ForegroundColor Green
     
     # Wait and verify
     Start-Sleep -Seconds 5
-    `$status = (Get-Service -Name `$serviceName).Status
-    if (`$status -eq "Running") {
+    $status = (Get-Service -Name $serviceName).Status
+    if ($status -eq "Running") {
         Write-Host "✅ Deployment successful! Service is running." -ForegroundColor Green
     } else {
-        Write-Error "❌ Service failed to start. Status: `$status"
+        Write-Error "❌ Service failed to start. Status: $status"
         exit 1
     }
 } else {
@@ -131,59 +131,59 @@ $serviceScript = @"
 # Install OG-AI as Windows Service
 # Run this script as Administrator
 
-`$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 # Check if running as admin
-`$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not `$isAdmin) {
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
     Write-Error "This script must be run as Administrator!"
     exit 1
 }
 
 Write-Host "Installing OG-AI as Windows Service..." -ForegroundColor Green
 
-`$serviceName = "$serviceName"
-`$serviceDisplayName = "OG-AI Service - $Environment"
-`$serviceDescription = "OG-AI Conversational Agent - $Environment Environment"
-`$servicePath = "$envDeployPath"
-`$pythonExe = (Get-Command python).Source
-`$appScript = "`$servicePath\app.py"
+$serviceName = "$serviceName"
+$serviceDisplayName = "OG-AI Service - $Environment"
+$serviceDescription = "OG-AI Conversational Agent - $Environment Environment"
+$servicePath = "$envDeployPath"
+$pythonExe = (Get-Command python).Source
+$appScript = "$servicePath\app.py"
 
 # Remove existing service if it exists
-if (Get-Service -Name `$serviceName -ErrorAction SilentlyContinue) {
+if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
     Write-Host "Removing existing service..." -ForegroundColor Yellow
-    Stop-Service -Name `$serviceName -Force -ErrorAction SilentlyContinue
-    & sc.exe delete `$serviceName
+    Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+    & sc.exe delete $serviceName
     Start-Sleep -Seconds 2
 }
 
 # Create NSSM wrapper (if NSSM is available)
 if (Get-Command nssm -ErrorAction SilentlyContinue) {
     Write-Host "Installing service with NSSM..." -ForegroundColor Yellow
-    nssm install `$serviceName `$pythonExe `$appScript
-    nssm set `$serviceName AppDirectory `$servicePath
-    nssm set `$serviceName DisplayName "`$serviceDisplayName"
-    nssm set `$serviceName Description "`$serviceDescription"
-    nssm set `$serviceName Start SERVICE_AUTO_START
-    nssm set `$serviceName AppStdout "`$servicePath\logs\service-out.log"
-    nssm set `$serviceName AppStderr "`$servicePath\logs\service-err.log"
-    nssm set `$serviceName AppRotateFiles 1
-    nssm set `$serviceName AppRotateBytes 1048576
+    nssm install $serviceName $pythonExe $appScript
+    nssm set $serviceName AppDirectory $servicePath
+    nssm set $serviceName DisplayName "$serviceDisplayName"
+    nssm set $serviceName Description "$serviceDescription"
+    nssm set $serviceName Start SERVICE_AUTO_START
+    nssm set $serviceName AppStdout "$servicePath\logs\service-out.log"
+    nssm set $serviceName AppStderr "$servicePath\logs\service-err.log"
+    nssm set $serviceName AppRotateFiles 1
+    nssm set $serviceName AppRotateBytes 1048576
     
     Write-Host "✓ Service installed with NSSM" -ForegroundColor Green
     Write-Host ""
     Write-Host "To manage the service:" -ForegroundColor Yellow
-    Write-Host "  Start:   nssm start `$serviceName" -ForegroundColor Cyan
-    Write-Host "  Stop:    nssm stop `$serviceName" -ForegroundColor Cyan
-    Write-Host "  Restart: nssm restart `$serviceName" -ForegroundColor Cyan
-    Write-Host "  Remove:  nssm remove `$serviceName confirm" -ForegroundColor Cyan
+    Write-Host "  Start:   nssm start $serviceName" -ForegroundColor Cyan
+    Write-Host "  Stop:    nssm stop $serviceName" -ForegroundColor Cyan
+    Write-Host "  Restart: nssm restart $serviceName" -ForegroundColor Cyan
+    Write-Host "  Remove:  nssm remove $serviceName confirm" -ForegroundColor Cyan
 } else {
     Write-Host "⚠️  NSSM not found. Install NSSM for service management:" -ForegroundColor Yellow
     Write-Host "   choco install nssm" -ForegroundColor Cyan
     Write-Host "   or download from: https://nssm.cc/download" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Alternatively, use Task Scheduler to run at startup:" -ForegroundColor Yellow
-    Write-Host "   `$pythonExe `$appScript" -ForegroundColor Cyan
+    Write-Host "   $pythonExe $appScript" -ForegroundColor Cyan
 }
 
 Write-Host ""
@@ -254,27 +254,27 @@ Invoke-WebRequest -Uri "http://localhost:$Port/health"
 Invoke-RestMethod -Uri "http://localhost:$Port/chat" ``
     -Method Post ``
     -ContentType "application/json" ``
-    -Body '{"message": "Hello!"}'
+    -Body '{\`"message\`": \`"Hello!\`"}'
 ``````
 
 ## Logs
 
-- Application logs: ``$envDeployPath\logs\``
-- Service output: ``$envDeployPath\logs\service-out.log``
-- Service errors: ``$envDeployPath\logs\service-err.log``
+Application logs: $envDeployPath\logs\
+Service output: $envDeployPath\logs\service-out.log
+Service errors: $envDeployPath\logs\service-err.log
 
 ## Environment Variables
 
-Edit ``.env`` file to configure:
-- ``PORT``: Application port
-- ``ENVIRONMENT``: Environment name
-- ``LOG_LEVEL``: Logging level
-- ``MAX_WORKERS``: Number of workers
-- ``TIMEOUT``: Request timeout
+Edit .env file to configure:
+PORT: Application port
+ENVIRONMENT: Environment name
+LOG_LEVEL: Logging level
+MAX_WORKERS: Number of workers
+TIMEOUT: Request timeout
 
 ## Backups
 
-Backups are automatically created in: ``$envDeployPath\backup-*``
+Backups are automatically created in: $envDeployPath\backup-*
 
 ## Troubleshooting
 

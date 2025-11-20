@@ -1,5 +1,0 @@
-﻿# Bandit Configuration  
-# Security linter for Python code
-
-[bandit]
-exclude = /test,/.venv,/venv,/.git,/__pycache__,/htmlcov,/dist,/build

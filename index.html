@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OG-AI Agent</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #container { width: 80%; max-width: 600px; }
+        #prompt { width: 100%; padding: 10px; margin-bottom: 10px; }
+        #response { white-space: pre-wrap; background-color: #f4f4f4; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>OG-AI Agent</h1>
+        <textarea id="prompt" rows="4" placeholder="Enter your prompt here..."></textarea>
+        <button onclick="sendPrompt()">Send</button>
+        <h3>Response:</h3>
+        <div id="response"></div>
+    </div>
+
+    <script>
+        async function sendPrompt() {
+            const promptText = document.getElementById('prompt').value;
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = 'Thinking...';
+
+            try {
+                const response = await fetch('/prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: promptText })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    responseDiv.textContent = `Error: ${data.error}`;
+                } else {
+                    responseDiv.textContent = data.content;
+                }
+            } catch (error) {
+                responseDiv.textContent = 'Error: Could not connect to the agent.';
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
