@@ -41,11 +41,10 @@ Repository = "https://github.com/Goatfighter206/OG-AI-"
 Issues = "https://github.com/Goatfighter206/OG-AI-/issues"
 
 [project.scripts]
-og-ai = "ai_agent:main"
-og-ai-server = "ai_agent:app"
+og-ai = "app:app"
 
 [tool.setuptools]
-py-modules = ["ai_agent"]
+py-modules = ["ai_agent", "app"]
 
 [tool.setuptools.package-data]
 "*" = ["config.json"]
