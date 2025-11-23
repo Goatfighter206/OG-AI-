@@ -11,7 +11,8 @@ from io import StringIO
 # Mock dependencies before importing
 sys.modules['speech_recognition'] = MagicMock()
 sys.modules['pyttsx3'] = MagicMock()
-sys.modules['voice_chat'] = MagicMock()
+sys.modules['flask'] = MagicMock()
+sys.modules['flask_cors'] = MagicMock()
 
 from demo_voice_features import (
     print_section,

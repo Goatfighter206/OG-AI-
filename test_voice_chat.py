@@ -13,6 +13,8 @@ import sys
 # Mock the dependencies before importing
 sys.modules['speech_recognition'] = MagicMock()
 sys.modules['pyttsx3'] = MagicMock()
+sys.modules['flask'] = MagicMock()
+sys.modules['flask_cors'] = MagicMock()
 
 from voice_chat import VoiceChat, VoiceAssistant
 from ai_agent import AIAgent
