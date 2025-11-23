@@ -61,6 +61,10 @@ class VoiceChat:
                     voices = self.tts_engine.getProperty('voices')
                     if 0 <= voice_id < len(voices):
                         self.tts_engine.setProperty('voice', voices[voice_id].id)
+                    else:
+                        logging.warning(
+                            f"Invalid voice_id {voice_id}. Must be between 0 and {len(voices)-1}. Using default voice."
+                        )
             except (RuntimeError, OSError) as e:
                 # RuntimeError: TTS engine not properly installed
                 # OSError: Audio device issues
@@ -174,6 +178,8 @@ class VoiceChat:
                 voices = self.tts_engine.getProperty('voices')
                 if 0 <= voice_id < len(voices):
                     self.tts_engine.setProperty('voice', voices[voice_id].id)
+                else:
+                    logging.warning(f"Invalid voice_id value: {voice_id}. Valid range is 0 to {len(voices)-1}. Skipping voice update.")
     
     def list_available_voices(self) -> list:
         """

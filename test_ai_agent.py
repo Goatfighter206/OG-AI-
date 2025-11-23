@@ -3,7 +3,6 @@ Comprehensive unit tests for ai_agent.py module.
 Tests AIAgent class with focus on voice integration and core functionality.
 """
 
-import sys
 import unittest
 from unittest.mock import patch, MagicMock
 import json

@@ -334,9 +334,9 @@ class TestVoiceChatSettings(unittest.TestCase):
         """Test setting properties when TTS is unavailable."""
         self.vc.tts_available = False
         
-        with patch('builtins.print') as mock_print:
+        with patch('logging.warning') as mock_warning:
             self.vc.set_voice_properties(rate=200)
-            mock_print.assert_called_with("TTS engine not available, cannot set properties.")
+            mock_warning.assert_called_with("TTS engine not available, cannot set properties.")
     
     def test_set_voice_properties_none_values(self):
         """Test setting properties with None values (no changes)."""
