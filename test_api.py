@@ -1,6 +1,9 @@
 """
 Simple script to test the OG-AI API endpoints.
 Make sure the server is running before executing this script.
+
+This is NOT a pytest test file - it's a manual testing script.
+Run with: python test_api.py
 """
 
 import requests
@@ -13,11 +16,11 @@ BASE_URL = "http://localhost:8000"
 def handle_json_decode_error(endpoint_name, response):
     """
     Helper function to handle JSON decode errors consistently.
-    
+
     Args:
         endpoint_name: Name of the endpoint being tested
         response: The response object from the request
-        
+
     Returns:
         Empty dict if JSON decode fails
     """
@@ -26,7 +29,7 @@ def handle_json_decode_error(endpoint_name, response):
     return {}
 
 
-def test_health():
+def check_health():
     """Test the health endpoint."""
     print("Testing /health endpoint...")
     response = requests.get(f"{BASE_URL}/health")
@@ -40,7 +43,7 @@ def test_health():
     return response.status_code == 200
 
 
-def test_root():
+def check_root():
     """Test the root endpoint."""
     print("Testing / endpoint...")
     response = requests.get(f"{BASE_URL}/")
@@ -54,7 +57,7 @@ def test_root():
     return response.status_code == 200
 
 
-def test_chat(message):
+def check_chat(message):
     """Test the chat endpoint."""
     print(f"Testing /chat endpoint with message: '{message}'")
     response = requests.post(
@@ -71,7 +74,7 @@ def test_chat(message):
     return response.status_code == 200
 
 
-def test_history():
+def check_history():
     """Test the history endpoint."""
     print("Testing /history endpoint...")
     response = requests.get(f"{BASE_URL}/history")
@@ -86,7 +89,7 @@ def test_history():
     return response.status_code == 200
 
 
-def test_reset():
+def check_reset():
     """Test the reset endpoint."""
     print("Testing /reset endpoint...")
     response = requests.post(f"{BASE_URL}/reset")
@@ -107,40 +110,40 @@ def main():
     print("=" * 60)
     print(f"Testing API at: {BASE_URL}")
     print("Make sure the server is running (python app.py)\n")
-    
+
     tests_passed = 0
     tests_total = 0
-    
+
     # Test 1: Health check
     tests_total += 1
-    if test_health():
+    if check_health():
         tests_passed += 1
-    
+
     # Test 2: Root endpoint
     tests_total += 1
-    if test_root():
+    if check_root():
         tests_passed += 1
-    
+
     # Test 3: Chat with greeting
     tests_total += 1
-    if test_chat("Hello!"):
+    if check_chat("Hello!"):
         tests_passed += 1
-    
+
     # Test 4: Chat with name question
     tests_total += 1
-    if test_chat("What is your name?"):
+    if check_chat("What is your name?"):
         tests_passed += 1
-    
+
     # Test 5: Get history
     tests_total += 1
-    if test_history():
+    if check_history():
         tests_passed += 1
-    
+
     # Test 6: Reset conversation
     tests_total += 1
-    if test_reset():
+    if check_reset():
         tests_passed += 1
-    
+
     # Test 7: Verify history is empty after reset
     tests_total += 1
     print("Verifying history is empty after reset...")
@@ -154,12 +157,12 @@ def main():
         tests_passed += 1
     else:
         print("✗ History was not cleared\n")
-    
+
     # Summary
     print("=" * 60)
     print(f"Test Results: {tests_passed}/{tests_total} tests passed")
     print("=" * 60)
-    
+
     if tests_passed == tests_total:
         print("✓ All tests passed!")
         return 0
@@ -183,3 +186,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+

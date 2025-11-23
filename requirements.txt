@@ -7,8 +7,14 @@ gunicorn>=21.2.0
 asgiref>=3.7.0
 python-dotenv>=1.0.0
 
-# Testing dependencies
+# HTTP client for testing
 requests>=2.28.0
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+httpx>=0.24.0  # For testing FastAPI endpoints
 
 # AI Model Integrations
 openai>=1.12.0  # For OpenAI GPT models
@@ -28,12 +34,3 @@ pygments>=2.17.0  # Syntax highlighting
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 httpx>=0.24.0  # For testing FastAPI endpoints
-
-# Voice/TTS (Text-to-Speech)
-pyttsx3>=2.90  # Offline voice (no internet needed)
-gtts>=2.4.0  # Google TTS (needs internet, better quality)
-pygame>=2.5.0  # For playing audio
-
-# Self-improvement and portability
-schedule>=1.2.0  # For daily self-improvement routines
-pyinstaller>=6.0.0  # For creating standalone executable
