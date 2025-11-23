@@ -10,13 +10,12 @@ import tempfile
 import os
 from datetime import datetime
 
-# Mock voice_chat module before importing ai_agent
-sys_modules_patch = patch.dict('sys.modules', {
-    'speech_recognition': MagicMock(),
-    'pyttsx3': MagicMock(),
-    'voice_chat': MagicMock()
-})
-sys_modules_patch.start()
+# Mock dependencies before importing ai_agent
+import sys
+sys.modules['speech_recognition'] = MagicMock()
+sys.modules['pyttsx3'] = MagicMock()
+sys.modules['flask'] = MagicMock()
+sys.modules['flask_cors'] = MagicMock()
 
 from ai_agent import AIAgent
 
