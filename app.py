@@ -7,10 +7,21 @@ import json
 import os
 import logging
 from typing import List, Dict
-from fastapi import FastAPI, HTTPException
+from datetime import timedelta
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from ai_agent import AIAgent
+from auth import (
+    user_storage,
+    get_current_user,
+    create_access_token,
+    UserCreate,
+    UserLogin,
+    Token,
+    User,
+    ACCESS_TOKEN_EXPIRE_MINUTES
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -52,22 +63,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global agent instance
-# NOTE: This is a simplified implementation where all users share the same conversation history.
-# For production multi-user scenarios, implement per-session or per-user agent instances
-# using session cookies, JWT tokens, or a database-backed session store.
-agent = None
+# Per-user agent instances
+# Each user gets their own agent instance with isolated conversation history
+user_agents: Dict[str, AIAgent] = {}
 
 
-def get_agent() -> AIAgent:
+def get_agent(username: str = None) -> AIAgent:
     """
-    Get or create the global agent instance.
-    
-    Note: This returns a shared instance. For multi-user support, consider
-    implementing session-based agent management.
+    Get or create an agent instance for a specific user.
+
+    Args:
+        username: Username to get agent for. If None, returns a shared demo agent.
+
+    Returns:
+        AIAgent instance for the user
     """
-    global agent
-    if agent is None:
+    # For backward compatibility with health/root endpoints
+    if username is None:
+        username = "__shared__"
+
+    if username not in user_agents:
         # Load config if exists
         config = {}
         if os.path.exists('config.json'):
@@ -76,11 +91,11 @@ def get_agent() -> AIAgent:
                     config = json.load(f)
             except Exception as e:
                 logger.warning(f"Could not load config.json: {e}")
-        
+
         agent_name = config.get('agent_name', 'OG-AI')
-        agent = AIAgent(name=agent_name, config=config)
-    
-    return agent
+        user_agents[username] = AIAgent(name=agent_name, config=config)
+
+    return user_agents[username]
 
 
 # Pydantic models for request/response
@@ -156,6 +171,85 @@ class StatusResponse(BaseModel):
     )
 
 
+# ==================== Authentication Endpoints ====================
+
+@app.post("/auth/register", response_model=User, status_code=status.HTTP_201_CREATED)
+async def register(user_data: UserCreate):
+    """
+    Register a new user account.
+
+    Args:
+        user_data: UserCreate model with username and password
+
+    Returns:
+        User object for the newly created user
+
+    Raises:
+        HTTPException: If username already exists
+    """
+    try:
+        user = user_storage.create_user(user_data.username, user_data.password)
+        logger.info(f"New user registered: {user.username}")
+        return User(username=user.username, created_at=user.created_at)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error during registration: {str(e)}")
+        detail = f"Registration failed: {str(e)}" if DEVELOPMENT_MODE else "Registration failed"
+        raise HTTPException(status_code=500, detail=detail)
+
+
+@app.post("/auth/login", response_model=Token)
+async def login(user_data: UserLogin):
+    """
+    Authenticate and receive a JWT access token.
+
+    Args:
+        user_data: UserLogin model with username and password
+
+    Returns:
+        Token object with JWT access token
+
+    Raises:
+        HTTPException: If authentication fails
+    """
+    user = user_storage.authenticate_user(user_data.username, user_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=access_token_expires
+    )
+
+    logger.info(f"User logged in: {user.username}")
+    return Token(access_token=access_token)
+
+
+@app.get("/auth/me", response_model=User)
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """
+    Get information about the currently authenticated user.
+
+    Args:
+        current_user: Current user from JWT token (injected by dependency)
+
+    Returns:
+        User object with current user information
+    """
+    return current_user
+
+
+# ==================== Public Endpoints ====================
+
 @app.get("/", response_model=StatusResponse)
 async def root():
     """
@@ -183,49 +277,57 @@ async def health_check():
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, current_user: User = Depends(get_current_user)):
     """
     Send a message to the AI agent and receive a response.
-    
+
+    Requires authentication. Each user has their own isolated conversation history.
+
     Args:
         request: ChatRequest containing the user's message
-        
+        current_user: Current authenticated user (injected by dependency)
+
     Returns:
         ChatResponse with the agent's reply
     """
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-    
-    agent_instance = get_agent()
-    
+
+    agent_instance = get_agent(current_user.username)
+
     try:
         response = agent_instance.process_message(request.message.strip())
-        
+
         # Get the latest assistant message from history
         history = agent_instance.get_conversation_history()
         latest_msg = history[-1] if history else None
-        
+
         return {
             "response": response,
             "agent_name": agent_instance.name,
             "timestamp": latest_msg['timestamp'] if latest_msg else ""
         }
     except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
+        logger.error(f"Error processing message for user {current_user.username}: {str(e)}")
         detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
         raise HTTPException(status_code=500, detail=detail)
 
 
 @app.get("/history", response_model=HistoryResponse)
-async def get_history():
+async def get_history(current_user: User = Depends(get_current_user)):
     """
-    Get the full conversation history.
-    
+    Get the full conversation history for the authenticated user.
+
+    Requires authentication. Returns only the user's own conversation history.
+
+    Args:
+        current_user: Current authenticated user (injected by dependency)
+
     Returns:
         HistoryResponse with all conversation messages
     """
-    agent_instance = get_agent()
-    
+    agent_instance = get_agent(current_user.username)
+
     try:
         history = agent_instance.get_conversation_history()
         return {
@@ -234,21 +336,26 @@ async def get_history():
             "message_count": len(history)
         }
     except Exception as e:
-        logger.error(f"Error retrieving history: {str(e)}")
+        logger.error(f"Error retrieving history for user {current_user.username}: {str(e)}")
         detail = f"An error occurred while retrieving conversation history: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while retrieving conversation history"
         raise HTTPException(status_code=500, detail=detail)
 
 
 @app.post("/reset", response_model=StatusResponse)
-async def reset_conversation():
+async def reset_conversation(current_user: User = Depends(get_current_user)):
     """
-    Clear the conversation history.
-    
+    Clear the conversation history for the authenticated user.
+
+    Requires authentication. Only clears the user's own conversation history.
+
+    Args:
+        current_user: Current authenticated user (injected by dependency)
+
     Returns:
         StatusResponse confirming the reset
     """
-    agent_instance = get_agent()
-    
+    agent_instance = get_agent(current_user.username)
+
     try:
         agent_instance.clear_history()
         return {
@@ -257,20 +364,25 @@ async def reset_conversation():
             "message": "Conversation history has been cleared"
         }
     except Exception as e:
-        logger.error(f"Error resetting conversation: {str(e)}")
+        logger.error(f"Error resetting conversation for user {current_user.username}: {str(e)}")
         detail = f"An error occurred while resetting conversation: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while resetting conversation"
         raise HTTPException(status_code=500, detail=detail)
 
 
 @app.post("/clear", response_model=StatusResponse)
-async def clear_history():
+async def clear_history(current_user: User = Depends(get_current_user)):
     """
     Clear the conversation history (Flask API backward compatibility alias for /reset).
-    
+
+    Requires authentication. Only clears the user's own conversation history.
+
+    Args:
+        current_user: Current authenticated user (injected by dependency)
+
     Returns:
         StatusResponse confirming the clear
     """
-    return await reset_conversation()
+    return await reset_conversation(current_user)
 
 
 if __name__ == "__main__":

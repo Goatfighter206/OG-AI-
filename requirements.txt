@@ -10,6 +10,11 @@ python-dotenv>=1.0.0
 # HTTP client for testing
 requests>=2.28.0
 
+# Authentication and security
+python-jose[cryptography]>=3.3.0  # JWT token handling
+passlib[bcrypt]>=1.7.4  # Password hashing
+python-multipart>=0.0.6  # For OAuth2 form data
+
 # Testing framework
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
