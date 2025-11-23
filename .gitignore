@@ -43,3 +43,12 @@ Thumbs.db
 # Conversation files (examples)
 conversation_example.json
 conversations/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# User data (authentication)
+users.json
+test_users.json
