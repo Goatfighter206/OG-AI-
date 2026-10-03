@@ -336,7 +336,7 @@ const {{ComponentName}} = ({{ {props} }}) => {{
   }}
 
   return (
-    <div className="{{component-name}}">
+    <div className="{component_name}">
       <h2>{{ComponentName}}</h2>
       <p>{description}</p>
       
@@ -421,7 +421,7 @@ export default {{ComponentName}};
             ComponentName=component_name.replace(' ', ''),
             description=description,
             props=props,
-            component-name=component_class
+            component_name=component_class
         )
         
         return code

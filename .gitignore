@@ -40,6 +40,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Environment variables / secrets (never commit)
+.env
+
 # Conversation files (examples)
 conversation_example.json
 conversations/

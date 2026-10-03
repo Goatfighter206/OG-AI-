@@ -599,61 +599,38 @@ async def chat(message: str, use_voice: bool = False) -> str:
     return await agent.process_message(message, use_voice)
 
 
-if __name__ == "__main__":
-    import asyncio
-    
-    print("="*70)
-    print("  🔥 OG-AI SUPREME AGENT - THE SMARTEST AI IN THE FUCKING WORLD 🔥")
-    print("="*70)
-    print()
-    
-    # Initialize agent
-    agent = get_supreme_agent()
-    
-    # Show status
-    status = agent.get_status_report()
-    print("📊 Status Report:")
-    print(f"   Intelligence Level: {status['intelligence_level']}")
-    print(f"   AI Providers: {', '.join(status['ai_providers'])}")
-    print(f"   Web Search: {'✅' if status['capabilities']['web_search'] else '❌'}")
-    print(f"   Voice: {'✅' if status['capabilities']['voice'] else '❌'}")
-    print(f"   Code Generation: ✅")
-    print(f"   Self-Learning: ✅")
-    print()
-    
-    # Interactive mode
-    print("💬 Ready to chat! Type 'quit' to exit, 'status' for report")
-    print()
-    
-    async def main_loop():
-        while True:
-            try:
-                user_input = input("You: ").strip()
-                
-                if not user_input:
-                    continue
-                
-                if user_input.lower() in ['quit', 'exit', 'bye']:
-                    print("OG-AI: Later homie! Stay gangster. 💯")
-                    break
-                
-                if user_input.lower() == 'status':
-                    status = agent.get_status_report()
-                    print(json.dumps(status, indent=2))
-                    continue
-                
-                # Process message
-                response = await agent.process_message(user_input)
-                print(f"\nOG-AI: {response}\n")
-                
-            except KeyboardInterrupt:
-                print("\n\nOG-AI: Peace out! 👊")
-                break
-            except Exception as e:
-                print(f"\n❌ Error: {e}\n")
-    
-    # Run
-    asyncio.run(main_loop())
+class OGSupremeAgentLegacy:
+    """
+    Earlier synchronous variant of the supreme agent.
+
+    REPAIR NOTE: In the original file this implementation was spliced in
+    directly after the async agent's __main__ demo block with its class
+    header and the opening of __init__ missing, which made the whole file
+    unparseable (IndentationError at the constructor fragment). It is
+    preserved here as its own class. The __init__ opening below is
+    reconstructed from the attributes the surviving constructor body
+    uses (learning_system, code_generator, ai_providers) and from this
+    variant's own setup methods; the rest of the constructor and all
+    methods are the original code, unmodified.
+    """
+
+    def __init__(self):
+        """Initialize the legacy supreme agent"""
+        logger.info("🔥 Initializing OG-AI SUPREME AGENT (legacy sync variant)...")
+
+        # Load environment variables
+        self.load_environment()
+
+        # Initialize core components
+        self.learning_system = SelfLearningSystem()
+        self.code_generator = get_code_generator()
+
+        # AI Providers
+        self.ai_providers = self.setup_ai_providers()
+
+        # Conversation history
+        self.conversation_history = []
+
         self.voice_engine = self.setup_voice()
         
         # Intelligence metrics
@@ -1150,7 +1127,7 @@ def main():
     print("🔥"*35 + "\n")
     
     # Create the supreme agent
-    agent = OGSupremeAgent()
+    agent = OGSupremeAgentLegacy()
     
     # Print status
     agent.print_status()
@@ -1186,4 +1163,57 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    
+    print("="*70)
+    print("  🔥 OG-AI SUPREME AGENT - THE SMARTEST AI IN THE FUCKING WORLD 🔥")
+    print("="*70)
+    print()
+    
+    # Initialize agent
+    agent = get_supreme_agent()
+    
+    # Show status
+    status = agent.get_status_report()
+    print("📊 Status Report:")
+    print(f"   Intelligence Level: {status['intelligence_level']}")
+    print(f"   AI Providers: {', '.join(status['ai_providers'])}")
+    print(f"   Web Search: {'✅' if status['capabilities']['web_search'] else '❌'}")
+    print(f"   Voice: {'✅' if status['capabilities']['voice'] else '❌'}")
+    print(f"   Code Generation: ✅")
+    print(f"   Self-Learning: ✅")
+    print()
+    
+    # Interactive mode
+    print("💬 Ready to chat! Type 'quit' to exit, 'status' for report")
+    print()
+    
+    async def main_loop():
+        while True:
+            try:
+                user_input = input("You: ").strip()
+                
+                if not user_input:
+                    continue
+                
+                if user_input.lower() in ['quit', 'exit', 'bye']:
+                    print("OG-AI: Later homie! Stay gangster. 💯")
+                    break
+                
+                if user_input.lower() == 'status':
+                    status = agent.get_status_report()
+                    print(json.dumps(status, indent=2))
+                    continue
+                
+                # Process message
+                response = await agent.process_message(user_input)
+                print(f"\nOG-AI: {response}\n")
+                
+            except KeyboardInterrupt:
+                print("\n\nOG-AI: Peace out! 👊")
+                break
+            except Exception as e:
+                print(f"\n❌ Error: {e}\n")
+    
+    # Run
+    asyncio.run(main_loop())

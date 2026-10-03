@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 try:
     from ai_agent_enhanced import EnhancedAIAgent as AIAgent
     print("*** Enhanced AI Agent loaded - Full intelligence mode activated! ***")
-except ImportError as e:
+except Exception as e:
     print(f"*** Enhanced features not available: {e}")
     print("*** Installing required packages will enable full features")
     from ai_agent import AIAgent
@@ -316,14 +316,6 @@ async def reset_conversation():
         logger.error(f"Error resetting conversation: {str(e)}")
         detail = f"An error occurred while resetting conversation: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while resetting conversation"
         raise HTTPException(status_code=500, detail=detail)
-
-
-@app.post("/clear")
-async def clear_conversation():
-    """
-    Clear the conversation history (alternative endpoint for compatibility).
-    """
-    return await reset_conversation()
 
 
 @app.get("/intelligence")

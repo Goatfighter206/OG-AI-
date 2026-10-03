@@ -83,7 +83,6 @@ class EnhancedAIAgent:
     Enhanced AI Agent with HARDCORE intelligence, web access, gangster personality, 
     VOICE, and SELF-LEARNING/IMPROVEMENT capabilities
     """
-    """
 
     # GANGSTER DICTIONARY - Street Slang & Hood Talk
     GANGSTER_SLANG = {
@@ -565,19 +564,6 @@ EXAMPLES OF YOUR SPEECH:
         if len(text) > 500:
             text = text[:500] + "... and more."
         return text
-            context += f"\n\n[CODE EXECUTION RESULT]:\n{exec_result}\n"
-
-        if intent['needs_url_scrape'] and intent['url']:
-            scrape_result = self.scrape_webpage(intent['url'])
-            context += f"\n\n[WEBPAGE CONTENT]:\n{scrape_result}\n"
-
-        # Generate response with AI or fallback
-        response = self._generate_ai_response(user_message, context)
-
-        # Add assistant response to history
-        self.add_message('assistant', response)
-
-        return response
 
     def _generate_ai_response(self, message: str, context: str = "") -> str:
         """Generate response using AI models"""
@@ -677,7 +663,7 @@ EXAMPLES OF YOUR SPEECH:
 
         # Greetings
         if any(word in message_lower for word in ['hello', 'hi', 'hey', 'sup', 'yo', 'wassup']):
-            return random.choice(self.SASSY_GREETINGS).format(name=self.name)
+            return random.choice(self.GANGSTER_SLANG['greetings']).format(name=self.name)
 
         # Help requests
         if 'help' in message_lower:
