@@ -6,10 +6,13 @@ Exposes REST API endpoints for interacting with the AI agent.
 import json
 import os
 import logging
-from typing import List, Dict
-from fastapi import FastAPI, HTTPException
+import threading
+import uuid
+from datetime import datetime, timezone
+from typing import List, Dict, Optional
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
@@ -28,6 +31,63 @@ logger = logging.getLogger(__name__)
 
 # Check if running in development mode (for error detail control)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
+
+# --- OG Pro (v1 money layer) -------------------------------------------------
+# Free tier: each visitor (tracked by an `ogai_uid` cookie) gets a limited
+# number of chat messages per UTC day. Pro visitors (holding a valid
+# `ogai_pro` cookie) chat unlimited. See /pro and /pro/success below.
+FREE_DAILY_LIMIT = int(os.getenv("OG_FREE_DAILY_LIMIT", "10"))
+PRO_UPGRADE_URL = os.getenv("OG_PRO_LINK", "#")
+# SECURITY: set OG_PRO_TOKEN to a long random secret in production. The
+# fallback below is only a placeholder and MUST be rotated before launch —
+# anyone who knows the token can give themselves a Pro cookie.
+PRO_TOKEN = os.getenv("OG_PRO_TOKEN", "CHANGE_ME_PRO_TOKEN")
+USAGE_STORE_FILE = "usage_store.json"
+COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year
+_usage_lock = threading.Lock()
+
+
+def _load_usage_store() -> Dict:
+    """Load per-visitor daily chat counts from the JSON usage store."""
+    if os.path.exists(USAGE_STORE_FILE):
+        try:
+            with open(USAGE_STORE_FILE, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning(f"Could not load usage store: {e}")
+    return {}
+
+
+def _save_usage_store(store: Dict):
+    """Save per-visitor daily chat counts to the JSON usage store."""
+    try:
+        with open(USAGE_STORE_FILE, 'w') as f:
+            json.dump(store, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not save usage store: {e}")
+
+
+def _consume_free_message(uid: str) -> bool:
+    """
+    Record one chat message for this visitor today (UTC).
+
+    Returns False when the visitor has already hit the free daily cap
+    (the message is NOT recorded in that case).
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _usage_lock:
+        store = _load_usage_store()
+        entry = store.get(uid)
+        if not isinstance(entry, dict) or entry.get("date") != today:
+            entry = {"date": today, "count": 0}
+        if entry["count"] >= FREE_DAILY_LIMIT:
+            return False
+        entry["count"] += 1
+        store[uid] = entry
+        _save_usage_store(store)
+        return True
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -117,6 +177,8 @@ class ChatResponse(BaseModel):
     response: str
     agent_name: str
     timestamp: str
+    # Only set when a free visitor hits the daily cap; omitted otherwise.
+    upgrade_url: Optional[str] = None
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -223,22 +285,50 @@ async def health_check():
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
+async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
     """
     Send a message to the AI agent and receive a response.
-    
+
+    Free visitors get FREE_DAILY_LIMIT messages per UTC day (tracked by an
+    `ogai_uid` cookie); Pro visitors (valid `ogai_pro` cookie) are unlimited.
+    A capped visitor still gets HTTP 200 with an in-persona reply pointing
+    at the upgrade URL.
+
     Args:
         request: ChatRequest containing the user's message and optional voice setting
-        
+
     Returns:
         ChatResponse with the agent's reply
     """
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-    
+
     agent_instance = get_agent()
-    
+
+    # Visitor identity: hand out an `ogai_uid` cookie to new visitors.
+    uid = raw_request.cookies.get("ogai_uid")
+    if not uid:
+        uid = uuid.uuid4().hex
+        http_response.set_cookie(
+            "ogai_uid", uid,
+            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
+        )
+
+    # Freemium gate: Pro cookie holders skip the daily cap entirely.
+    if raw_request.cookies.get("ogai_pro") != PRO_TOKEN:
+        if not _consume_free_message(uid):
+            return {
+                "response": (
+                    f"Yo, real talk — you're outta free messages for today "
+                    f"({FREE_DAILY_LIMIT} a day on the free plan), and the OG don't work for free forever. "
+                    f"Go Pro for unlimited: {PRO_UPGRADE_URL} — or slide back tomorrow when your freebies reset."
+                ),
+                "agent_name": agent_instance.name,
+                "timestamp": datetime.now().isoformat(),
+                "upgrade_url": PRO_UPGRADE_URL
+            }
+
     try:
         # Check if agent has voice/learning capabilities
         has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
@@ -270,6 +360,36 @@ async def chat(request: ChatRequest):
         logger.error(f"Error processing message: {str(e)}")
         detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
         raise HTTPException(status_code=500, detail=detail)
+
+
+@app.get("/pro")
+async def pro_upgrade():
+    """
+    Send visitors to the Pro checkout.
+
+    The destination is the Stripe payment link configured via OG_PRO_LINK;
+    Stripe should be set to redirect buyers to /pro/success after checkout.
+    """
+    return RedirectResponse(url=PRO_UPGRADE_URL, status_code=302)
+
+
+@app.get("/pro/success")
+async def pro_success():
+    """
+    Pro unlock landing page (v1 entitlement model).
+
+    v1 is deliberately simple: the Stripe payment link redirects buyers here
+    after checkout and we just set the `ogai_pro` cookie, which lifts the
+    daily cap. Anyone who reaches this URL gets Pro, so the v2 upgrade is
+    to verify payment first (Stripe webhook or a signed/email-verified link)
+    before granting the cookie.
+    """
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie(
+        "ogai_pro", PRO_TOKEN,
+        max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
+    )
+    return response
 
 
 @app.get("/history", response_model=HistoryResponse)

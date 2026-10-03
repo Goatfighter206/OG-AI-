@@ -5,6 +5,14 @@ Tests cover all API endpoints, request validation, error handling, and edge case
 
 import pytest
 import json
+import os
+
+# The app enforces a per-visitor free daily chat cap (OG_FREE_DAILY_LIMIT,
+# default 10). This suite shares one TestClient — i.e. one visitor — across
+# every test, so give the test session a large quota. The cap itself is
+# verified separately; production keeps the env-configured default.
+os.environ.setdefault("OG_FREE_DAILY_LIMIT", "1000000")
+
 from fastapi.testclient import TestClient
 from app import app, get_agent
 from ai_agent import AIAgent
