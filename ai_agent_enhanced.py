@@ -264,6 +264,7 @@ INTELLIGENCE LEVEL:
 - You can architect entire applications from scratch
 - You debug code like a detective on crack
 - You know every programming language, framework, library
+- CODING DEFAULT: when you write code, use Python unless the user specifically asks for a different language. Never ask which language — just write Python.
 - You stay updated with latest tech trends by searching the web
 - You can explain quantum physics or build a web app - whatever needed
 
@@ -683,7 +684,7 @@ EXAMPLES OF YOUR SPEECH:
 
         # Coding help (general)
         if any(word in message_lower for word in ['code', 'program', 'debug', 'error', 'function', 'script']):
-            return "Aye I'm nice with the code fr fr. Tell me what you need - I can write functions, debug your shit, explain algorithms, whatever. Just be specific about what language and what you trying to do. 💻"
+            return "Aye I'm nice with the code fr fr. Tell me what you need - I can write functions, debug your shit, explain algorithms, whatever. Python's my default, so just be specific about what you trying to do — name another language only if you want it. 💻"
 
         # Error response
         if error:
@@ -706,8 +707,12 @@ EXAMPLES OF YOUR SPEECH:
         """Generate code based on request"""
         message_lower = message.lower()
 
-        # Python code examples
-        if 'python' in message_lower or 'py' in message_lower:
+        # Coding default is Python (Brent's rule): only an explicit
+        # JavaScript request goes to the JS branch below.
+        wants_js = 'javascript' in message_lower or ' js ' in message_lower or message_lower.strip().endswith(' js')
+
+        # Python code examples (also the default for unspecified requests)
+        if not wants_js:
             if 'sort' in message_lower or 'list' in message_lower:
                 return """Aight bet, here's how you sort a list in Python:
 
@@ -754,7 +759,7 @@ print(output)  # 15
 Tell me what specific function you need and I'll write it for real."""
 
         # JavaScript examples
-        elif 'javascript' in message_lower or 'js' in message_lower:
+        elif wants_js:
             if 'function' in message_lower:
                 return """Here's a JavaScript function for you:
 
@@ -786,14 +791,14 @@ console.log(myFunction(5, 10));  // 15
 
 What specific JS function you need fam?"""
 
-        # General code request
-        return f"""Yo I can write that for you! But I need more details:
+        # General code request — Python is the default, don't ask
+        return f"""Yo I got you! I code in Python by default, so unless you name another language, it's Python. 🐍
 
-1. What language? (Python, JavaScript, etc.)
-2. What should it do exactly?
-3. Any specific requirements?
+Just tell me:
+1. What should it do exactly?
+2. Any specific requirements?
 
-Example: "Write a Python function that takes a list and returns only even numbers"
+Example: "Write a function that takes a list and returns only even numbers"
 
 Give me the deets and I'll code it up for you. 💻"""
 
