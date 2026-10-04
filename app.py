@@ -89,6 +89,32 @@ def _consume_free_message(uid: str) -> bool:
         _save_usage_store(store)
         return True
 
+
+# --- AI voice (text-to-speech) ----------------------------------------------
+# When OPENAI_API_KEY is set, /tts turns OG's replies into realistic
+# spoken audio (OpenAI TTS, deep male "onyx" voice). Without the key the
+# endpoint answers 503 and the web page falls back to the device voice.
+# A per-visitor daily cap keeps the key from being run up by strangers.
+TTS_DAILY_LIMIT = int(os.getenv("OG_TTS_DAILY_LIMIT", "60"))
+TTS_MAX_CHARS = 600
+
+
+def _consume_tts_call(uid: str) -> bool:
+    """Record one /tts call for this visitor today (UTC); False at cap."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"tts:{uid}"
+    with _usage_lock:
+        store = _load_usage_store()
+        entry = store.get(key)
+        if not isinstance(entry, dict) or entry.get("date") != today:
+            entry = {"date": today, "count": 0}
+        if entry["count"] >= TTS_DAILY_LIMIT:
+            return False
+        entry["count"] += 1
+        store[key] = entry
+        _save_usage_store(store)
+        return True
+
 # Initialize FastAPI app
 app = FastAPI(
     title="OG-AI Agent API",
@@ -360,6 +386,44 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         logger.error(f"Error processing message: {str(e)}")
         detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
         raise HTTPException(status_code=500, detail=detail)
+
+
+@app.post("/tts")
+async def text_to_speech(raw_request: Request):
+    """
+    Turn a chat reply into realistic spoken audio (OpenAI TTS).
+
+    Needs OPENAI_API_KEY in the environment; without it, answers 503
+    and the web page uses the visitor's device voice instead.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="AI voice not configured")
+    try:
+        body = await raw_request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request body")
+    text = str(body.get("text", "")).strip()[:TTS_MAX_CHARS]
+    if not text:
+        raise HTTPException(status_code=400, detail="No text to speak")
+    uid = raw_request.cookies.get("ogai_uid") or "anon"
+    if not _consume_tts_call(uid):
+        raise HTTPException(status_code=429, detail="Daily voice limit reached")
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(
+                "https://api.openai.com/v1/audio/speech",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": "tts-1", "voice": "onyx", "input": text},
+            )
+    except Exception as e:
+        logger.warning(f"TTS request failed: {e}")
+        raise HTTPException(status_code=502, detail="Voice service unavailable")
+    if r.status_code != 200:
+        logger.warning(f"TTS upstream status: {r.status_code}")
+        raise HTTPException(status_code=502, detail="Voice service error")
+    return Response(content=r.content, media_type="audio/mpeg")
 
 
 @app.get("/pro")
