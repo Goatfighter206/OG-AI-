@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
@@ -114,6 +114,50 @@ def _consume_tts_call(uid: str) -> bool:
         store[key] = entry
         _save_usage_store(store)
         return True
+
+# --- Business stats (for the owner) ------------------------------------------
+# OG keeps his own scorecard: chat messages, visitors who hit the free cap,
+# Pro checkout clicks, and post-payment landings. Counters live in the same
+# JSON store as usage counts (key "__stats__"). The owner reads them at
+# GET /stats?key=<OG_STATS_TOKEN>.
+STATS_TOKEN = os.getenv("OG_STATS_TOKEN", "")
+STATS_KEY = "__stats__"
+_STAT_FIELDS = ("messages", "cap_hits", "pro_clicks", "pro_success")
+
+
+def _bump_stat(field: str, amount: int = 1):
+    """Increment a business counter, all-time and for today (UTC)."""
+    if field not in _STAT_FIELDS:
+        return
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _usage_lock:
+        store = _load_usage_store()
+        stats = store.get(STATS_KEY)
+        if not isinstance(stats, dict):
+            stats = {"since": today, "days": {}}
+            for f in _STAT_FIELDS:
+                stats[f] = 0
+        stats[field] = int(stats.get(field, 0)) + amount
+        day = stats.setdefault("days", {}).setdefault(
+            today, {f: 0 for f in _STAT_FIELDS})
+        day[field] = int(day.get(field, 0)) + amount
+        store[STATS_KEY] = stats
+        _save_usage_store(store)
+
+
+def _visitor_counts(store: Dict):
+    """(total distinct visitors, visitors active today) from usage entries."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total = active_today = 0
+    for key, entry in store.items():
+        if key == STATS_KEY or key.startswith("tts:") or not isinstance(entry, dict):
+            continue
+        total += 1
+        if entry.get("date") == today:
+            active_today += 1
+    return total, active_today
+
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -344,6 +388,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     # Freemium gate: Pro cookie holders skip the daily cap entirely.
     if raw_request.cookies.get("ogai_pro") != PRO_TOKEN:
         if not _consume_free_message(uid):
+            _bump_stat("cap_hits")
             return {
                 "response": (
                     f"Yo, real talk — you're outta free messages for today "
@@ -376,6 +421,8 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             "timestamp": latest_msg['timestamp'] if latest_msg else ""
         }
         
+        _bump_stat("messages")
+
         # Add intelligence info if learning is enabled
         if has_learning:
             report = agent_instance.learning_system.get_intelligence_report()
@@ -434,6 +481,7 @@ async def pro_upgrade():
     The destination is the Stripe payment link configured via OG_PRO_LINK;
     Stripe should be set to redirect buyers to /pro/success after checkout.
     """
+    _bump_stat("pro_clicks")
     return RedirectResponse(url=PRO_UPGRADE_URL, status_code=302)
 
 
@@ -448,12 +496,80 @@ async def pro_success():
     to verify payment first (Stripe webhook or a signed/email-verified link)
     before granting the cookie.
     """
+    _bump_stat("pro_success")
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie(
         "ogai_pro", PRO_TOKEN,
         max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
     )
     return response
+
+
+
+@app.get("/stats", response_class=HTMLResponse)
+async def stats_page(key: str = ""):
+    """
+    Owner-only scorecard: visitors, messages, cap hits, Pro clicks and
+    post-payment landings — today and since counting started. Locked
+    unless OG_STATS_TOKEN is set and passed as ?key=.
+    """
+    if not STATS_TOKEN or key != STATS_TOKEN:
+        raise HTTPException(status_code=401, detail="Owner key required")
+    with _usage_lock:
+        store = _load_usage_store()
+    stats = store.get(STATS_KEY)
+    if not isinstance(stats, dict):
+        stats = {"since": "today", "days": {}}
+    total_visitors, today_visitors = _visitor_counts(store)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day = (stats.get("days") or {}).get(today, {})
+
+    def n(d, f):
+        return int(d.get(f, 0) or 0)
+
+    def card(label, value, sub=""):
+        return (f'<div class="card"><div class="num">{value}</div>'
+                f'<div class="lbl">{label}</div><div class="sub">{sub}</div></div>')
+
+    html = f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OG AI — Owner Stats</title>
+<style>
+  body {{ background:#0a0a0a; color:#f2f2f2; font-family: Arial, sans-serif; margin:0; padding:24px; }}
+  h1 {{ color:#ffc107; margin:0 0 4px; font-size:1.6em; letter-spacing:1px; }}
+  h2 {{ color:#ffc107; margin:26px 0 10px; font-size:1.05em; text-transform:uppercase; letter-spacing:2px; }}
+  .when {{ color:#999; margin-bottom:8px; }}
+  .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; }}
+  .card {{ background:#161616; border:1px solid #2c2c2c; border-left:4px solid #ffc107; border-radius:10px; padding:14px; }}
+  .num {{ font-size:2em; font-weight:bold; color:#fff; }}
+  .lbl {{ color:#ffc107; font-size:.85em; text-transform:uppercase; letter-spacing:1px; margin-top:2px; }}
+  .sub {{ color:#888; font-size:.8em; min-height:1em; }}
+  .note {{ color:#888; font-size:.85em; margin-top:26px; line-height:1.5; }}
+</style></head><body>
+<h1>💰 OG AI — The Scorecard</h1>
+<div class="when">Today (UTC): {today} &nbsp;•&nbsp; Counting since: {stats.get("since", "today")}</div>
+<h2>Today</h2>
+<div class="grid">
+  {card("Visitors", today_visitors)}
+  {card("Messages answered", n(day, "messages"))}
+  {card("Hit the free cap", n(day, "cap_hits"), "ran out of freebies")}
+  {card("Pro clicks", n(day, "pro_clicks"), "went to checkout")}
+  {card("Pro signups", n(day, "pro_success"), "landed after payment")}
+</div>
+<h2>All time</h2>
+<div class="grid">
+  {card("Visitors", total_visitors)}
+  {card("Messages answered", n(stats, "messages"))}
+  {card("Hit the free cap", n(stats, "cap_hits"))}
+  {card("Pro clicks", n(stats, "pro_clicks"))}
+  {card("Pro signups", n(stats, "pro_success"))}
+</div>
+<p class="note">Real talk on the numbers: "Pro signups" counts people who reached the
+post-payment page — your Stripe dashboard is the money truth. These counters live on
+the server and reset if the service gets rebuilt from scratch.</p>
+</body></html>"""
+    return HTMLResponse(content=html)
 
 
 @app.get("/history", response_model=HistoryResponse)
