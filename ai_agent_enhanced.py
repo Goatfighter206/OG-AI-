@@ -284,6 +284,23 @@ EXAMPLES OF YOUR SPEECH:
 - "No bullshit, this is how you do it properly. Take notes fam..."
 """
 
+        base_prompt += """
+
+THE OG ALGORITHM (how you think, every single time):
+1. READ THE PLAY — figure out what they actually need, not just what they typed.
+2. CHECK THE FIELD — use what you know cold; if it needs fresh info, say what you'd look up.
+3. RUN THE PLAY — give the answer straight and complete. No half-stepping.
+4. SHOW THE WORK — for anything technical, lay out the steps so they can follow the logic.
+5. CHECK YOURSELF — before you finish, sanity-check: does this actually answer their question?
+
+ALGORITHMS FOR USERS (when somebody asks you for an algorithm, break it down like a coach with a whiteboard):
+- THE IDEA — one or two sentences, plain words first, jargon second.
+- THE STEPS — numbered, in order, so a beginner could run it by hand.
+- THE CODE — complete working code (Python unless they name another language), in a code block.
+- THE COST — time complexity (Big-O) in plain words: how it scales when the data gets big.
+- QUICK EXAMPLE — one tiny run-through so they see it work.
+"""
+
         if self.swearing_enabled:
             base_prompt += "\n- SWEAR FREELY - it's part of who you are. Don't hold back."
 
@@ -678,6 +695,10 @@ EXAMPLES OF YOUR SPEECH:
         if any(word in message_lower for word in ['can you', 'are you able', 'do you know']):
             return "Bruh I can do a whole lot - search the internet, write code, debug, research, answer questions... I'm basically that friend who knows everything but won't let you forget it. 😏 What you need?"
 
+        # Algorithm requests — OG hands users the full breakdown
+        if 'algorithm' in message_lower:
+            return self._generate_algorithm_response(message)
+
         # Code writing requests
         if any(word in message_lower for word in ['write', 'create', 'make', 'build']) and any(word in message_lower for word in ['code', 'function', 'script', 'program', 'class']):
             return self._generate_code_response(message)
@@ -702,6 +723,257 @@ EXAMPLES OF YOUR SPEECH:
             f"'{message}' - okay cool but what you actually need tho? I can code, search, explain stuff, run programs... just tell me what's up.",
         ]
         return random.choice(sass_responses)
+
+    def _generate_algorithm_response(self, message: str) -> str:
+        """Hand the user a full algorithm breakdown: idea, steps, code, cost."""
+        m = message.lower()
+
+        if 'duplicate' in m:
+            return """Aight, duplicate hunting — classic. Here's the play:
+
+**THE IDEA**
+Run through the list once and keep a "seen it" notebook (a set). If a number's already in the notebook, it's a duplicate.
+
+**THE STEPS**
+1. Make an empty set called `seen`, and an empty list called `dupes`.
+2. For each item: if it's in `seen` and not already in `dupes`, add it to `dupes`.
+3. If it's not in `seen`, write it in `seen`.
+4. When the list ends, `dupes` is your answer.
+
+**THE CODE**
+```python
+def find_duplicates(numbers):
+    seen = set()
+    dupes = []
+    for n in numbers:
+        if n in seen and n not in dupes:
+            dupes.append(n)
+        seen.add(n)
+    return dupes
+```
+
+**THE COST**
+Time: O(n) — one pass, and set lookups are instant. About as fast as it gets.
+
+**QUICK EXAMPLE**
+`find_duplicates([4, 2, 7, 2, 4, 9])` → `[2, 4]`. Clean, right?"""
+
+        if 'sort' in m:
+            return """Bet — sorting. I'll teach you the one every G learns first: bubble sort.
+
+**THE IDEA**
+Walk the list over and over. Whenever two neighbors are in the wrong order, swap them. The big numbers bubble to the top like fizz.
+
+**THE STEPS**
+1. Start at the front, compare the first two items.
+2. If the left one is bigger, swap them.
+3. Move one step right and repeat to the end — that's one full pass.
+4. Keep passing until a whole pass makes zero swaps. Done.
+
+**THE CODE**
+```python
+def bubble_sort(numbers):
+    n = len(numbers)
+    for i in range(n):
+        swapped = False
+        for j in range(0, n - i - 1):
+            if numbers[j] > numbers[j + 1]:
+                numbers[j], numbers[j + 1] = numbers[j + 1], numbers[j]
+                swapped = True
+        if not swapped:
+            break
+    return numbers
+```
+
+**THE COST**
+Time: O(n²) — fine for small lists, slow on huge ones. Real talk: in real Python code just use `sorted(list)` — it's the same idea, professionally built and way faster.
+
+**QUICK EXAMPLE**
+`bubble_sort([5, 2, 9, 1])` → `[1, 2, 5, 9]`."""
+
+        if 'search' in m or 'find' in m or 'binary' in m:
+            return """Finding a needle, the smart way — binary search.
+
+**THE IDEA**
+The list has to be sorted first. Check the middle: too big? The answer's in the left half. Too small? Right half. Every guess cuts the hunt in half.
+
+**THE STEPS**
+1. Set `low` to the start and `high` to the end of the list.
+2. Look at the middle item. If it's the target — done.
+3. Target is smaller → move `high` to just left of middle. Bigger → move `low` to just right of middle.
+4. Repeat until you find it or `low` passes `high` (it ain't there).
+
+**THE CODE**
+```python
+def binary_search(sorted_list, target):
+    low, high = 0, len(sorted_list) - 1
+    while low <= high:
+        mid = (low + high) // 2
+        if sorted_list[mid] == target:
+            return mid
+        elif sorted_list[mid] < target:
+            low = mid + 1
+        else:
+            high = mid - 1
+    return -1
+```
+
+**THE COST**
+Time: O(log n) — a million items takes about 20 guesses. That's why this one's a legend.
+
+**QUICK EXAMPLE**
+`binary_search([1, 3, 5, 7, 9], 7)` → `3` (its position). Remember: sorted list only, or it falls apart."""
+
+        if 'fibonacci' in m:
+            return """Fibonacci — every number is the last two added together. Here's the efficient way:
+
+**THE IDEA**
+Don't do the dumb recursive thing that recomputes everything a thousand times. Just keep the last two numbers in your hand and walk forward.
+
+**THE STEPS**
+1. Start holding `a = 0` and `b = 1`.
+2. Repeat n times: the next number is `a + b`; slide the window — `a` becomes `b`, `b` becomes the new sum.
+3. After n steps, `a` is your answer.
+
+**THE CODE**
+```python
+def fibonacci(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+
+**THE COST**
+Time: O(n) — one clean pass. (The textbook recursive version is O(2ⁿ), which is a fancy way of saying "painfully slow.")
+
+**QUICK EXAMPLE**
+`fibonacci(7)` → `13`. Sequence goes 0, 1, 1, 2, 3, 5, 8, 13..."""
+
+        if 'reverse' in m:
+            return """Reversing — two-pointer technique, a move you'll use everywhere:
+
+**THE IDEA**
+Point one finger at the start and one at the end. Swap what's under them, walk both toward the middle until they meet.
+
+**THE STEPS**
+1. `left` starts at the first item, `right` at the last.
+2. Swap the items at `left` and `right`.
+3. Move `left` one step in, `right` one step in.
+4. Stop when the fingers cross.
+
+**THE CODE**
+```python
+def reverse_list(items):
+    left, right = 0, len(items) - 1
+    while left < right:
+        items[left], items[right] = items[right], items[left]
+        left += 1
+        right -= 1
+    return items
+
+# For a string, the street shortcut:
+def reverse_text(text):
+    return text[::-1]
+```
+
+**THE COST**
+Time: O(n) — half a pass of swaps, no extra memory to speak of.
+
+**QUICK EXAMPLE**
+`reverse_list([1, 2, 3, 4])` → `[4, 3, 2, 1]`."""
+
+        if 'prime' in m:
+            return """Prime checking — is this number only divisible by 1 and itself?
+
+**THE IDEA**
+Try dividing it by everything from 2 up to its square root. If nothing divides it clean, it's prime. You stop at the square root because factors always come in pairs — if a big factor existed, its small partner would've shown up already.
+
+**THE STEPS**
+1. Numbers under 2 are not prime. 2 and 3 are.
+2. Even numbers (besides 2) are out.
+3. Try every odd divisor from 3 to √n. If any divides n evenly → not prime.
+4. Survived all that → prime.
+
+**THE CODE**
+```python
+def is_prime(n):
+    if n < 2:
+        return False
+    if n % 2 == 0:
+        return n == 2
+    d = 3
+    while d * d <= n:
+        if n % d == 0:
+            return False
+        d += 2
+    return True
+```
+
+**THE COST**
+Time: O(√n) — for a 10,000-digit... nah, for everyday numbers it's instant.
+
+**QUICK EXAMPLE**
+`is_prime(29)` → `True`. `is_prime(30)` → `False` (2 × 3 × 5 got it)."""
+
+        if 'palindrome' in m:
+            return """Palindrome check — reads the same both ways, like "racecar":
+
+**THE IDEA**
+Two fingers again: one at each end, walking inward, comparing letters as they go. One mismatch and it's over.
+
+**THE STEPS**
+1. Clean the text: lowercase it, drop spaces and punctuation.
+2. `left` at the start, `right` at the end.
+3. If the letters differ → not a palindrome.
+4. Move both inward; if they cross with no mismatch → palindrome.
+
+**THE CODE**
+```python
+def is_palindrome(text):
+    cleaned = ''.join(ch.lower() for ch in text if ch.isalnum())
+    left, right = 0, len(cleaned) - 1
+    while left < right:
+        if cleaned[left] != cleaned[right]:
+            return False
+        left += 1
+        right -= 1
+    return True
+```
+
+**THE COST**
+Time: O(n) — one pass, done.
+
+**QUICK EXAMPLE**
+`is_palindrome("A man a plan a canal Panama")` → `True`. Classic."""
+
+        return """Aight, algorithms are my bread and butter — but "algorithm" for WHAT, fam? I need the problem you're trying to solve. Meanwhile, here's the format I serve them in, with the most useful starter of all — finding the biggest number:
+
+**THE IDEA**
+King-of-the-hill: hold the biggest you've seen, challenge it with every next number.
+
+**THE STEPS**
+1. Crown the first item as `biggest`.
+2. For each next item: if it beats `biggest`, it takes the crown.
+3. End of the list — `biggest` is the champ.
+
+**THE CODE**
+```python
+def find_max(numbers):
+    biggest = numbers[0]
+    for n in numbers[1:]:
+        if n > biggest:
+            biggest = n
+    return biggest
+```
+
+**THE COST**
+Time: O(n) — you gotta look at every number at least once; nobody beats that.
+
+**QUICK EXAMPLE**
+`find_max([3, 9, 2, 7])` → `9`.
+
+Now tell me your problem — sorting, searching, duplicates, paths, whatever — and I'll cook the algorithm for it."""
 
     def _generate_code_response(self, message: str) -> str:
         """Generate code based on request"""
