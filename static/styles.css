@@ -1626,3 +1626,30 @@ h1 {
     animation: ogblink .7s steps(1) infinite;
 }
 @keyframes ogblink { 50% { opacity: 0; } }
+
+/* ===== OG comes alive (web animation) ===== */
+.og-avatar { animation: ogIdle 4.2s ease-in-out infinite; transform-origin: 50% 90%; }
+.og-avatar.talking { animation: ogTalk .36s ease-in-out infinite; }
+.og-avatar.listening {
+    animation: ogIdle 2.2s ease-in-out infinite;
+    box-shadow: 0 0 0 3px rgba(255,193,7,.9), 0 0 22px rgba(255,193,7,.65);
+}
+.og-avatar.nod { animation: ogNod .55s ease-in-out 1; }
+@keyframes ogIdle {
+    0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+    50% { transform: translateY(-3px) rotate(-1deg) scale(1.015); }
+}
+@keyframes ogTalk {
+    0%, 100% { transform: translateY(0) scale(1); }
+    30% { transform: translateY(-4px) scale(1.03) rotate(.6deg); }
+    60% { transform: translateY(1px) scale(.995); }
+}
+@keyframes ogNod {
+    0% { transform: rotate(0deg); }
+    35% { transform: rotate(3.5deg) translateY(2px); }
+    70% { transform: rotate(-1.5deg); }
+    100% { transform: rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .og-avatar, .og-avatar.talking, .og-avatar.listening, .og-avatar.nod { animation: none; }
+}
