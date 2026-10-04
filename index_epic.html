@@ -247,6 +247,7 @@
         let recognition = null;
         let synthesis = window.speechSynthesis;
         let voiceMode = 'text'; // 'text', 'voice-to-text', 'text-to-voice', 'voice-to-voice'
+        let speakReplies = false; // persistent toggle: when on, OG speaks every reply
         let currentVoice = null;
 
         // Initialize
@@ -309,9 +310,30 @@
         }
 
         function activateTextToVoice() {
+            setSpeakReplies(true);
             updateStatus('Text to Voice mode activated! Type and I\'ll speak.');
             addMessage('ai', 'Text to Voice mode activated! Type your message and I\'ll speak the response.');
-            voiceMode = 'text-to-voice';
+        }
+
+        // Turn OG's spoken replies on/off. Called from inside a tap
+        // handler so iOS lets speech play later (see primeSpeech).
+        function setSpeakReplies(on) {
+            speakReplies = on;
+            voiceMode = on ? 'text-to-voice' : 'text';
+            const btn = document.getElementById('textToVoiceBtn');
+            if (btn) btn.classList.toggle('recording', on);
+            if (on) primeSpeech();
+        }
+
+        // iOS Safari only allows speech that traces back to a tap.
+        // Speaking one silent utterance inside the tap unlocks it.
+        function primeSpeech() {
+            if (!synthesis) return;
+            try {
+                const u = new SpeechSynthesisUtterance(' ');
+                u.volume = 0;
+                synthesis.speak(u);
+            } catch (e) { /* priming is best-effort */ }
         }
 
         function activateVoiceToText() {
@@ -512,12 +534,11 @@
         });
 
         document.getElementById('textToVoiceBtn').addEventListener('click', () => {
-            const msg = document.getElementById('messageInput').value.trim();
-            if (!msg) {
-                alert('Type a message first!');
-                return;
-            }
-            sendMessage(true);
+            // Toggle: tap once and every reply is spoken until tapped off.
+            setSpeakReplies(!speakReplies);
+            updateStatus(speakReplies
+                ? 'Voice ON — OG will talk back. Type a message!'
+                : 'Voice OFF');
         });
 
         document.getElementById('stopSpeakingBtn').addEventListener('click', () => {
@@ -568,27 +589,49 @@
 
         // Text to Speech
         function speakText(text) {
-            if (!synthesis) return;
+            if (!synthesis) {
+                updateStatus('Voice not supported in this browser');
+                return;
+            }
 
             synthesis.cancel(); // Stop any current speech
+            synthesis.resume(); // iOS sometimes leaves speech paused
 
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.voice = currentVoice;
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.volume = 1.0;
+            // Strip emojis/markdown so the voice reads clean, then
+            // speak sentence-sized chunks (iOS drops long utterances).
+            const clean = String(text)
+                .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+                .replace(/[*_#`>]/g, '')
+                .trim();
+            if (!clean) return;
+            const chunks = clean.match(/[^.!?\n]+[.!?]*\s*/g) || [clean];
 
-            utterance.onstart = () => {
-                updateStatus('AI is speaking...');
-                document.getElementById('textToVoiceBtn').classList.add('speaking');
-            };
+            chunks.forEach((chunk, i) => {
+                const utterance = new SpeechSynthesisUtterance(chunk.trim());
+                if (currentVoice) utterance.voice = currentVoice;
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
 
-            utterance.onend = () => {
-                updateStatus('Online & Ready');
-                document.getElementById('textToVoiceBtn').classList.remove('speaking');
-            };
+                if (i === 0) {
+                    utterance.onstart = () => {
+                        updateStatus('AI is speaking...');
+                        document.getElementById('textToVoiceBtn').classList.add('speaking');
+                    };
+                }
+                if (i === chunks.length - 1) {
+                    utterance.onend = () => {
+                        updateStatus('Online & Ready');
+                        document.getElementById('textToVoiceBtn').classList.remove('speaking');
+                    };
+                }
+                utterance.onerror = () => {
+                    updateStatus('Voice blocked — check the silent switch & volume');
+                    document.getElementById('textToVoiceBtn').classList.remove('speaking');
+                };
 
-            synthesis.speak(utterance);
+                synthesis.speak(utterance);
+            });
         }
 
         // Add Message to Chat
@@ -629,13 +672,13 @@
         document.getElementById('messageInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage(voiceMode === 'text-to-voice');
+                sendMessage(speakReplies);
             }
         });
 
         // Send button
         document.getElementById('sendBtn').addEventListener('click', () => {
-            sendMessage(voiceMode === 'text-to-voice');
+            sendMessage(speakReplies);
         });
 
         // Utility
