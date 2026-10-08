@@ -281,29 +281,31 @@ def _consume_calorie(uid: str) -> bool:
         _save_usage_store(store)
         return True
 
-# --- File reading (Round 6): everything lives in og_file_read.py ---
+# File reading (Round 6): og_file_read.py
 import og_file_read as _og_files
 import og_tiers as _og_tiers
-# --- Maps & places (Round 9): everything lives in og_maps.py ---
+# Maps & places (Round 9): og_maps.py
 import og_maps as _og_maps
-# --- Spotify connect (Round 10): everything lives in og_spotify.py ---
+# Spotify connect (Round 10): og_spotify.py
 import og_spotify as _og_spotify
-# --- Google hands (Round 12): everything lives in og_google_hands.py ---
+# Google hands (Round 12): og_google_hands.py
 import og_google_hands as _og_google_hands
-# --- GitHub connect (Round 14): everything lives in og_github.py ---
+# GitHub connect (Round 14): og_github.py
 import og_github as _og_github
-# --- Connect pack 2 (Round 15): everything lives in the og_<service>.py ---
+# Connect pack 2 (Round 15): og_<service>.py modules
 import og_youtube as _og_youtube
 import og_discord as _og_discord
 import og_twitch as _og_twitch
 import og_reddit as _og_reddit
-# --- Unity maker (Round 16): everything lives in og_unity.py ---
+# Unity maker (Round 16): og_unity.py
 import og_unity as _og_unity
-# --- Utilities pack (Round 17): og_utils.py ---
+# Utilities pack (Round 17): og_utils.py
 import og_utils as _og_utils
-# --- Monitoring pack (Round 18): og_monitor.py + og_plaid.py ---
+# Monitoring pack (Round 18): og_monitor.py + og_plaid.py
 import og_monitor as _og_monitor
 import og_plaid as _og_plaid
+# Online ordering (Round 19): og_ordering.py
+import og_ordering as _og_ordering
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -377,22 +379,18 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
 
 # --- Web lookup (Round 3): app-layer wrap of the agent's
 # detect_intent/web_search hooks (agent files never modified).
-# Primary: OpenAI Responses web_search; fallbacks Tavily
-# (OG_SEARCH_API_KEY), DuckDuckGo. Cap OG_LOOKUP_DAILY_LIMIT;
-# tokens metered at OG_LOOKUP_METER_CAP.
+# OpenAI Responses web_search; fallbacks Tavily/DuckDuckGo.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
 LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
-# Tokens spent by lookups in the exchange being processed, drained
-# into its metered total; single slot safe (chat is serialized
-# under _memory_lock). Same reasoning for the uid/tier slots below.
+# Lookup tokens spent by the current exchange (drained into its
+# metered total); single slots safe — chat is serialized.
 _lookup_tokens_stash = {"tokens": 0}
 _current_uid = {"uid": ""}
 _current_tier = {"tier": "free"}
-# The raw message being processed right now (set by the wrapped
-# detect_intent); the Round 4 data router tries it before the
-# search query, which is sometimes only a fragment.
+# The raw message being processed (set by the wrapped
+# detect_intent); the Round 4 data router tries it first.
 _current_message = {"text": ""}
 
 _LOOKUP_TRIGGER_PHRASES = (
@@ -1834,6 +1832,8 @@ def get_agent() -> AIAgent:
             _consume_calorie, lambda: _calorie_left(
                 _current_uid.get("uid", "")),
             lambda: _current_tier.get("tier", "free"))
+        _og_ordering.install_ordering_tools(
+            agent, lambda: _current_uid.get("uid", ""))
         _reset_memory_store()
 
     return agent
@@ -2575,6 +2575,13 @@ _og_utils.register_utils_routes(app)
 _og_plaid.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
 _og_plaid.register_plaid_routes(app)
 _og_monitor.register_monitor_routes(app)
+
+# Online ordering (Round 19): the module keeps its own handoff
+# counters on app.py's usage store (bound here).
+_og_ordering.bind_app({
+    "load_usage": _load_usage_store, "save_usage": _save_usage_store,
+    "usage_lock": _usage_lock,
+    "get_tier": lambda: _current_tier.get("tier", "free")})
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
