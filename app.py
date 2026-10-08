@@ -267,10 +267,15 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
 # DuckDuckGo search. If every route fails, chat carries on without lookup
 # results instead of erroring. A per-visitor daily cap (OG_LOOKUP_DAILY_LIMIT)
 # keeps the search bill bounded; the lookup's tokens are added to the chat
-# exchange's metered total.
+# exchange's metered total — weighed at OG_LOOKUP_METER_CAP, because the
+# search API counts the whole results page it read as input tokens (one
+# lookup reported ~8k), which would otherwise eat a free visitor's entire
+# 10k day in a single question. The exchange is still metered end to end;
+# the cap only bounds the lookup's share of the bill.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
+LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
 # Tokens spent by lookups during the exchange currently being processed,
 # drained into that exchange's metered total by the chat paths. All chat
 # processing is serialized under _memory_lock, so a single slot is safe.
@@ -430,7 +435,8 @@ def _og_web_search(agent_instance, query: str, num_results: int = 5):
         if got:
             text, sources, tokens = got
             if tokens:
-                _lookup_tokens_stash["tokens"] += int(tokens)
+                _lookup_tokens_stash["tokens"] += min(
+                    int(tokens), LOOKUP_METER_CAP)
             results = [{
                 "title": "Live web lookup",
                 "body": text[:1800],
