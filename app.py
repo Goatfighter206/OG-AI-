@@ -220,6 +220,8 @@ def _consume_image(uid: str):
 # --- File reading (Round 6): everything lives in og_file_read.py ------------
 import og_file_read as _og_files
 import og_tiers as _og_tiers
+# --- Maps & places (Round 9): everything lives in og_maps.py ----------------
+import og_maps as _og_maps
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
 # v1 grants Pro to anyone who lands on /pro/success. v2 verifies payment with
@@ -1775,6 +1777,8 @@ def get_agent() -> AIAgent:
         _og_files.install_file_tools(
             agent, lambda: _current_uid.get("uid", ""),
             lambda: os.getenv("OPENAI_API_KEY"))
+        _og_maps.install_maps_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
         _reset_memory_store()
 
     return agent
