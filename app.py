@@ -284,6 +284,11 @@ LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
 _lookup_tokens_stash = {"tokens": 0}
 # The visitor whose message is being processed right now (same reasoning).
 _current_uid = {"uid": ""}
+# The raw message being processed right now (set by the wrapped
+# detect_intent). The agent's own intent detection sometimes hands the
+# search hook a fragment ("in seattle today?"), so the Round 4 data
+# router tries the raw message first and the search query second.
+_current_message = {"text": ""}
 
 _LOOKUP_TRIGGER_PHRASES = (
     "look up", "lookup", "search for", "search the web", "google it",
@@ -476,6 +481,7 @@ def _install_lookup_tools(agent_instance):
     agent_instance._og_original_web_search = original_search
 
     def detect_intent_wrapped(message):
+        _current_message["text"] = str(message)
         intent = original_detect(message)
         try:
             if (isinstance(intent, dict)
@@ -547,7 +553,7 @@ def _data_store(key: str, value, ttl: int):
     return value
 
 
-def _fetch_json(url: str, timeout: float = 12.0):
+def _fetch_json(url: str, timeout: float = 20.0):
     """GET a JSON document for the data pack; None on any failure."""
     import httpx
     try:
@@ -562,7 +568,7 @@ def _fetch_json(url: str, timeout: float = 12.0):
         return None
 
 
-def _fetch_text(url: str, timeout: float = 12.0):
+def _fetch_text(url: str, timeout: float = 20.0):
     """GET a text document for the data pack; None on any failure."""
     import httpx
     try:
@@ -623,6 +629,39 @@ def _extract_place(query: str):
     return None
 
 
+def _geocode(place: str):
+    """Resolve a place name to (lat, lon, name, region) or None.
+    Open-Meteo's geocoder first, Nominatim (OpenStreetMap) as fallback —
+    the two live on different hosts, so one being unreachable from the
+    server doesn't kill the weather tool."""
+    import urllib.parse
+    geo = _fetch_json("https://geocoding-api.open-meteo.com/v1/search?"
+                      + urllib.parse.urlencode(
+                          {"name": place, "count": 1, "language": "en",
+                           "format": "json"}))
+    results = (geo or {}).get("results") or []
+    if results:
+        g = results[0]
+        return (g["latitude"], g["longitude"], g.get("name") or place,
+                g.get("admin1") or g.get("country") or "")
+    data = _fetch_json("https://nominatim.openstreetmap.org/search?"
+                       + urllib.parse.urlencode(
+                           {"q": place, "format": "json", "limit": 1,
+                            "addressdetails": 1}))
+    if data:
+        try:
+            top = data[0]
+            addr = top.get("address") or {}
+            name = (addr.get("city") or addr.get("town")
+                    or addr.get("village")
+                    or (top.get("display_name") or place).split(",")[0])
+            region = (addr.get("state") or addr.get("country") or "")
+            return (float(top["lat"]), float(top["lon"]), name, region)
+        except Exception as e:
+            logger.warning(f"Nominatim geocode parse failed: {e}")
+    return None
+
+
 def _tool_weather(query: str):
     """Live weather via Open-Meteo. (label, text, source) or None."""
     low = str(query).lower()
@@ -637,14 +676,11 @@ def _tool_weather(query: str):
     if hit:
         return hit
     import urllib.parse
-    geo = _fetch_json("https://geocoding-api.open-meteo.com/v1/search?"
-                      + urllib.parse.urlencode(
-                          {"name": place, "count": 1, "language": "en",
-                           "format": "json"}))
-    results = (geo or {}).get("results") or []
-    if not results:
+    geo = _geocode(place)
+    if not geo:
         return None
-    g = results[0]
+    g = {"latitude": geo[0], "longitude": geo[1], "name": geo[2],
+         "admin1": geo[3]}
     fc = _fetch_json("https://api.open-meteo.com/v1/forecast?"
                      + urllib.parse.urlencode({
                          "latitude": g["latitude"],
@@ -799,7 +835,7 @@ def _espn_events(url: str, cache_key: str):
     hit = _data_cached(cache_key)
     if hit is not None:
         return hit
-    data = _fetch_json(url)
+    data = _fetch_json(url, timeout=30.0)
     events = (data or {}).get("events") or []
     return _data_store(cache_key, events, _DATA_TTL["sports"])
 
@@ -1218,24 +1254,31 @@ def _tool_news(query: str):
 def _og_data_tools(query: str):
     """Round 4 router: try the live data pack for this query. On a hit,
     return results in the web_search shape; on a miss return None and
-    the caller falls through to the Round 3 lookup chain."""
-    if not str(query or "").strip():
-        return None
-    for tool in (_tool_weather, _tool_sports, _tool_crypto,
-                 _tool_stocks, _tool_news):
-        try:
-            hit = tool(query)
-        except Exception as e:
-            logger.warning(f"Data tool {tool.__name__} failed: {e}")
-            hit = None
-        if hit:
-            label, text, source = hit
-            results = [{"title": label, "body": text[:1800],
-                        "href": source}]
-            if source:
-                results.append({"title": label + " — source",
-                                "body": source, "href": source})
-            return results
+    the caller falls through to the Round 3 lookup chain. Candidates
+    are the visitor's raw message first (richest signal), then the
+    search query the intent layer produced (sometimes a fragment)."""
+    candidates = []
+    raw = _current_message.get("text") or ""
+    if raw.strip():
+        candidates.append(raw)
+    if str(query or "").strip() and str(query) not in candidates:
+        candidates.append(str(query))
+    for candidate in candidates:
+        for tool in (_tool_weather, _tool_sports, _tool_crypto,
+                     _tool_stocks, _tool_news):
+            try:
+                hit = tool(candidate)
+            except Exception as e:
+                logger.warning(f"Data tool {tool.__name__} failed: {e}")
+                hit = None
+            if hit:
+                label, text, source = hit
+                results = [{"title": label, "body": text[:1800],
+                            "href": source}]
+                if source:
+                    results.append({"title": label + " — source",
+                                    "body": source, "href": source})
+                return results
     return None
 
 
