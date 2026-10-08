@@ -584,14 +584,17 @@ def unity_results(job, message, uid, consume_unity, unity_left):
                              "build")
         _set_pending(uid, {"stage": "done", "request": request,
                            "name": name, "zip_id": packed["id"]})
-        link = f"/unity/download/{packed['id']}"
+        base = os.getenv("OG_PUBLIC_URL",
+                         "https://og-ai-service.onrender.com")
+        link = base.rstrip("/") + f"/unity/download/{packed['id']}"
         listing = ", ".join(packed["files"])
         body = (
             f"DONE — the Unity project the visitor approved is "
             f"PACKAGED: \"{name}\" ({len(packed['files'])} files, "
             f"{packed['size']} bytes zipped). Files: {listing}. "
-            f"The download link is {link} — give them that exact "
-            f"link, in persona. It works for 24 hours and only "
+            f"The download link is {link} — give them that EXACT "
+            f"full URL, unchanged (do not shorten it, do not swap "
+            f"the domain), in persona. It works for 24 hours and only "
             f"from their browser. Remind them briefly: unzip, "
             f"open the folder in Unity Hub with Unity 2022.3 LTS, "
             f"press Play — and that it was AI-generated and not "
