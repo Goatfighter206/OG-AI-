@@ -134,13 +134,16 @@ def cap(tier: str, kind: str) -> int:
 
 
 def tier_link(tier: str, legacy_pro_link: str = "") -> str:
-    """Checkout URL for a tier (env override > legacy > created link)."""
+    """Checkout URL for a tier: env OG_LINK_<TIER> > the created
+    Stripe link > the legacy OG_PRO_LINK (# = unset, never used).
+    The created links win over the legacy one on purpose: the old
+    $9.99 link must not be reachable from the site anymore."""
     env = os.getenv(f"OG_LINK_{tier.upper()}")
     if env:
         return env
-    if tier == "standard" and legacy_pro_link and legacy_pro_link != "#":
-        return legacy_pro_link
-    return _DEFAULT_LINKS[tier]
+    if tier in _DEFAULT_LINKS:
+        return _DEFAULT_LINKS[tier]
+    return legacy_pro_link
 
 
 def public_pro_url() -> str:
