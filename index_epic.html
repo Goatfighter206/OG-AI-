@@ -48,6 +48,7 @@
             <a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi">🔗</span> Connect Google</a>
             <div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi">✅</span> <span id="menuGoogleEmail"></span></div>
             <button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Google</button>
+            <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
         </nav>
         <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.</div>
     </aside>
@@ -92,6 +93,8 @@
 
             <!-- Input Area: one pill — + · input · mic · round gold button -->
             <div class="input-area">
+                <div id="fileChip" class="og-file-chip" hidden><span class="og-file-chip-icon">📎</span><span id="fileChipName" class="og-file-chip-name"></span><button id="fileChipRemove" class="og-file-chip-x" type="button" aria-label="Remove attached file">✕</button></div>
+                <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" hidden>
                 <div class="input-wrapper">
                     <button id="plusBtn" class="og-plus-btn" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
                     <input
@@ -1136,6 +1139,80 @@
                     setTimeout(function () { setMood(''); }, 620);
                 }
             }
+        })();
+    </script>
+    <style id="og-file-css">
+        .og-file-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 12px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 999px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
+        .og-file-chip[hidden] { display: none; }
+        .og-file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .og-file-chip-x { flex: 0 0 auto; width: 22px; height: 22px; border: none; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #f2f2f2; cursor: pointer; line-height: 1; }
+        .og-file-chip-x:hover { background: rgba(255, 255, 255, .25); }
+    </style>
+    <script id="og-file-js">
+        // Round 6: file reading. The menu's "Upload a file" sends the
+        // pick to POST /upload; the server stores it per-visitor and
+        // chat questions about it are answered from its content (the
+        // seam is server-side — sends stay ordinary /chat messages).
+        // The chip above the composer shows what's attached; its ✕
+        // clears the file server-side via POST /file/remove.
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var chip = $('fileChip'), chipName = $('fileChipName'),
+                input = $('fileInput'), upBtn = $('menuUploadBtn');
+            if (!chip || !input || !upBtn) return;
+
+            function showChip(file) {
+                chipName.textContent = file ? (file.name + (file.detail ? ' · ' + file.detail : '')) : '';
+                chip.hidden = !file;
+            }
+            function sayAi(text) {
+                if (text && typeof addMessage === 'function') addMessage('ai', text);
+            }
+
+            upBtn.addEventListener('click', function () {
+                var close = $('menuClose'); if (close) close.click();
+                input.click();
+            });
+
+            input.addEventListener('change', async function () {
+                var f = input.files && input.files[0];
+                input.value = '';
+                if (!f) return;
+                updateStatus('OG is reading your file...');
+                var fd = new FormData();
+                fd.append('file', f);
+                try {
+                    var r = await fetch(API_URL + '/upload', { method: 'POST', body: fd });
+                    var data = await r.json();
+                    if (data && data.ok && data.file) {
+                        showChip(data.file);
+                        sayAi(data.response);
+                    } else {
+                        sayAi((data && data.response) || 'Yo, that upload glitched — slide it again.');
+                        if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
+                    }
+                } catch (e) {
+                    sayAi('Yo, that upload glitched — slide it again.');
+                } finally {
+                    updateStatus('Online & Ready');
+                }
+            });
+
+            $('fileChipRemove').addEventListener('click', async function () {
+                try {
+                    var r = await fetch(API_URL + '/file/remove', { method: 'POST' });
+                    var data = await r.json();
+                    showChip(null);
+                    sayAi(data && data.response);
+                } catch (e) {
+                    showChip(null);
+                }
+            });
+
+            // Restore the chip on reload — the file survives server-side.
+            fetch(API_URL + '/file/status').then(function (r) { return r.json(); })
+                .then(function (s) { if (s && s.attached && s.file) showChip(s.file); })
+                .catch(function () { /* nothing attached or offline */ });
         })();
     </script>
 </body>

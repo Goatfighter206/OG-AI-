@@ -19,6 +19,10 @@ httpx>=0.24.0  # For testing FastAPI endpoints
 # Durable memory (optional — only used when OG_MEMORY_DB_URL is set)
 psycopg[binary]>=3.1
 
+# File reading (Round 6): multipart upload parsing + PDF text extraction
+python-multipart>=0.0.9
+pypdf>=4.0
+
 # Token counting for the free-tier token budget (falls back to an estimate if absent)
 tiktoken>=0.6.0
 
