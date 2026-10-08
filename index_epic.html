@@ -74,6 +74,7 @@
             <div class="og-menu-item" id="menuCoinbaseInfo" hidden><span class="og-mi">✅</span> <span id="menuCoinbaseName"></span></div>
             <button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Coinbase</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
+            <button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi">🗄️</span> My file locker</button>
             <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
             <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
         </nav>
@@ -1415,6 +1416,57 @@
             fetch(API_URL + '/file/status').then(function (r) { return r.json(); })
                 .then(function (s) { if (s && s.attached && s.file) showChip(s.file); })
                 .catch(function () { /* nothing attached or offline */ });
+        })();
+    </script>
+
+    <script id="og-storage-js">
+        // Round 21: file locker (ships dark). The menu item and the
+        // chip's "Save to my locker" button only appear when
+        // /storage/status says the locker is on AND this visitor's
+        // plan has one. Saving copies the temp upload into the
+        // locker server-side (POST /storage/save-temp) and clears
+        // the temp chip — Round 6 temp behavior is untouched.
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var menuBtn = $('menuStorageBtn'), chip = $('fileChip');
+            if (!menuBtn) return;
+            var saveBtn = document.createElement('button');
+            saveBtn.type = 'button'; saveBtn.id = 'lockerSaveBtn';
+            saveBtn.textContent = '🗄️ Save to my locker';
+            saveBtn.className = 'og-file-chip-x';
+            saveBtn.style.cssText = 'width:auto;height:auto;padding:6px 12px;border-radius:999px;margin:0 0 8px 8px;background:rgba(255,193,7,.16);color:#ffc107;font-size:.85rem;';
+            saveBtn.hidden = true;
+            if (chip && chip.parentNode) chip.parentNode.insertBefore(saveBtn, chip.nextSibling);
+            function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
+            var lockerOn = false;
+            function refresh() {
+                fetch(API_URL + '/storage/status').then(function (r) { return r.json(); }).then(function (st) {
+                    lockerOn = !!(st && st.enabled && st.quota > 0);
+                    menuBtn.hidden = !lockerOn;
+                    saveBtn.hidden = !(lockerOn && chip && !chip.hidden);
+                    return st;
+                }).catch(function () { menuBtn.hidden = true; saveBtn.hidden = true; });
+            }
+            menuBtn.addEventListener('click', function () {
+                var close = $('menuClose'); if (close) close.click();
+                fetch(API_URL + '/storage/status').then(function (r) { return r.json(); }).then(function (st) {
+                    if (!st || !st.enabled) { sayAi("Storage ain't switched on yet, fam."); return; }
+                    var lines = st.files.map(function (f) { return '• ' + f.name + ' — ' + f.date; }).join('\n');
+                    sayAi('🗄️ Your locker: ' + st.used_human + ' of ' + st.quota_human + ' used.' + (st.files.length ? '\n' + lines : ' Nothing in it yet — upload a file and hit "Save to my locker".'));
+                }).catch(function () { sayAi("Yo, the locker check glitched — try again."); });
+            });
+            saveBtn.addEventListener('click', async function () {
+                saveBtn.hidden = true;
+                try {
+                    var r = await fetch(API_URL + '/storage/save-temp', { method: 'POST' });
+                    var data = await r.json();
+                    sayAi(data && data.response);
+                    if (data && data.ok && chip) chip.hidden = true;
+                } catch (e) { sayAi('Yo, saving to the locker glitched — slide it again.'); }
+                refresh();
+            });
+            if (chip && window.MutationObserver) new MutationObserver(refresh).observe(chip, { attributes: true, attributeFilter: ['hidden'] });
+            refresh();
         })();
     </script>
 
