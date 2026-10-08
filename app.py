@@ -42,8 +42,8 @@ DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 # OG_FREE_DAILY_LIMIT is a legacy alias.
 FREE_DAILY_TOKENS = int(os.getenv(
     "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
-# (Default raised 10,000 → 25,000 on 2026-10-08 at Brent's direction —
-# he chose a bigger free budget over shortening OG's replies.)
+# (Raised 10k -> 25k 2026-10-08, Brent's call: bigger free budget
+# over shorter replies.)
 PRO_UPGRADE_URL = os.getenv("OG_PRO_LINK", "#")
 # SECURITY: set OG_PRO_TOKEN to a long random secret in production. The
 # fallback below is a placeholder — anyone who knows it can mint a Pro cookie.
@@ -306,6 +306,8 @@ import og_monitor as _og_monitor
 import og_plaid as _og_plaid
 # Online ordering (Round 19): og_ordering.py
 import og_ordering as _og_ordering
+# Trading on approval (Round 20): og_trading.py
+import og_trading as _og_trading
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -597,10 +599,9 @@ def _install_lookup_tools(agent_instance):
     agent_instance.web_search = web_search_wrapped
     agent_instance._og_lookup_installed = True
 
-# --- Live data pack (Round 4): keyless data tools behind the
-# web_search seam — WEATHER Open-Meteo; SPORTS ESPN; STOCKS Nasdaq
-# + Yahoo fallback; CRYPTO Coinbase + CoinGecko; NEWS Google News
-# RSS. Misses fall through to Round 3 lookup; shares its budget.
+# --- Live data pack (Round 4): keyless tools behind the seam —
+# WEATHER Open-Meteo; SPORTS ESPN; STOCKS Nasdaq+Yahoo; CRYPTO
+# Coinbase+CoinGecko; NEWS Google News RSS. Shares lookup budget.
 _DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/124.0 Safari/537.36"}
@@ -1766,10 +1767,9 @@ if not os.path.exists("static"):
     os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Global agent instance
-# NOTE: The agent object itself is shared, but conversation history is NOT:
-# /chat swaps in each visitor's own persisted thread (see "Per-visitor
-# memory" above) under _memory_lock for the duration of their request.
+# Global agent instance — the object is shared, but history is
+# per-visitor: /chat swaps in each visitor's own persisted thread
+# under _memory_lock for the duration of their request.
 agent = None
 
 def get_agent() -> AIAgent:
@@ -1834,6 +1834,8 @@ def get_agent() -> AIAgent:
             lambda: _current_tier.get("tier", "free"))
         _og_ordering.install_ordering_tools(
             agent, lambda: _current_uid.get("uid", ""))
+        _og_trading.install_trading_tools(
+            agent, lambda: _current_uid.get("uid", ""))
         _reset_memory_store()
 
     return agent
@@ -1842,10 +1844,9 @@ def get_agent() -> AIAgent:
 class ChatRequest(BaseModel):
     message: str
     speak_response: bool = False
-    # When true, /chat answers as Server-Sent Events (reply text streamed in
-    # chunks, then a final done event). Omit/false = the classic JSON reply.
+    # stream=true: SSE streamed reply; omit/false = classic JSON.
     stream: bool = False
-    # Round 11: one-answer "near me" coords (see og_maps; never stored/logged).
+    # Round 11: "near me" coords for one answer (og_maps; unstored).
     coords: Optional[Dict[str, float]] = None
 
     model_config = ConfigDict(
@@ -2582,6 +2583,13 @@ _og_ordering.bind_app({
     "load_usage": _load_usage_store, "save_usage": _save_usage_store,
     "usage_lock": _usage_lock,
     "get_tier": lambda: _current_tier.get("tier", "free")})
+
+# Trading (Round 20): counters + /auth/coinbase* routes (dark).
+_og_trading.bind_app({"cookie_max_age": COOKIE_MAX_AGE,
+    "load_usage": _load_usage_store, "save_usage": _save_usage_store,
+    "usage_lock": _usage_lock,
+    "get_tier": lambda: _current_tier.get("tier", "free")})
+_og_trading.register_trading_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
