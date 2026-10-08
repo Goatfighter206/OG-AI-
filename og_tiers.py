@@ -25,7 +25,11 @@ uploads, lookup, tts, upload_mb, transcribe (Round 8 voice notes),
 unity (Round 16 Unity-maker packages per day), shortlink (Round 17
 short-link creations per day), calorie (Round 18 food-log entries
 per day), watch (Round 18 ACTIVE price watches, a count not a
-daily meter), order (Round 19 approved order handoffs per day).
+daily meter), order (Round 19 approved order handoffs per day),
+trade (Round 20 approved trades per day — an execution on the
+visitor's connected Coinbase or a trade-sheet handoff; drafts and
+previews are free). Round 20 also caps the SIZE of one trade:
+TRADE_CEILINGS below (env OG_TRADE_CEIL_<TIER> overrides).
 Chat tokens: free is metered by
 OG_FREE_DAILY_TOKENS in app.py; every paid tier is unlimited.
 
@@ -66,8 +70,28 @@ _DEFAULT_CAPS = {
     "calorie": {"free": 10,   "standard": 50,  "pro": 100, "blue": 200,  "blackout": 500},
     "watch":   {"free": 3,    "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
     "order":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    "trade":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "upload_mb": {"free": 8,  "standard": 8,   "pro": 25,  "blue": 25,   "blackout": 25},
 }
+
+# Round 20: the largest single trade (USD value) a tier may approve.
+# OG refuses the preview above the ceiling and states the limit.
+_DEFAULT_TRADE_CEILINGS = {
+    "free": 100, "standard": 500, "pro": 2500,
+    "blue": 10000, "blackout": 50000,
+}
+
+
+def trade_ceiling(tier: str) -> float:
+    """Per-trade dollar ceiling for a tier; env OG_TRADE_CEIL_<TIER>
+    wins. Unknown tiers get the free ceiling."""
+    env = os.getenv(f"OG_TRADE_CEIL_{str(tier).upper()}")
+    if env is not None:
+        try:
+            return max(0.0, float(env))
+        except ValueError:
+            pass
+    return float(_DEFAULT_TRADE_CEILINGS.get(tier, 100))
 
 BADGES = {
     "free": "✦ Upgrade",
