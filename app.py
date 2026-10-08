@@ -222,6 +222,8 @@ import og_file_read as _og_files
 import og_tiers as _og_tiers
 # --- Maps & places (Round 9): everything lives in og_maps.py ----------------
 import og_maps as _og_maps
+# --- Spotify connect (Round 10): everything lives in og_spotify.py ----------
+import og_spotify as _og_spotify
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
 # v1 grants Pro to anyone who lands on /pro/success. v2 verifies payment with
@@ -1779,6 +1781,8 @@ def get_agent() -> AIAgent:
             lambda: os.getenv("OPENAI_API_KEY"))
         _og_maps.install_maps_tools(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_spotify.install_spotify_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
         _reset_memory_store()
 
     return agent
@@ -2509,6 +2513,11 @@ _og_voice.bind_app({
     "load_usage": _load_usage_store, "save_usage": _save_usage_store,
     "usage_lock": _usage_lock})
 _og_voice.register_voice_routes(app)
+
+# Spotify connect (Round 10, dark): /auth/spotify* routes live in
+# og_spotify.py.
+_og_spotify.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
+_og_spotify.register_spotify_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
