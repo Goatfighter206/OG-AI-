@@ -37,11 +37,9 @@ logger = logging.getLogger(__name__)
 # Check if running in development mode (for error detail control)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 
-# --- OG Pro (money layer) ---
-# Free tier: each visitor (`ogai_uid` cookie) gets a daily budget of model
-# tokens per UTC day (prompt + completion, metered from the API's usage
-# report; tokenizer estimate where none is reported). Paid tiers are
-# unmetered. OG_FREE_DAILY_LIMIT is a legacy alias.
+# --- OG Pro (money layer): free tier gets a daily per-visitor
+# token budget (UTC day, API-metered); paid tiers unmetered.
+# OG_FREE_DAILY_LIMIT is a legacy alias.
 FREE_DAILY_TOKENS = int(os.getenv(
     "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
 # (Default raised 10,000 → 25,000 on 2026-10-08 at Brent's direction —
@@ -92,14 +90,11 @@ def _free_tokens_remaining(uid: str) -> int:
     return max(0, FREE_DAILY_TOKENS - int(entry.get("tokens", 0)))
 
 def _has_free_tokens(uid: str) -> bool:
-    """True while the visitor still has free tokens today. A chat is allowed
-    while any budget remains; its actual token cost is deducted afterwards,
-    so the final call of the day can run the balance to (or past) zero."""
+    """True while the visitor still has free tokens today."""
     return _free_tokens_remaining(uid) > 0
 
 def _record_chat_usage(uid: str, tokens_used: int):
-    """Record one /chat exchange for a free visitor: counts the message and
-    deducts the model call's total tokens from today's free budget."""
+    """Record one /chat exchange + deduct its tokens (free tier)."""
     with _usage_lock:
         store = _load_usage_store()
         entry = _today_entry(store, uid)
@@ -112,8 +107,7 @@ _token_encoder = None
 _token_encoder_tried = False
 
 def _count_tokens(text) -> int:
-    """Count tokens with tiktoken (cl100k_base) when available; otherwise a
-    ~4-chars-per-token estimate (where the API reports no usage)."""
+    """Count tokens via tiktoken when available, else ~4 chars/token."""
     global _token_encoder, _token_encoder_tried
     if not text:
         return 0
@@ -132,9 +126,7 @@ def _count_tokens(text) -> int:
     return max(1, len(str(text)) // 4)
 
 def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
-    """Estimate a model call's TOTAL tokens (prompt + completion) for paths
-    where the API hands back no usage: the agent's system prompt + the
-    history window that is actually sent + the reply (counted once)."""
+    """Estimate a model call's TOTAL tokens (prompt + completion)."""
     total = _count_tokens(getattr(agent_instance, "system_prompt", "") or "")
     history = getattr(agent_instance, "conversation_history", []) or []
     window = [m for m in history[-10:]
@@ -148,16 +140,13 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
         total += _count_tokens(reply_text)
     return total
 
-# --- AI voice (text-to-speech) ---
-# When OPENAI_API_KEY is set, /tts turns OG's replies into spoken audio
-# (OpenAI TTS, deep male "onyx" voice); without the key it answers 503
-# and the page falls back to the device voice. A daily cap guards the key.
+# --- AI voice: /tts speaks replies (OpenAI TTS "onyx") when
+# OPENAI_API_KEY is set; else 503 and the page uses device voice.
 TTS_DAILY_LIMIT = int(os.getenv("OG_TTS_DAILY_LIMIT", "60"))
 TTS_MAX_CHARS = 600
 
 def _consume_tts_call(uid: str, limit: int = None) -> bool:
-    """Record one /tts call today (UTC); False at cap. limit=None
-    keeps the legacy cap; Round 7 callers pass the tier cap."""
+    """Record one /tts call today (UTC); False at cap."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"tts:{uid}"
     with _usage_lock:
@@ -172,11 +161,8 @@ def _consume_tts_call(uid: str, limit: int = None) -> bool:
         _save_usage_store(store)
         return True
 
-# --- OG image generation (Round 5) ---
-# POST /image generates ONE image per ask (API call + prompt cleanup in
-# og_image_gen.py). A per-visitor daily cap guards the key: free
-# OG_IMAGE_FREE_DAILY (default 2), Pro OG_IMAGE_PRO_DAILY (default 25).
-# Page-side intent detection keeps image asks out of /chat entirely.
+# --- Image generation (Round 5): POST /image, one image per ask
+# (logic in og_image_gen.py); per-visitor daily caps guard the key.
 from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
     IMAGE_DOWN_LINE as _IMAGE_DOWN_LINE,
     clean_image_prompt as _clean_image_prompt,
@@ -228,8 +214,7 @@ def _unity_left(uid: str) -> int:
     return max(0, cap - _unity_used_today(uid))
 
 def _consume_unity(uid: str) -> bool:
-    """Record one packaged Unity project today (UTC); False at cap.
-    Success-only — called only after a package succeeds."""
+    """Record one packaged Unity project today; False at cap."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"unity:{uid}"
     with _usage_lock:
@@ -247,8 +232,7 @@ def _consume_unity(uid: str) -> bool:
 
 # --- Round 17: per-tier daily short-link cap ---
 def _consume_shortlink(uid: str) -> bool:
-    """Record one created short link today (UTC); False at cap.
-    Success-only — og_utils calls it only after a link is stored."""
+    """Record one created short link today; False at cap."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"shortlink:{uid}"
     with _usage_lock:
@@ -257,6 +241,39 @@ def _consume_shortlink(uid: str) -> bool:
         if not isinstance(entry, dict) or entry.get("date") != today:
             entry = {"date": today, "count": 0}
         cap = _og_tiers.cap(_current_tier.get("tier", "free"), "shortlink")
+        if int(entry.get("count", 0)) >= cap:
+            return False
+        entry["count"] = int(entry.get("count", 0)) + 1
+        store[key] = entry
+        _save_usage_store(store)
+        return True
+
+# --- Round 18: per-tier daily calorie-log entry cap ---
+def _calorie_used_today(uid: str) -> int:
+    """Food-log entries this visitor stored today (UTC)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _usage_lock:
+        store = _load_usage_store()
+    entry = store.get(f"calorie:{uid}")
+    if not isinstance(entry, dict) or entry.get("date") != today:
+        return 0
+    return int(entry.get("count", 0))
+
+def _calorie_left(uid: str) -> int:
+    """Food-log entries left today for the current request's tier."""
+    cap = _og_tiers.cap(_current_tier.get("tier", "free"), "calorie")
+    return max(0, cap - _calorie_used_today(uid))
+
+def _consume_calorie(uid: str) -> bool:
+    """Record one stored food-log entry today; False at cap."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"calorie:{uid}"
+    with _usage_lock:
+        store = _load_usage_store()
+        entry = store.get(key)
+        if not isinstance(entry, dict) or entry.get("date") != today:
+            entry = {"date": today, "count": 0}
+        cap = _og_tiers.cap(_current_tier.get("tier", "free"), "calorie")
         if int(entry.get("count", 0)) >= cap:
             return False
         entry["count"] = int(entry.get("count", 0)) + 1
@@ -284,11 +301,12 @@ import og_reddit as _og_reddit
 import og_unity as _og_unity
 # --- Utilities pack (Round 17): og_utils.py ---
 import og_utils as _og_utils
+# --- Monitoring pack (Round 18): og_monitor.py + og_plaid.py ---
+import og_monitor as _og_monitor
+import og_plaid as _og_plaid
 
-# --- OG Pro entitlement v2 (Stripe webhook, ships dark) ---
-# v1 grants Pro to anyone landing on /pro/success; v2 verifies payment via
-# POST /stripe/webhook (buyer = `ogai_uid` as client_reference_id).
-# DISABLED until OG_WEBHOOK_ENABLED + STRIPE_WEBHOOK_SECRET are set.
+# --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
+# via POST /stripe/webhook; v1 grants on /pro/success landing.
 WEBHOOK_ENABLED = os.getenv("OG_WEBHOOK_ENABLED", "false").lower() == "true"
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 PRO_ENTITLED_KEY = "__pro_entitled__"
@@ -357,13 +375,10 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
     except Exception:
         return False
 
-# --- Web lookup (Round 3) ---
-# App-layer wrap of the agent's detect_intent/web_search hooks (agent
-# files never modified): current-info questions are looked up BEFORE
-# answering; results ride into the model call as context. Primary:
-# OpenAI Responses API web_search; fallbacks: Tavily
-# (OG_SEARCH_API_KEY), then DuckDuckGo. All routes failing =
-# ungrounded chat, never an error. Cap OG_LOOKUP_DAILY_LIMIT;
+# --- Web lookup (Round 3): app-layer wrap of the agent's
+# detect_intent/web_search hooks (agent files never modified).
+# Primary: OpenAI Responses web_search; fallbacks Tavily
+# (OG_SEARCH_API_KEY), DuckDuckGo. Cap OG_LOOKUP_DAILY_LIMIT;
 # tokens metered at OG_LOOKUP_METER_CAP.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
@@ -584,12 +599,10 @@ def _install_lookup_tools(agent_instance):
     agent_instance.web_search = web_search_wrapped
     agent_instance._og_lookup_installed = True
 
-# --- Live data pack (Round 4) ---
-# Data tools behind the web_search seam (weather/scores/quotes/news),
-# all keyless/public: WEATHER Open-Meteo; SPORTS ESPN JSON; STOCKS
-# Nasdaq API + Yahoo fallback; CRYPTO Coinbase stats + CoinGecko
-# fallback; NEWS Google News RSS. A miss falls through to Round 3's
-# lookup chain; data questions share the lookup budget.
+# --- Live data pack (Round 4): keyless data tools behind the
+# web_search seam — WEATHER Open-Meteo; SPORTS ESPN; STOCKS Nasdaq
+# + Yahoo fallback; CRYPTO Coinbase + CoinGecko; NEWS Google News
+# RSS. Misses fall through to Round 3 lookup; shares its budget.
 _DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/124.0 Safari/537.36"}
@@ -1150,9 +1163,8 @@ def _tool_stocks(query: str):
                        _DATA_TTL["stocks"])
 
 # --- Round 4: crypto (Coinbase Exchange, CoinGecko fallback) ---
-# alias -> (Coinbase product or None, CoinGecko id, display, needs_context)
-# Short/ambiguous aliases (btc, link, dot...) only route with a price-ish
-# context or a very short query, so ordinary chat never trips them.
+# alias -> (Coinbase product or None, CoinGecko id, display,
+# needs_context); short aliases need a price-ish context.
 _CRYPTO_MAP = {
     "bitcoin": ("BTC-USD", "bitcoin", "Bitcoin (BTC)", False),
     "btc": ("BTC-USD", "bitcoin", "Bitcoin (BTC)", True),
@@ -1423,12 +1435,9 @@ def _message_needs_data(message: str) -> bool:
             return True
     return False
 
-# --- Google account connect (Round 3, ships dark) ---
-# "Connect Google" in the slide-over menu: OAuth 2.0 — OG never sees
-# a password; tokens stored per visitor (Postgres when
-# OG_MEMORY_DB_URL is set, else a JSON file). v1 scopes: identity
-# only (openid email profile); Round 12 extends this in
-# og_google_hands.py. DISABLED until OG_GOOGLE_ENABLED + keys are set.
+# --- Google connect (Round 3, dark): OAuth 2.0, per-visitor tokens
+# (Postgres when OG_MEMORY_DB_URL set, else JSON file); v1 scopes
+# identity only; Round 12 extends in og_google_hands.py.
 GOOGLE_CLIENT_ID = os.getenv("OG_GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("OG_GOOGLE_CLIENT_SECRET", "")
 GOOGLE_ENABLED = (os.getenv("OG_GOOGLE_ENABLED", "false").lower() == "true"
@@ -1529,21 +1538,16 @@ def _google_uid_from_state(state: str) -> Optional[str]:
     except Exception:
         return None
 
-# --- Per-visitor memory ---
-# Conversation history is keyed by the `ogai_uid` cookie and persisted
-# to a JSON store, so each visitor keeps their own thread (before
-# this, all visitors shared one global conversation). The store lives
-# next to the usage store: survives restarts, resets on rebuild.
+# --- Per-visitor memory: history keyed by `ogai_uid`, persisted
+# to a JSON store — each visitor keeps their own thread.
 MEMORY_STORE_FILE = "memory_store.json"
 MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
 MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
 _memory_lock = threading.Lock()
 
-# Durable backend (opt-in): when OG_MEMORY_DB_URL points at a Postgres
-# database (e.g. a free Neon or Supabase instance), visitor threads live
-# there instead of the JSON file, so memory survives full rebuilds and
-# redeploys. While the variable is unset — or the database is unreachable —
-# the JSON file store is used, exactly as before.
+# Durable backend (opt-in): OG_MEMORY_DB_URL (Postgres, e.g. Neon)
+# stores visitor threads so memory survives rebuilds; unset or
+# unreachable falls back to the JSON file store.
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
 try:
     import psycopg
@@ -1689,11 +1693,8 @@ def _clear_visitor_history(uid: str):
             del store[uid]
             _save_memory_store(store)
 
-# --- Business stats (for the owner) ---
-# OG keeps his own scorecard: chat messages, visitors who hit the free cap,
-# Pro checkout clicks, and post-payment landings. Counters live in the same
-# JSON store as usage counts (key "__stats__"). The owner reads them at
-# GET /stats?key=<OG_STATS_TOKEN>.
+# --- Business stats: owner scorecard counters in the usage store
+# ("__stats__"); read at GET /stats?key=<OG_STATS_TOKEN>.
 STATS_TOKEN = os.getenv("OG_STATS_TOKEN", "")
 STATS_KEY = "__stats__"
 _STAT_FIELDS = ("messages", "cap_hits", "pro_clicks", "pro_success", "tokens")
@@ -1826,6 +1827,13 @@ def get_agent() -> AIAgent:
         _og_utils.install_utils_tools(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
             _consume_shortlink)
+        _og_plaid.install_plaid_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_monitor.install_monitor_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
+            _consume_calorie, lambda: _calorie_left(
+                _current_uid.get("uid", "")),
+            lambda: _current_tier.get("tier", "free"))
         _reset_memory_store()
 
     return agent
@@ -1959,11 +1967,9 @@ async def health_check():
         "message": "Service is running"
     }
 
-# --- Streaming chat (true token streaming) ---
-# /chat with {"stream": true} answers as Server-Sent Events: an `event:
-# chunk` per token piece, then a final `event: done` matching the
-# classic JSON response (plus `event: error` on failure). Non-streaming
-# paths (code-gen tool, local fallback) deliver whole, in one chunk.
+# --- Streaming chat: /chat {"stream": true} = SSE, one `event:
+# chunk` per token piece, final `event: done` (= classic JSON),
+# `event: error` on failure. Non-streaming paths deliver whole.
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
@@ -2564,6 +2570,11 @@ _og_unity.register_unity_routes(app)
 
 # Utilities pack (Round 17, live): routes live in og_utils.py.
 _og_utils.register_utils_routes(app)
+
+# Monitoring pack (Round 18): Plaid routes + watch poll loop.
+_og_plaid.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
+_og_plaid.register_plaid_routes(app)
+_og_monitor.register_monitor_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
