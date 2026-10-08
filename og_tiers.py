@@ -81,6 +81,27 @@ _DEFAULT_TRADE_CEILINGS = {
     "blue": 10000, "blackout": 50000,
 }
 
+# Round 21: the file-locker quota per tier — the storage ladder
+# Brent locked 2026-10-08 (Free: NO locker, uploads stay temporary;
+# Standard 5 GB, Pro 25 GB, Blue 50 GB, Blackout 100 GB). Env
+# OG_STORAGE_GB_<TIER> (a GB number) overrides a tier's quota.
+_GB = 1024 ** 3
+STORAGE_BYTES = {
+    "free": 0, "standard": 5 * _GB, "pro": 25 * _GB,
+    "blue": 50 * _GB, "blackout": 100 * _GB,
+}
+
+
+def storage_bytes(tier: str) -> int:
+    """Locker quota in bytes for a tier (0 = no locker)."""
+    env = os.getenv(f"OG_STORAGE_GB_{str(tier).upper()}")
+    if env is not None:
+        try:
+            return max(0, int(float(env) * _GB))
+        except ValueError:
+            pass
+    return int(STORAGE_BYTES.get(tier, 0))
+
 
 def trade_ceiling(tier: str) -> float:
     """Per-trade dollar ceiling for a tier; env OG_TRADE_CEIL_<TIER>
