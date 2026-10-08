@@ -58,7 +58,6 @@ USAGE_STORE_FILE = "usage_store.json"
 COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year
 _usage_lock = threading.Lock()
 
-
 def _load_usage_store() -> Dict:
     """Load per-visitor daily chat counts from the JSON usage store."""
     if os.path.exists(USAGE_STORE_FILE):
@@ -71,7 +70,6 @@ def _load_usage_store() -> Dict:
             logger.warning(f"Could not load usage store: {e}")
     return {}
 
-
 def _save_usage_store(store: Dict):
     """Save per-visitor daily chat counts to the JSON usage store."""
     try:
@@ -79,7 +77,6 @@ def _save_usage_store(store: Dict):
             json.dump(store, f, indent=2)
     except Exception as e:
         logger.warning(f"Could not save usage store: {e}")
-
 
 def _today_entry(store: Dict, uid: str) -> Dict:
     """This visitor's usage entry for today (UTC), fresh if the day rolled."""
@@ -91,7 +88,6 @@ def _today_entry(store: Dict, uid: str) -> Dict:
     entry.setdefault("tokens", 0)
     return entry
 
-
 def _free_tokens_remaining(uid: str) -> int:
     """Free tokens this visitor has left today (UTC)."""
     with _usage_lock:
@@ -99,13 +95,11 @@ def _free_tokens_remaining(uid: str) -> int:
     entry = _today_entry(store, uid)
     return max(0, FREE_DAILY_TOKENS - int(entry.get("tokens", 0)))
 
-
 def _has_free_tokens(uid: str) -> bool:
     """True while the visitor still has free tokens today. A chat is allowed
     while any budget remains; its actual token cost is deducted afterwards,
     so the final call of the day can run the balance to (or past) zero."""
     return _free_tokens_remaining(uid) > 0
-
 
 def _record_chat_usage(uid: str, tokens_used: int):
     """Record one /chat exchange for a free visitor: counts the message and
@@ -118,10 +112,8 @@ def _record_chat_usage(uid: str, tokens_used: int):
         store[uid] = entry
         _save_usage_store(store)
 
-
 _token_encoder = None
 _token_encoder_tried = False
-
 
 def _count_tokens(text) -> int:
     """Count tokens with tiktoken (cl100k_base) when available; otherwise a
@@ -143,7 +135,6 @@ def _count_tokens(text) -> int:
             pass
     return max(1, len(str(text)) // 4)
 
-
 def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
     """Estimate a model call's TOTAL tokens (prompt + completion) for paths
     where the API hands back no usage: the agent's system prompt + the
@@ -161,7 +152,6 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
         total += _count_tokens(reply_text)
     return total
 
-
 # --- AI voice (text-to-speech) ----------------------------------------------
 # When OPENAI_API_KEY is set, /tts turns OG's replies into realistic
 # spoken audio (OpenAI TTS, deep male "onyx" voice). Without the key the
@@ -169,7 +159,6 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
 # A per-visitor daily cap keeps the key from being run up by strangers.
 TTS_DAILY_LIMIT = int(os.getenv("OG_TTS_DAILY_LIMIT", "60"))
 TTS_MAX_CHARS = 600
-
 
 def _consume_tts_call(uid: str) -> bool:
     """Record one /tts call for this visitor today (UTC); False at cap."""
@@ -187,7 +176,6 @@ def _consume_tts_call(uid: str) -> bool:
         _save_usage_store(store)
         return True
 
-
 # --- OG image generation (Round 5) -------------------------------------------
 # POST /image generates ONE image per ask (API call + prompt cleanup
 # in og_image_gen.py). Images cost real cents, so a per-visitor daily
@@ -202,7 +190,6 @@ from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
 IMAGE_FREE_DAILY = int(os.getenv("OG_IMAGE_FREE_DAILY", "2"))
 IMAGE_PRO_DAILY = int(os.getenv("OG_IMAGE_PRO_DAILY", "25"))
 
-
 def _images_used_today(uid: str) -> int:
     """Images this visitor has generated today (UTC)."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -213,11 +200,9 @@ def _images_used_today(uid: str) -> int:
         return 0
     return int(entry.get("count", 0))
 
-
 def _images_left(uid: str, is_pro: bool) -> int:
     limit = IMAGE_PRO_DAILY if is_pro else IMAGE_FREE_DAILY
     return max(0, limit - _images_used_today(uid))
-
 
 def _consume_image(uid: str):
     """Record one generated image today (UTC); success-only."""
@@ -232,6 +217,8 @@ def _consume_image(uid: str):
         store[key] = entry
         _save_usage_store(store)
 
+# --- File reading (Round 6): everything lives in og_file_read.py ------------
+import og_file_read as _og_files
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
 # v1 grants Pro to anyone who lands on /pro/success. v2 verifies payment with
@@ -247,7 +234,6 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 PRO_ENTITLED_KEY = "__pro_entitled__"
 STRIPE_SIG_TOLERANCE = 300  # seconds
 
-
 def _uid_is_entitled(uid: str) -> bool:
     """True when Stripe has confirmed this visitor's Pro payment (v2 only)."""
     if not WEBHOOK_ENABLED or not uid:
@@ -256,7 +242,6 @@ def _uid_is_entitled(uid: str) -> bool:
         store = _load_usage_store()
     entitled = store.get(PRO_ENTITLED_KEY)
     return isinstance(entitled, dict) and uid in entitled
-
 
 def _grant_entitlement(uid: str, session_id: str = "", email: str = ""):
     """Record a Stripe-confirmed Pro entitlement for a visitor uid."""
@@ -274,7 +259,6 @@ def _grant_entitlement(uid: str, session_id: str = "", email: str = ""):
         }
         store[PRO_ENTITLED_KEY] = entitled
         _save_usage_store(store)
-
 
 def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bool:
     """
@@ -298,27 +282,18 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
     except Exception:
         return False
 
-
 # --- Web lookup (Round 3) ----------------------------------------------------
-# When a visitor's message needs current/external information, OG looks it
-# up on the live web BEFORE answering, and the results ride into the model
-# call as context — OG then answers grounded in fresh facts, in his own
-# voice. Implemented entirely in this app layer: the agent's own
-# detect_intent / web_search hooks are wrapped per instance (the agent's
-# files are never modified), so BOTH chat paths — classic process_message
-# and the streaming twin — get the upgrade through the one seam they share.
-#
-# Primary route: OpenAI's Responses API web_search tool, using the same
-# OPENAI_API_KEY the service already runs on — no new signup. Fallbacks,
-# in order: Tavily when OG_SEARCH_API_KEY is set, then the agent's original
-# DuckDuckGo search. If every route fails, chat carries on without lookup
-# results instead of erroring. A per-visitor daily cap (OG_LOOKUP_DAILY_LIMIT)
-# keeps the search bill bounded; the lookup's tokens are added to the chat
-# exchange's metered total — weighed at OG_LOOKUP_METER_CAP, because the
-# search API counts the whole results page it read as input tokens (one
-# lookup reported ~8k), which would otherwise eat a free visitor's entire
-# 10k day in a single question. The exchange is still metered end to end;
-# the cap only bounds the lookup's share of the bill.
+# App-layer wrap of the agent's detect_intent/web_search hooks (agent
+# files never modified): when a message needs current info, OG looks it
+# up BEFORE answering and the results ride into the model call as
+# context, so both chat paths answer grounded, in persona. Primary:
+# OpenAI Responses API web_search on the service's existing key;
+# fallbacks: Tavily (OG_SEARCH_API_KEY), then the agent's DuckDuckGo.
+# All routes failing = chat carries on ungrounded, never an error.
+# Per-visitor daily cap OG_LOOKUP_DAILY_LIMIT bounds the bill; lookup
+# tokens join the exchange's metered total weighed at
+# OG_LOOKUP_METER_CAP (the search API counts the whole results page —
+# ~8k for one lookup — which would eat a free day in one question).
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
@@ -348,7 +323,6 @@ _LOOKUP_TRIGGER_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
     r"\bwhen (is|does|did)\b.*\b(release|launch|come out|happen|start)\b",
 ))
 
-
 def _message_needs_lookup(message: str) -> bool:
     """App-layer heuristic: does this message need current/external info?"""
     if not message:
@@ -357,7 +331,6 @@ def _message_needs_lookup(message: str) -> bool:
     if any(p in low for p in _LOOKUP_TRIGGER_PHRASES):
         return True
     return any(p.search(message) for p in _LOOKUP_TRIGGER_PATTERNS)
-
 
 def _consume_lookup(uid: str) -> bool:
     """Record one web lookup for this visitor today (UTC); False at cap."""
@@ -377,13 +350,11 @@ def _consume_lookup(uid: str) -> bool:
         _save_usage_store(store)
         return True
 
-
 def _drain_lookup_tokens() -> int:
     """Take the lookup tokens stashed by the current exchange (and reset)."""
     tokens = int(_lookup_tokens_stash.get("tokens", 0))
     _lookup_tokens_stash["tokens"] = 0
     return tokens
-
 
 def _openai_web_lookup(query: str):
     """One grounded lookup via OpenAI's Responses API web_search tool.
@@ -437,7 +408,6 @@ def _openai_web_lookup(query: str):
         tokens = 0
     return text, sources[:3], tokens
 
-
 def _tavily_web_lookup(query: str):
     """Fallback lookup via Tavily (only when OG_SEARCH_API_KEY is set).
     Same return shape as _openai_web_lookup, or None."""
@@ -465,7 +435,6 @@ def _tavily_web_lookup(query: str):
     if not answer:
         return None
     return answer, sources, 0
-
 
 def _og_web_search(agent_instance, query: str, num_results: int = 5):
     """The app-layer search behind the agent's web_search hook.
@@ -512,7 +481,6 @@ def _og_web_search(agent_instance, query: str, num_results: int = 5):
             logger.warning(f"Built-in web search failed: {e}")
     return []
 
-
 def _install_lookup_tools(agent_instance):
     """Wrap the agent instance's detect_intent + web_search — app layer
     only, the agent's files are never modified — so lookup triggers cover
@@ -547,28 +515,18 @@ def _install_lookup_tools(agent_instance):
     agent_instance.web_search = web_search_wrapped
     agent_instance._og_lookup_installed = True
 
-
 # --- Live data pack (Round 4) ------------------------------------------------
-# First-class data tools behind the same web_search seam as Round 3's
-# lookup: when a visitor's question is really a data question — weather,
-# a score, a stock or crypto quote, headlines — OG answers from a live
-# structured source instead of a general web search. Every route is
-# keyless/public (no new signups):
-#   WEATHER  Open-Meteo geocoding + forecast APIs
-#   SPORTS   ESPN's public scoreboard / team-schedule JSON
-#   STOCKS   Nasdaq API quote info, Yahoo Finance chart API fallback
-#            (Stooq's CSV feed is bot-walled behind a JS challenge from
-#            server IPs, so it can't serve as a server-side route)
-#   CRYPTO   Coinbase Exchange public stats, CoinGecko free fallback
-#   NEWS     Google News RSS (top stories, or a per-topic search feed)
-# A tool returns None when its category doesn't parse (weather with no
-# place named, an unrecognized ticker) or its routes fail — the question
-# then falls through to Round 3's web lookup chain untouched, so every
-# category still answers live via some route. Results ride into the
-# model call in the same {title, body, href} shape both chat paths
-# already format, size-capped like a lookup result. Responses are
-# cached briefly (2–5 minutes per category; team lists an hour) to stay
-# a good citizen on free endpoints.
+# First-class data tools behind the same web_search seam: data
+# questions (weather, scores, stock/crypto quotes, headlines) answer
+# from live structured sources instead of general web search. All
+# routes keyless/public: WEATHER Open-Meteo geocode+forecast; SPORTS
+# ESPN public scoreboard/schedule JSON; STOCKS Nasdaq API, Yahoo chart
+# fallback (Stooq is JS-bot-walled from server IPs); CRYPTO Coinbase
+# Exchange stats, CoinGecko fallback; NEWS Google News RSS. A tool
+# returns None when its category doesn't parse or its routes fail —
+# the question falls through to Round 3's lookup chain untouched.
+# Results use the same {title, body, href} shape, size-capped like a
+# lookup; brief per-category caching (2–5 min; team lists 1 h).
 # Metering: data questions pass through _og_web_search AFTER its
 # per-visitor daily lookup-cap check, so they share the Round 3 lookup
 # budget (OG_LOOKUP_DAILY_LIMIT); the fetches themselves are keyless and
@@ -583,7 +541,6 @@ _data_cache_lock = threading.Lock()
 _DATA_TTL = {"weather": 300, "sports": 120, "stocks": 180,
              "crypto": 120, "news": 300}
 
-
 def _data_cached(key: str):
     with _data_cache_lock:
         hit = _data_cache.get(key)
@@ -591,12 +548,10 @@ def _data_cached(key: str):
             return hit[1]
     return None
 
-
 def _data_store(key: str, value, ttl: int):
     with _data_cache_lock:
         _data_cache[key] = (time.time() + ttl, value)
     return value
-
 
 def _fetch_json(url: str, timeout: float = 20.0):
     """GET a JSON document for the data pack; None on any failure."""
@@ -612,7 +567,6 @@ def _fetch_json(url: str, timeout: float = 20.0):
         logger.warning(f"Data fetch failed ({url[:60]}...): {e}")
         return None
 
-
 def _fetch_text(url: str, timeout: float = 20.0):
     """GET a text document for the data pack; None on any failure."""
     import httpx
@@ -626,7 +580,6 @@ def _fetch_text(url: str, timeout: float = 20.0):
     except Exception as e:
         logger.warning(f"Data fetch failed ({url[:60]}...): {e}")
         return None
-
 
 # --- Round 4: weather (Open-Meteo) -------------------------------------------
 _WMO_CODES = {
@@ -652,7 +605,6 @@ _PLACE_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
 _PLACE_STOPWORDS = {"today", "tomorrow", "tonight", "outside", "here",
                     "there", "the", "my", "this", "week", "weekend"}
 
-
 def _extract_place(query: str):
     """Pull the place out of a weather question; None when unnamed."""
     q = " ".join(str(query).split())
@@ -672,7 +624,6 @@ def _extract_place(query: str):
         if len(place) >= 2 and low.strip() not in _PLACE_STOPWORDS:
             return place
     return None
-
 
 def _geocode(place: str):
     """Resolve a place name to (lat, lon, name, region) or None.
@@ -705,7 +656,6 @@ def _geocode(place: str):
         except Exception as e:
             logger.warning(f"Nominatim geocode parse failed: {e}")
     return None
-
 
 def _weather_wttr(place: str, key: str):
     """Weather fallback on wttr.in (it resolves place names itself, on
@@ -751,7 +701,6 @@ def _weather_wttr(place: str, key: str):
     return _data_store(key, ("Live weather data", "\n".join(lines),
                              "https://wttr.in/"),
                        _DATA_TTL["weather"])
-
 
 def _tool_weather(query: str):
     """Live weather via Open-Meteo. (label, text, source) or None."""
@@ -823,7 +772,6 @@ def _tool_weather(query: str):
                              "https://open-meteo.com/"),
                        _DATA_TTL["weather"])
 
-
 # --- Round 4: sports (ESPN public JSON) --------------------------------------
 _ESPN_LEAGUES = {
     "nfl": ("football", "nfl", "NFL"),
@@ -835,7 +783,6 @@ _SPORTS_CUE_RE = re.compile(
     r"\b(score|scores|game|games|win|won|beat|playing|played|plays|"
     r"schedule|standings|playoffs?|final|results?|tonight|today|"
     r"yesterday|season|next|last|doing|vs|versus)\b", re.IGNORECASE)
-
 
 def _espn_teams(league_key: str) -> Dict[str, Dict]:
     """All teams in one ESPN league with alias sets (cached an hour).
@@ -872,7 +819,6 @@ def _espn_teams(league_key: str) -> Dict[str, Dict]:
         _data_store(key, teams, 3600)
     return teams
 
-
 def _find_team(query_low: str, league_key: str = None):
     """Longest-alias team match: (league_key, team, alias) or None."""
     best = None
@@ -884,20 +830,17 @@ def _find_team(query_low: str, league_key: str = None):
                         best = (len(alias), lk, team, alias)
     return (best[1], best[2], best[3]) if best else None
 
-
 def _espn_score_str(competitor) -> str:
     s = (competitor or {}).get("score")
     if isinstance(s, dict):
         return str(s.get("displayValue") or "0")
     return str(s) if s is not None else "0"
 
-
 def _espn_game_state(event) -> str:
     try:
         return event["competitions"][0]["status"]["type"]["state"] or ""
     except Exception:
         return ""
-
 
 def _espn_game_line(event) -> str:
     comp = (event.get("competitions") or [{}])[0]
@@ -921,7 +864,6 @@ def _espn_game_line(event) -> str:
                 f"{_nm(home)} {_espn_score_str(home)}")
     return f"{_nm(away)} at {_nm(home)} — {detail or event.get('date', '')}"
 
-
 def _espn_events(url: str, cache_key: str):
     hit = _data_cached(cache_key)
     if hit is not None:
@@ -929,7 +871,6 @@ def _espn_events(url: str, cache_key: str):
     data = _fetch_json(url, timeout=30.0)
     events = (data or {}).get("events") or []
     return _data_store(cache_key, events, _DATA_TTL["sports"])
-
 
 def _tool_sports(query: str):
     """Live scores/schedules via ESPN. (label, text, source) or None."""
@@ -1018,7 +959,6 @@ def _tool_sports(query: str):
                     "https://www.espn.com/")
     return None
 
-
 # --- Round 4: stocks (Nasdaq API, Yahoo Finance fallback) --------------------
 _STOCK_NAME_MAP = {
     "apple": "AAPL", "microsoft": "MSFT", "tesla": "TSLA",
@@ -1059,7 +999,6 @@ _CAPS_STOPWORDS = {
 _STOCK_CTX = ("stock", "share", "ticker", "trading", "quote", "market",
               "nasdaq", "nyse", "earnings", "dividend")
 
-
 def _stock_quote_nasdaq(ticker: str):
     order = ("etf", "stocks") if ticker in _STOCK_ETFS else ("stocks", "etf")
     for asset in order:
@@ -1080,7 +1019,6 @@ def _stock_quote_nasdaq(ticker: str):
                     f"Market status: {d.get('marketStatus') or 'unknown'}; "
                     f"last trade {p.get('lastTradeTimestamp') or 'n/a'}.")
     return None
-
 
 def _stock_quote_yahoo(symbol: str):
     import urllib.parse
@@ -1109,7 +1047,6 @@ def _stock_quote_yahoo(symbol: str):
     if vol:
         out += f" Volume {vol:,}."
     return out
-
 
 def _tool_stocks(query: str):
     """Live stock quote. (label, text, source) or None."""
@@ -1154,7 +1091,6 @@ def _tool_stocks(query: str):
     return _data_store(key, ("Live stock quote", text,
                              "https://www.nasdaq.com/market-activity"),
                        _DATA_TTL["stocks"])
-
 
 # --- Round 4: crypto (Coinbase Exchange, CoinGecko fallback) ------------------
 # alias -> (Coinbase product or None, CoinGecko id, display, needs_context)
@@ -1202,7 +1138,6 @@ _CRYPTO_MAP = {
 _CRYPTO_CTX_RE = re.compile(
     r"\b(price|worth|crypto|coin|trading|market|doing|cost|much)\b",
     re.IGNORECASE)
-
 
 def _tool_crypto(query: str):
     """Live crypto quote. (label, text, source) or None."""
@@ -1264,7 +1199,6 @@ def _tool_crypto(query: str):
     return _data_store(key, ("Live crypto quote", text, source),
                        _DATA_TTL["crypto"])
 
-
 # --- Round 4: news (Google News RSS) ------------------------------------------
 def _clean_topic(topic: str):
     t = " ".join(str(topic).split()).strip(" ?.!,")
@@ -1278,7 +1212,6 @@ def _clean_topic(topic: str):
     if len(t) < 3 or low in ("top", "top stories", "the", "latest"):
         return None
     return t[:80]
-
 
 def _tool_news(query: str):
     """Top or topical headlines via Google News RSS. Tuple or None."""
@@ -1343,7 +1276,6 @@ def _tool_news(query: str):
                              "https://news.google.com/"),
                        _DATA_TTL["news"])
 
-
 # --- Round 4: router + detect heuristic ---------------------------------------
 def _og_data_tools(query: str):
     """Round 4 router: try the live data pack for this query. On a hit,
@@ -1375,7 +1307,6 @@ def _og_data_tools(query: str):
                 return results
     return None
 
-
 _DATA_TEAM_WORDS = (
     "seahawks", "mariners", "cardinals", "falcons", "ravens", "bills",
     "panthers", "bears", "bengals", "browns", "cowboys", "broncos",
@@ -1399,7 +1330,6 @@ _DATA_TEAM_WORDS = (
     "maple leafs", "canucks", "golden knights", "capitals", "mammoth",
     "coyotes",
 )
-
 
 def _message_needs_data(message: str) -> bool:
     """App-layer heuristic for the Round 4 data pack (weather, sports,
@@ -1437,7 +1367,6 @@ def _message_needs_data(message: str) -> bool:
             return True
     return False
 
-
 # --- Google account connect (Round 3, ships dark) ---------------------------
 # A visitor can connect their Google account to OG ("Connect Google" in
 # the slide-over menu). OAuth 2.0 the standard way: OG never sees or stores
@@ -1460,7 +1389,6 @@ GOOGLE_REDIRECT_URI = os.getenv(
 GOOGLE_STORE_FILE = "google_store.json"
 _google_lock = threading.Lock()
 
-
 def _google_db_connect():
     """Connect to the durable DB, creating the Google tokens table."""
     conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
@@ -1471,7 +1399,6 @@ def _google_db_connect():
         )
     conn.commit()
     return conn
-
 
 def _load_google_store() -> Dict:
     """Load all Google connections (durable DB when configured, otherwise
@@ -1493,7 +1420,6 @@ def _load_google_store() -> Dict:
         except Exception as e:
             logger.warning(f"Could not load google store: {e}")
     return {}
-
 
 def _save_google_store(store: Dict):
     """Save all Google connections (durable DB when configured, otherwise
@@ -1525,7 +1451,6 @@ def _save_google_store(store: Dict):
     except Exception as e:
         logger.warning(f"Could not save google store: {e}")
 
-
 def _google_connection(uid: str) -> Optional[Dict]:
     """This visitor's stored Google connection (profile + tokens), if any."""
     if not uid:
@@ -1535,13 +1460,11 @@ def _google_connection(uid: str) -> Optional[Dict]:
     entry = store.get(uid)
     return entry if isinstance(entry, dict) else None
 
-
 def _google_state_for(uid: str) -> str:
     """Signed OAuth state tying the connect flow to one visitor uid."""
     sig = hmac.new(GOOGLE_CLIENT_SECRET.encode(),
                    f"og-google:{uid}".encode(), hashlib.sha256).hexdigest()
     return f"{uid}.{sig}"
-
 
 def _google_uid_from_state(state: str) -> Optional[str]:
     """Recover the visitor uid from a state value we signed, else None."""
@@ -1556,7 +1479,6 @@ def _google_uid_from_state(state: str) -> Optional[str]:
     except Exception:
         return None
 
-
 # --- Per-visitor memory -------------------------------------------------------
 # OG remembers each visitor separately: conversation history is keyed by the
 # `ogai_uid` cookie and persisted to a JSON store, so a returning visitor
@@ -1569,8 +1491,6 @@ MEMORY_STORE_FILE = "memory_store.json"
 MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
 MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
 _memory_lock = threading.Lock()
-
-
 
 # Durable backend (opt-in): when OG_MEMORY_DB_URL points at a Postgres
 # database (e.g. a free Neon or Supabase instance), visitor threads live
@@ -1585,7 +1505,6 @@ except Exception:  # psycopg not installed — DB backend simply unavailable
     psycopg = None
     _Jsonb = None
 
-
 def _memory_db_connect():
     """Connect to the durable memory DB, creating the table if needed."""
     conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
@@ -1596,7 +1515,6 @@ def _memory_db_connect():
         )
     conn.commit()
     return conn
-
 
 def _load_memory_store_db():
     """Load all visitor threads from Postgres; None on any failure."""
@@ -1612,7 +1530,6 @@ def _load_memory_store_db():
     except Exception as e:
         logger.warning(f"Durable memory load failed, using file store: {e}")
         return None
-
 
 def _save_memory_store_db(store: Dict) -> bool:
     """Persist all visitor threads to Postgres; False on any failure."""
@@ -1642,7 +1559,6 @@ def _save_memory_store_db(store: Dict) -> bool:
         logger.warning(f"Durable memory save failed, using file store: {e}")
         return False
 
-
 def _reset_memory_store():
     """Start the memory store empty (called when a fresh agent is created).
 
@@ -1662,7 +1578,6 @@ def _reset_memory_store():
     with _memory_lock:
         _save_memory_store({})
 
-
 def _load_memory_store() -> Dict:
     """Load per-visitor conversation threads (durable DB when configured,
     otherwise the JSON memory store)."""
@@ -1671,7 +1586,6 @@ def _load_memory_store() -> Dict:
         if data is not None:
             return data
     return _load_memory_store_file()
-
 
 def _load_memory_store_file() -> Dict:
     """Load per-visitor conversation threads from the JSON memory store."""
@@ -1685,14 +1599,12 @@ def _load_memory_store_file() -> Dict:
             logger.warning(f"Could not load memory store: {e}")
     return {}
 
-
 def _save_memory_store(store: Dict):
     """Save per-visitor conversation threads (durable DB when configured,
     otherwise the JSON memory store)."""
     if MEMORY_DB_URL and _save_memory_store_db(store):
         return
     _save_memory_store_file(store)
-
 
 def _save_memory_store_file(store: Dict):
     """Save per-visitor conversation threads to the JSON memory store."""
@@ -1701,7 +1613,6 @@ def _save_memory_store_file(store: Dict):
             json.dump(store, f)
     except Exception as e:
         logger.warning(f"Could not save memory store: {e}")
-
 
 # The *_locked helpers assume the caller holds _memory_lock: /chat holds it
 # across swap-in -> process -> save-back so one visitor's thread can never be
@@ -1712,7 +1623,6 @@ def _load_visitor_history_locked(uid: str) -> List[Dict]:
     if isinstance(entry, dict) and isinstance(entry.get("history"), list):
         return list(entry["history"])
     return []
-
 
 def _save_visitor_history_locked(uid: str, history: List[Dict]):
     """Persist this visitor's thread, trimmed, pruning the stalest threads."""
@@ -1730,7 +1640,6 @@ def _save_visitor_history_locked(uid: str, history: List[Dict]):
             store.pop(old_uid, None)
     _save_memory_store(store)
 
-
 def _clear_visitor_history(uid: str):
     """Forget one visitor's thread (their /reset or /clear, nobody else's)."""
     with _memory_lock:
@@ -1738,7 +1647,6 @@ def _clear_visitor_history(uid: str):
         if uid in store:
             del store[uid]
             _save_memory_store(store)
-
 
 # --- Business stats (for the owner) ------------------------------------------
 # OG keeps his own scorecard: chat messages, visitors who hit the free cap,
@@ -1748,7 +1656,6 @@ def _clear_visitor_history(uid: str):
 STATS_TOKEN = os.getenv("OG_STATS_TOKEN", "")
 STATS_KEY = "__stats__"
 _STAT_FIELDS = ("messages", "cap_hits", "pro_clicks", "pro_success", "tokens")
-
 
 def _bump_stat(field: str, amount: int = 1):
     """Increment a business counter, all-time and for today (UTC)."""
@@ -1769,7 +1676,6 @@ def _bump_stat(field: str, amount: int = 1):
         store[STATS_KEY] = stats
         _save_usage_store(store)
 
-
 def _visitor_counts(store: Dict):
     """(total distinct visitors, visitors active today) from usage entries."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1781,8 +1687,6 @@ def _visitor_counts(store: Dict):
         if entry.get("date") == today:
             active_today += 1
     return total, active_today
-
-
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -1828,11 +1732,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # memory" above) under _memory_lock for the duration of their request.
 agent = None
 
-
 def get_agent() -> AIAgent:
     """
     Get or create the global agent instance.
-    
+
     Note: This returns a shared instance. For multi-user support, consider
     implementing session-based agent management.
     """
@@ -1846,14 +1749,16 @@ def get_agent() -> AIAgent:
                     config = json.load(f)
             except Exception as e:
                 logger.warning(f"Could not load config.json: {e}")
-        
+
         agent_name = config.get('agent_name', 'OG-AI')
         agent = AIAgent(name=agent_name, config=config)
         _install_lookup_tools(agent)
+        _og_files.install_file_tools(
+            agent, lambda: _current_uid.get("uid", ""),
+            lambda: os.getenv("OPENAI_API_KEY"))
         _reset_memory_store()
 
     return agent
-
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -1862,7 +1767,7 @@ class ChatRequest(BaseModel):
     # When true, /chat answers as Server-Sent Events (reply text streamed in
     # chunks, then a final done event). Omit/false = the classic JSON reply.
     stream: bool = False
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -1872,7 +1777,6 @@ class ChatRequest(BaseModel):
         }
     )
 
-
 class ChatResponse(BaseModel):
     response: str
     agent_name: str
@@ -1881,7 +1785,7 @@ class ChatResponse(BaseModel):
     upgrade_url: Optional[str] = None
     # Free tokens the visitor has left today (free tier only; omitted for Pro).
     free_tokens_left: Optional[int] = None
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -1892,14 +1796,13 @@ class ChatResponse(BaseModel):
         }
     )
 
-
 class HistoryResponse(BaseModel):
     conversation: List[Dict]
     history: List[Dict]  # Backward compatibility with Flask API
     message_count: int
     # Free tokens the visitor has left today (omitted/null for Pro).
     free_tokens_left: Optional[int] = None
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -1922,12 +1825,11 @@ class HistoryResponse(BaseModel):
         }
     )
 
-
 class StatusResponse(BaseModel):
     status: str
     agent_name: str
     message: str
-    
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -1938,14 +1840,12 @@ class StatusResponse(BaseModel):
         }
     )
 
-
 @app.get("/", response_class=FileResponse)
 async def root():
     """
     Serve the epic frontend HTML interface.
     """
     return FileResponse("index_epic.html")
-
 
 @app.get("/classic", response_class=FileResponse)
 async def classic_ui():
@@ -1954,14 +1854,12 @@ async def classic_ui():
     """
     return FileResponse("frontend.html")
 
-
 @app.get("/qr", response_class=FileResponse)
 async def qr_code():
     """
     Serve the QR code page for mobile access.
     """
     return FileResponse("qr.html")
-
 
 @app.get("/api", response_model=StatusResponse)
 async def api_info():
@@ -1975,7 +1873,6 @@ async def api_info():
         "message": "OG-AI Agent API is running. Visit /docs for API documentation."
     }
 
-
 @app.get("/health", response_model=StatusResponse)
 async def health_check():
     """
@@ -1988,8 +1885,6 @@ async def health_check():
         "message": "Service is running"
     }
 
-
-
 # --- Streaming chat (true token streaming) ------------------------------------
 # /chat with {"stream": true} answers as Server-Sent Events: an `event: chunk`
 # for each token piece the model API produces, as it arrives, then a final
@@ -1998,7 +1893,6 @@ async def health_check():
 # completely unchanged. A finished reply is never sliced up to fake streaming:
 # the few paths that are not model token streams (the code-generation tool,
 # the local pattern fallback) deliver their result whole, in a single chunk.
-
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
@@ -2173,7 +2067,6 @@ def _generate_reply_streaming(agent_instance, message: str,
     finished = _finish(response)
     return finished, _estimate_call_tokens(agent, finished)
 
-
 def _stream_chat_worker(agent_instance, uid: str, message: str,
                         speak_response: bool, sink, meter: bool = True):
     """
@@ -2238,7 +2131,6 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         finally:
             _memory_lock.release()
 
-
 def _sse_streaming_response(event_gen, http_response, entitled: bool):
     """Build the SSE response, carrying over cookies the handler already set
     (e.g. a fresh ogai_uid) plus the Pro cookie for entitled visitors."""
@@ -2256,7 +2148,6 @@ def _sse_streaming_response(event_gen, http_response, entitled: bool):
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
     return resp
-
 
 def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
                           http_response: Response, entitled: bool,
@@ -2293,7 +2184,6 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
                 return
 
     return _sse_streaming_response(event_gen(), http_response, entitled)
-
 
 @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
 async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
@@ -2382,23 +2272,23 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         # Check if agent has voice/learning capabilities
         has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
         has_learning = hasattr(agent_instance, 'learning_system') and agent_instance.learning_system is not None
-        
+
         # Process message with voice option if available
         if has_voice:
             response = agent_instance.process_message(request.message.strip(), speak_response=request.speak_response)
         else:
             response = agent_instance.process_message(request.message.strip())
-        
+
         # Get the latest assistant message from history
         history = agent_instance.get_conversation_history()
         latest_msg = history[-1] if history else None
-        
+
         result = {
             "response": response,
             "agent_name": agent_instance.name,
             "timestamp": latest_msg['timestamp'] if latest_msg else ""
         }
-        
+
         _bump_stat("messages")
 
         # Token metering (free visitors only): the classic path gets no
@@ -2414,7 +2304,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         if has_learning:
             report = agent_instance.learning_system.get_intelligence_report()
             result["intelligence"] = report.get("intelligence_level", 1.0)
-        
+
         return result
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
@@ -2429,7 +2319,6 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
         finally:
             _memory_lock.release()
-
 
 @app.post("/tts")
 async def text_to_speech(raw_request: Request):
@@ -2467,7 +2356,6 @@ async def text_to_speech(raw_request: Request):
         logger.warning(f"TTS upstream status: {r.status_code}")
         raise HTTPException(status_code=502, detail="Voice service error")
     return Response(content=r.content, media_type="audio/mpeg")
-
 
 @app.post("/image")
 async def generate_image(raw_request: Request):
@@ -2560,6 +2448,17 @@ async def generate_image(raw_request: Request):
                    "prompt": prompt, "response": caption,
                    "images_left": left})
 
+# File routes (/upload, /file/status, /file/remove) live in og_file_read.py.
+_og_files.bind_app({
+    "get_agent": get_agent, "pro_url": PRO_UPGRADE_URL,
+    "cookie_max_age": COOKIE_MAX_AGE,
+    "is_entitled": lambda uid, req: (
+        req.cookies.get("ogai_pro") == PRO_TOKEN or _uid_is_entitled(uid)),
+    "load_usage": _load_usage_store, "save_usage": _save_usage_store,
+    "usage_lock": _usage_lock, "memory_lock": _memory_lock,
+    "load_history": _load_visitor_history_locked,
+    "save_history": _save_visitor_history_locked})
+_og_files.register_file_routes(app)
 
 @app.get("/pro")
 async def pro_upgrade(raw_request: Request):
@@ -2580,7 +2479,6 @@ async def pro_upgrade(raw_request: Request):
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}client_reference_id={uid}"
     return RedirectResponse(url=url, status_code=302)
-
 
 @app.get("/pro/success")
 async def pro_success(raw_request: Request):
@@ -2623,7 +2521,6 @@ then head back and chat, Pro will already be on.</p>
     )
     return response
 
-
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
     """
@@ -2660,7 +2557,6 @@ async def stripe_webhook(raw_request: Request):
                 "Stripe checkout completed without client_reference_id; "
                 "no entitlement granted")
     return {"received": True}
-
 
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(key: str = ""):
@@ -2729,7 +2625,6 @@ the server and reset if the service gets rebuilt from scratch.</p>
 </body></html>"""
     return HTMLResponse(content=html)
 
-
 @app.get("/history", response_model=HistoryResponse)
 async def get_history(raw_request: Request):
     """
@@ -2763,7 +2658,6 @@ async def get_history(raw_request: Request):
         detail = f"An error occurred while retrieving conversation history: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while retrieving conversation history"
         raise HTTPException(status_code=500, detail=detail)
 
-
 @app.post("/reset", response_model=StatusResponse)
 async def reset_conversation(raw_request: Request):
     """
@@ -2790,17 +2684,16 @@ async def reset_conversation(raw_request: Request):
         detail = f"An error occurred while resetting conversation: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while resetting conversation"
         raise HTTPException(status_code=500, detail=detail)
 
-
 @app.get("/intelligence")
 async def get_intelligence():
     """
     Get the agent's intelligence report (self-learning stats).
-    
+
     Returns:
         Intelligence report with learning statistics
     """
     agent_instance = get_agent()
-    
+
     try:
         # Check if agent has learning system
         if hasattr(agent_instance, 'learning_system') and agent_instance.learning_system:
@@ -2822,17 +2715,16 @@ async def get_intelligence():
             "intelligence_level": 1.0
         }
 
-
 @app.post("/improve")
 async def manual_improvement():
     """
     Manually trigger daily self-improvement routine.
-    
+
     Returns:
         Improvement report
     """
     agent_instance = get_agent()
-    
+
     try:
         if hasattr(agent_instance, 'learning_system') and agent_instance.learning_system:
             improvements = agent_instance.learning_system.daily_self_improvement()
@@ -2850,17 +2742,15 @@ async def manual_improvement():
         logger.error(f"Error during improvement: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/clear", response_model=StatusResponse)
 async def clear_history(raw_request: Request):
     """
     Clear the conversation history (Flask API backward compatibility alias for /reset).
-    
+
     Returns:
         StatusResponse confirming the clear
     """
     return await reset_conversation(raw_request)
-
 
 # --- Google account connect routes (Round 3, dark until enabled) ------------
 
@@ -2897,7 +2787,6 @@ async def google_auth_start(raw_request: Request):
             "ogai_uid", fresh_uid,
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax")
     return response
-
 
 @app.get("/auth/google/callback")
 async def google_auth_callback(raw_request: Request, code: str = "",
@@ -2964,7 +2853,6 @@ async def google_auth_callback(raw_request: Request, code: str = "",
         max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax")
     return response
 
-
 @app.get("/auth/google/status")
 async def google_auth_status(raw_request: Request):
     """What the slide-over menu needs: is connect enabled, and if this
@@ -2978,7 +2866,6 @@ async def google_auth_status(raw_request: Request):
         "email": entry.get("email", "") if entry else "",
         "name": entry.get("name", "") if entry else "",
     }
-
 
 @app.post("/auth/google/disconnect")
 async def google_auth_disconnect(raw_request: Request):
@@ -2994,13 +2881,12 @@ async def google_auth_disconnect(raw_request: Request):
                 _save_google_store(store)
     return {"status": "disconnected"}
 
-
 if __name__ == "__main__":
     import uvicorn
-    
+
     # Get port from environment variable or default to 8000
     port = int(os.environ.get("PORT", 8000))
-    
+
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
