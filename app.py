@@ -160,8 +160,9 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
 TTS_DAILY_LIMIT = int(os.getenv("OG_TTS_DAILY_LIMIT", "60"))
 TTS_MAX_CHARS = 600
 
-def _consume_tts_call(uid: str) -> bool:
-    """Record one /tts call for this visitor today (UTC); False at cap."""
+def _consume_tts_call(uid: str, limit: int = None) -> bool:
+    """Record one /tts call today (UTC); False at cap. limit=None
+    keeps the legacy cap; Round 7 callers pass the tier cap."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"tts:{uid}"
     with _usage_lock:
@@ -169,7 +170,7 @@ def _consume_tts_call(uid: str) -> bool:
         entry = store.get(key)
         if not isinstance(entry, dict) or entry.get("date") != today:
             entry = {"date": today, "count": 0}
-        if entry["count"] >= TTS_DAILY_LIMIT:
+        if entry["count"] >= (TTS_DAILY_LIMIT if limit is None else limit):
             return False
         entry["count"] += 1
         store[key] = entry
@@ -200,9 +201,8 @@ def _images_used_today(uid: str) -> int:
         return 0
     return int(entry.get("count", 0))
 
-def _images_left(uid: str, is_pro: bool) -> int:
-    limit = IMAGE_PRO_DAILY if is_pro else IMAGE_FREE_DAILY
-    return max(0, limit - _images_used_today(uid))
+def _images_left(uid: str, tier: str) -> int:
+    return _og_tiers.images_left(tier, _images_used_today(uid))
 
 def _consume_image(uid: str):
     """Record one generated image today (UTC); success-only."""
@@ -219,6 +219,7 @@ def _consume_image(uid: str):
 
 # --- File reading (Round 6): everything lives in og_file_read.py ------------
 import og_file_read as _og_files
+import og_tiers as _og_tiers
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
 # v1 grants Pro to anyone who lands on /pro/success. v2 verifies payment with
@@ -243,8 +244,9 @@ def _uid_is_entitled(uid: str) -> bool:
     entitled = store.get(PRO_ENTITLED_KEY)
     return isinstance(entitled, dict) and uid in entitled
 
-def _grant_entitlement(uid: str, session_id: str = "", email: str = ""):
-    """Record a Stripe-confirmed Pro entitlement for a visitor uid."""
+def _grant_entitlement(uid: str, session_id: str = "", email: str = "",
+                       tier: str = ""):
+    """Record a Stripe-confirmed entitlement (+ tier bought)."""
     if not uid:
         return
     with _usage_lock:
@@ -256,9 +258,23 @@ def _grant_entitlement(uid: str, session_id: str = "", email: str = ""):
             "granted": datetime.now(timezone.utc).isoformat(),
             "session": session_id,
             "email": email,
+            "tier": tier if tier in _og_tiers.PAID_TIERS else "standard",
         }
         store[PRO_ENTITLED_KEY] = entitled
         _save_usage_store(store)
+
+def _uid_entitlement_tier(uid: str):
+    return _og_tiers.entitlement_tier_for(uid)
+
+
+def _tier_of(cookies, uid: str = "") -> str:
+    return _og_tiers.tier_of(cookies, uid)
+
+
+def _request_tier(raw_request) -> str:
+    return _tier_of(raw_request.cookies,
+                    raw_request.cookies.get("ogai_uid") or "")
+
 
 def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bool:
     """
@@ -304,6 +320,8 @@ LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
 _lookup_tokens_stash = {"tokens": 0}
 # The visitor whose message is being processed right now (same reasoning).
 _current_uid = {"uid": ""}
+# Tier of the visitor being processed (slot like _current_uid).
+_current_tier = {"tier": "free"}
 # The raw message being processed right now (set by the wrapped
 # detect_intent). The agent's own intent detection sometimes hands the
 # search hook a fragment ("in seattle today?"), so the Round 4 data
@@ -343,7 +361,8 @@ def _consume_lookup(uid: str) -> bool:
         entry = store.get(key)
         if not isinstance(entry, dict) or entry.get("date") != today:
             entry = {"date": today, "count": 0}
-        if entry["count"] >= LOOKUP_DAILY_LIMIT:
+        _limit = _og_tiers.cap(_current_tier.get("tier", "free"), "lookup")
+        if entry["count"] >= _limit:
             return False
         entry["count"] += 1
         store[key] = entry
@@ -1802,6 +1821,8 @@ class HistoryResponse(BaseModel):
     message_count: int
     # Free tokens the visitor has left today (omitted/null for Pro).
     free_tokens_left: Optional[int] = None
+    # The visitor's pricing tier (Round 7): free|standard|pro|blue|blackout.
+    tier: Optional[str] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -2068,7 +2089,8 @@ def _generate_reply_streaming(agent_instance, message: str,
     return finished, _estimate_call_tokens(agent, finished)
 
 def _stream_chat_worker(agent_instance, uid: str, message: str,
-                        speak_response: bool, sink, meter: bool = True):
+                        speak_response: bool, sink, meter: bool = True,
+                        tier: str = "free"):
     """
     Worker-thread body for a streaming /chat request. Mirrors the classic
     /chat bookkeeping exactly: this visitor's own thread is swapped into the
@@ -2080,6 +2102,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
+    _current_tier["tier"] = tier
     try:
         has_learning = hasattr(agent_instance, 'learning_system') \
             and agent_instance.learning_system is not None
@@ -2125,6 +2148,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         sink("error", {"detail": detail})
     finally:
         _current_uid["uid"] = ""
+        _current_tier["tier"] = "free"
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -2143,15 +2167,13 @@ def _sse_streaming_response(event_gen, http_response, entitled: bool):
         if name.lower() == b"set-cookie":
             resp.raw_headers.append((name, value))
     if entitled:
-        resp.set_cookie(
-            "ogai_pro", PRO_TOKEN,
-            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
-        )
+        resp.set_cookie("ogai_tier", _og_tiers.cookie_value("standard", PRO_TOKEN),
+                        max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax")
     return resp
 
 def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
                           http_response: Response, entitled: bool,
-                          meter: bool = True):
+                          meter: bool = True, tier: str = "free"):
     """Start the worker thread and return the SSE response for /chat."""
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
@@ -2166,7 +2188,7 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
         target=_stream_chat_worker,
         args=(agent_instance, uid, request.message.strip(),
               request.speak_response, sink),
-        kwargs={"meter": meter},
+        kwargs={"meter": meter, "tier": tier},
         daemon=True,
     )
     worker.start()
@@ -2221,14 +2243,13 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
-    # Freemium gate: Pro cookie holders skip the daily cap entirely. With
-    # webhook entitlement (v2) enabled, a Stripe-confirmed buyer is Pro even
-    # before the cookie lands — and is handed the cookie on this response.
-    is_pro = raw_request.cookies.get("ogai_pro") == PRO_TOKEN
-    entitled = False
-    if not is_pro and _uid_is_entitled(uid):
-        is_pro = True
-        entitled = True
+    # Freemium gate (Round 7): any paid tier skips the token cap.
+    # A webhook-confirmed buyer counts before their cookie lands and
+    # is handed the tier cookie on this response.
+    tier = _tier_of(raw_request.cookies, uid)
+    is_pro = tier != "free"
+    entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
+        raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
 
     if not is_pro:
         if not _has_free_tokens(uid):
@@ -2237,11 +2258,11 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
                 "response": (
                     f"Yo, real talk — you're outta free tokens for today "
                     f"({FREE_DAILY_TOKENS:,} a day on the free plan), and the OG don't work for free forever. "
-                    f"Go Pro for unlimited: {PRO_UPGRADE_URL} — or slide back tomorrow when your freebies reset."
+                    f"Go premium for unlimited: {_og_tiers.public_pro_url()} — or slide back tomorrow when your freebies reset."
                 ),
                 "agent_name": agent_instance.name,
                 "timestamp": datetime.now().isoformat(),
-                "upgrade_url": PRO_UPGRADE_URL,
+                "upgrade_url": _og_tiers.public_pro_url(),
                 "free_tokens_left": 0
             }
             if request.stream:
@@ -2254,11 +2275,12 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     if request.stream:
         return _stream_chat_response(
             agent_instance, uid, request, http_response, entitled,
-            meter=not is_pro)
+            meter=not is_pro, tier=tier)
 
     if entitled:
         http_response.set_cookie(
-            "ogai_pro", PRO_TOKEN,
+            "ogai_tier", _og_tiers.cookie_value(
+                _uid_entitlement_tier(uid) or "standard", PRO_TOKEN),
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
@@ -2268,6 +2290,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
+    _current_tier["tier"] = tier
     try:
         # Check if agent has voice/learning capabilities
         has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
@@ -2314,6 +2337,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         # Save this visitor's thread back (even on error, so what they said
         # is remembered), then hand the shared agent back.
         _current_uid["uid"] = ""
+        _current_tier["tier"] = "free"
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -2339,7 +2363,9 @@ async def text_to_speech(raw_request: Request):
     if not text:
         raise HTTPException(status_code=400, detail="No text to speak")
     uid = raw_request.cookies.get("ogai_uid") or "anon"
-    if not _consume_tts_call(uid):
+    _tts_tier = _tier_of(raw_request.cookies,
+                         uid if uid != "anon" else "")
+    if not _consume_tts_call(uid, _og_tiers.cap(_tts_tier, "tts")):
         raise HTTPException(status_code=429, detail="Daily voice limit reached")
     import httpx
     try:
@@ -2393,26 +2419,26 @@ async def generate_image(raw_request: Request):
                        "Tell me what to draw, fam."}, 400)
     prompt = _clean_image_prompt(raw_prompt)
 
-    is_pro = raw_request.cookies.get("ogai_pro") == PRO_TOKEN \
-        or _uid_is_entitled(uid)
-    left = _images_left(uid, is_pro)
+    tier = _request_tier(raw_request)
+    img_cap = _og_tiers.cap(tier, "images")
+    left = _images_left(uid, tier)
     if left <= 0:
-        if is_pro:
+        if tier != "free":
             return _reply({
                 "ok": False, "capped": True, "images_left": 0,
                 "response": (
-                    f"Yo, you burned through all {IMAGE_PRO_DAILY} pics for "
-                    "today — even Pro gotta let the lab cool down. "
-                    "Slide back tomorrow."
+                    f"Yo, you burned through all {img_cap} pics for "
+                    "today — even the top shelf gotta let the lab cool "
+                    "down. Slide back tomorrow."
                 ),
             })
         return _reply({
             "ok": False, "capped": True, "images_left": 0,
-            "upgrade_url": PRO_UPGRADE_URL,
+            "upgrade_url": _og_tiers.public_pro_url(),
             "response": (
-                f"Yo, that's your {IMAGE_FREE_DAILY} free pics for today — the OG "
-                f"ain't runnin' a free art studio. Go Pro for {IMAGE_PRO_DAILY} "
-                f"a day: {PRO_UPGRADE_URL} — or slide back tomorrow."
+                f"Yo, that's your {img_cap} free pics for today — the OG "
+                f"ain't runnin' a free art studio. Go premium for more "
+                f"a day: {_og_tiers.public_pro_url()} — or slide back tomorrow."
             ),
         })
 
@@ -2429,7 +2455,7 @@ async def generate_image(raw_request: Request):
                        "images_left": left})
 
     _consume_image(uid)
-    left = _images_left(uid, is_pro)
+    left = _images_left(uid, tier)
     caption = _IMAGE_CAPTIONS[len(prompt) % len(_IMAGE_CAPTIONS)]
     # Note the drawing in the visitor's thread (too big to store).
     try:
@@ -2450,76 +2476,24 @@ async def generate_image(raw_request: Request):
 
 # File routes (/upload, /file/status, /file/remove) live in og_file_read.py.
 _og_files.bind_app({
-    "get_agent": get_agent, "pro_url": PRO_UPGRADE_URL,
+    "get_agent": get_agent, "pro_url": _og_tiers.public_pro_url(),
     "cookie_max_age": COOKIE_MAX_AGE,
     "is_entitled": lambda uid, req: (
         req.cookies.get("ogai_pro") == PRO_TOKEN or _uid_is_entitled(uid)),
+    "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
     "load_usage": _load_usage_store, "save_usage": _save_usage_store,
     "usage_lock": _usage_lock, "memory_lock": _memory_lock,
     "load_history": _load_visitor_history_locked,
     "save_history": _save_visitor_history_locked})
 _og_files.register_file_routes(app)
 
-@app.get("/pro")
-async def pro_upgrade(raw_request: Request):
-    """
-    Send visitors to the Pro checkout.
-
-    The destination is the Stripe payment link configured via OG_PRO_LINK;
-    Stripe should be set to redirect buyers to /pro/success after checkout.
-    While webhook entitlement (v2) is enabled, the visitor's ogai_uid rides
-    along as client_reference_id so the Stripe webhook can grant the
-    entitlement to the right visitor.
-    """
-    _bump_stat("pro_clicks")
-    url = PRO_UPGRADE_URL
-    if WEBHOOK_ENABLED:
-        uid = raw_request.cookies.get("ogai_uid")
-        if uid and url.startswith("http"):
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}client_reference_id={uid}"
-    return RedirectResponse(url=url, status_code=302)
-
-@app.get("/pro/success")
-async def pro_success(raw_request: Request):
-    """
-    Pro unlock landing page.
-
-    v1 (default): the Stripe payment link redirects buyers here after
-    checkout and we just set the `ogai_pro` cookie, which lifts the daily
-    cap. Anyone who reaches this URL gets Pro.
-
-    v2 (OG_WEBHOOK_ENABLED=true): the cookie is set only once the Stripe
-    webhook has confirmed this visitor's payment. Until then this page asks
-    them to give it a moment — and as soon as the webhook lands, /chat
-    honors the entitlement directly, cookie or not.
-    """
-    if WEBHOOK_ENABLED:
-        uid = raw_request.cookies.get("ogai_uid")
-        if not uid or not _uid_is_entitled(uid):
-            return HTMLResponse(content="""<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OG AI — Confirming your Pro</title>
-<style>
-  body { background:#0a0a0a; color:#f2f2f2; font-family: Arial, sans-serif; margin:0; padding:32px 20px; text-align:center; }
-  h1 { color:#ffc107; letter-spacing:1px; }
-  p { color:#ccc; line-height:1.6; max-width:520px; margin:12px auto; }
-  a.btn { display:inline-block; margin-top:18px; padding:12px 30px; border:2px solid #ffc107; border-radius:999px; color:#ffc107; text-decoration:none; font-weight:bold; background:rgba(255,193,7,0.08); }
-</style></head><body>
-<h1>💰 Almost there…</h1>
-<p>If you just paid, give Stripe a few seconds to confirm it with OG —
-then head back and chat, Pro will already be on.</p>
-<p>If you didn't finish paying, no charge was made and nothing is unlocked yet.</p>
-<a class="btn" href="/">← Back to OG</a>
-</body></html>""", status_code=200)
-    _bump_stat("pro_success")
-    response = RedirectResponse(url="/", status_code=302)
-    response.set_cookie(
-        "ogai_pro", PRO_TOKEN,
-        max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
-    )
-    return response
+_og_tiers.bind({"pro_token": PRO_TOKEN, "pro_link": PRO_UPGRADE_URL,
+                "webhook_enabled": WEBHOOK_ENABLED,
+                "is_entitled": _uid_is_entitled, "bump_stat": _bump_stat,
+                "load_store": _load_usage_store, "lock": _usage_lock,
+                "entitled_key": PRO_ENTITLED_KEY,
+                "cookie_max_age": COOKIE_MAX_AGE})
+_og_tiers.register_tier_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
@@ -2549,8 +2523,10 @@ async def stripe_webhook(raw_request: Request):
         uid = session.get("client_reference_id") or ""
         email = ((session.get("customer_details") or {}).get("email")
                  or session.get("customer_email") or "")
+        _bought_tier = ((session.get("metadata") or {}).get("tier") or "")
         if uid:
-            _grant_entitlement(uid, session.get("id", ""), email)
+            _grant_entitlement(uid, session.get("id", ""), email,
+                                _bought_tier)
             logger.info("Pro entitlement granted via Stripe webhook")
         else:
             logger.warning(
@@ -2641,7 +2617,8 @@ async def get_history(raw_request: Request):
         if uid:
             with _memory_lock:
                 history = _load_visitor_history_locked(uid)
-        if raw_request.cookies.get("ogai_pro") == PRO_TOKEN or _uid_is_entitled(uid or ""):
+        tier = _tier_of(raw_request.cookies, uid or "")
+        if tier != "free":
             tokens_left = None
         elif uid:
             tokens_left = _free_tokens_remaining(uid)
@@ -2651,7 +2628,8 @@ async def get_history(raw_request: Request):
             "conversation": history,
             "history": history,  # Backward compatibility with Flask API
             "message_count": len(history),
-            "free_tokens_left": tokens_left
+            "free_tokens_left": tokens_left,
+            "tier": tier
         }
     except Exception as e:
         logger.error(f"Error retrieving history: {str(e)}")
