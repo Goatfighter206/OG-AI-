@@ -24,7 +24,7 @@
     <!-- Top bar (ChatGPT-style): menu · Go Pro pill · new chat -->
     <header class="og-topbar">
         <button id="menuBtn" class="og-circle-btn" type="button" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
-        <a id="proPill" class="og-pro-pill" href="/pro">✦ Go Pro</a>
+        <a id="proPill" class="og-pro-pill" href="/pro">✦ Upgrade</a>
         <button id="newChatBtn" class="og-circle-btn" type="button" aria-label="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
     </header>
 
@@ -40,8 +40,9 @@
             <button id="menuClose" class="og-circle-btn og-circle-sm" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
         </div>
         <p id="tokenStatusMenu" class="og-menu-token"></p>
+        <p id="tierStatusMenu" class="og-menu-token" style="margin-top:0"></p>
         <nav class="og-menu-list">
-            <a class="og-menu-item" href="/pro"><span class="og-mi">✦</span> Go Pro — unlimited</a>
+            <a class="og-menu-item" id="menuPlanBtn" href="/pro"><span class="og-mi">✦</span> <span id="menuPlanText">Upgrade — see plans</span></a>
             <button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi">💬</span> New chat</button>
             <button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi">📤</span> Share conversation</button>
             <button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi">🗑️</span> Clear chat</button>
@@ -1213,6 +1214,52 @@
             fetch(API_URL + '/file/status').then(function (r) { return r.json(); })
                 .then(function (s) { if (s && s.attached && s.file) showChip(s.file); })
                 .catch(function () { /* nothing attached or offline */ });
+        })();
+    </script>
+
+    <style id="og-tiers-css">
+        /* Round 7 tier badges: the higher the plan, the richer the pill. */
+        .og-pro-pill.tier-standard { border-color: rgba(255,193,7,.75); background: rgba(255,193,7,.12); color: #ffc107; }
+        .og-pro-pill.tier-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
+        .og-pro-pill.tier-blue { border-color: #2f7bff; background: rgba(47,123,255,.14); color: #8dbcff; box-shadow: 0 0 12px rgba(47,123,255,.35); }
+        .og-pro-pill.tier-blackout { border-color: #ffc107; background: linear-gradient(160deg,#000,#241a02); color: #ffc107; box-shadow: 0 0 16px rgba(255,193,7,.5); font-weight: 800; letter-spacing: .3px; }
+    </style>
+    <script id="og-tiers-js">
+        // Round 7: tier badge wiring. The server reports the visitor's
+        // tier on /history; this script dresses the header pill + menu
+        // to match (free = "✦ Upgrade", paid = tier badge) and relabels
+        // the generic "💎 Pro — unlimited" meter text with the real
+        // tier. Presentation only — all caps are enforced server-side.
+        (function () {
+            var BADGE = { standard: '⭐ Standard', pro: '💎 Pro', blue: '💙 Blue', blackout: '🖤 Blackout' };
+            var tier = null;
+            var pill = document.getElementById('proPill');
+            var ts = document.getElementById('tokenStatus');
+            var planLine = document.getElementById('tierStatusMenu');
+            var planText = document.getElementById('menuPlanText');
+            function applyTier() {
+                if (!tier) return;
+                if (planLine) planLine.textContent = 'Plan: ' + (BADGE[tier] || 'Free');
+                if (tier === 'free') {
+                    if (pill) { pill.textContent = '✦ Upgrade'; pill.className = 'og-pro-pill'; }
+                    if (planText) planText.textContent = 'Upgrade — see plans';
+                    return;
+                }
+                if (pill) { pill.textContent = BADGE[tier]; pill.className = 'og-pro-pill tier-' + tier; }
+                if (planText) planText.textContent = 'Change plan';
+                if (ts && (ts.textContent || '').indexOf('free tokens left') === -1) {
+                    var want = BADGE[tier] + ' — unlimited';
+                    if (ts.textContent !== want) ts.textContent = want;
+                }
+            }
+            fetch('/history').then(function (r) { return r.json(); }).then(function (d) {
+                if (d && d.tier) { tier = d.tier; applyTier(); }
+            }).catch(function () {});
+            if (ts && window.MutationObserver) {
+                new MutationObserver(function () {
+                    if (tier && tier !== 'free' && ts.textContent === '💎 Pro — unlimited' && tier !== 'pro') applyTier();
+                }).observe(ts, { childList: true, characterData: true, subtree: true });
+            }
         })();
     </script>
 </body>
