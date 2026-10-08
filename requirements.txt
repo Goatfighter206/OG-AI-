@@ -23,6 +23,10 @@ psycopg[binary]>=3.1
 python-multipart>=0.0.9
 pypdf>=4.0
 
+# QR codes (Round 17): pure-Python QR generation — no external QR API,
+# payloads never leave the server
+segno>=1.5
+
 # Token counting for the free-tier token budget (falls back to an estimate if absent)
 tiktoken>=0.6.0
 
