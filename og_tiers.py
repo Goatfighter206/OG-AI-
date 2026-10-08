@@ -34,6 +34,9 @@ env vars land.
 import hmac
 import os
 
+from fastapi import Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+
 TIER_ORDER = ("free", "standard", "pro", "blue", "blackout")
 PAID_TIERS = TIER_ORDER[1:]
 
@@ -114,6 +117,13 @@ def tier_from_cookies(cookies, pro_token: str, entitled_tier=None) -> str:
 
 def cap(tier: str, kind: str) -> int:
     """Daily cap for (tier, kind); env OG_CAP_<TIER>_<KIND> wins."""
+    if tier == "free" and kind == "images":
+        _legacy = os.getenv("OG_IMAGE_FREE_DAILY")
+        if _legacy is not None:
+            try:
+                return max(0, int(_legacy))
+            except ValueError:
+                pass
     env = os.getenv(f"OG_CAP_{tier.upper()}_{kind.upper()}")
     if env is not None:
         try:
@@ -194,11 +204,16 @@ _CARD_STYLE = {
 }
 
 
-def ladder_page_html(links) -> str:
+def ladder_page_html(links, uid=None) -> str:
     """The /pro page: four escalating tier cards with checkout buttons.
 
     `links` maps tier -> checkout URL.
     """
+    if uid:
+        links = {t: (f"{u}&client_reference_id={uid}" if "?" in u
+                     else f"{u}?client_reference_id={uid}")
+                 if u.startswith("http") else u
+                 for t, u in links.items()}
     cards = []
     for tier in PAID_TIERS:
         cls, heading, tagline = _CARD_STYLE[tier]
@@ -249,4 +264,103 @@ more art, bigger files, and the new tools first. Cancel anytime.</p>
 <p class="foot">Every plan is month-to-month through Stripe. Already paid?
 Your plan is live the second you land back here.<br>
 <a class="back" href="/">← Back to OG</a></p>
+</body></html>"""
+
+
+# --- App-bound helpers -------------------------------------------------
+# app.py binds its usage store / flags once at startup (bind()); the
+# resolvers and the /pro routes below run against those bindings.
+_DEPS = {}
+
+
+def bind(deps):
+    _DEPS.update(deps)
+
+
+def entitlement_tier(record):
+    """Tier stored on one entitlement record (pre-ladder -> standard)."""
+    if not isinstance(record, dict):
+        return None
+    tier = record.get("tier")
+    return tier if tier in PAID_TIERS else "standard"
+
+
+def entitlement_tier_for(uid):
+    """Tier of uid's webhook entitlement, or None (dark when v2 off)."""
+    if not uid or not _DEPS.get("webhook_enabled"):
+        return None
+    with _DEPS["lock"]:
+        store = _DEPS["load_store"]()
+    entitled = store.get(_DEPS["entitled_key"])
+    if not isinstance(entitled, dict) or uid not in entitled:
+        return None
+    return entitlement_tier(entitled.get(uid))
+
+
+def tier_of(cookies, uid=""):
+    """Resolve a visitor's tier: tier cookie > legacy cookie (standard)
+    > webhook entitlement > free."""
+    return tier_from_cookies(cookies, _DEPS.get("pro_token", ""),
+                             entitlement_tier_for(uid) if uid else None)
+
+
+def images_left(tier, used):
+    """Images remaining today for a tier, given today's usage count."""
+    return max(0, cap(tier, "images") - used)
+
+
+def register_tier_routes(app):
+    """Mount /pro (the ladder page) and /pro/success on the app."""
+
+    @app.get("/pro", response_class=HTMLResponse)
+    async def pro_upgrade(raw_request: Request):
+        _DEPS["bump_stat"]("pro_clicks")
+        links = {t: tier_link(t, _DEPS["pro_link"]) for t in PAID_TIERS}
+        uid = raw_request.cookies.get("ogai_uid") \
+            if _DEPS["webhook_enabled"] else None
+        return HTMLResponse(content=ladder_page_html(links, uid))
+
+    @app.get("/pro/success")
+    async def pro_success(raw_request: Request):
+        # v1 (default): the payment link redirects buyers here after
+        # checkout; set the ogai_tier cookie for the tier bought
+        # (?tier=...; the legacy $9.99 link grants standard).
+        # v2 (webhook on): the cookie lands only once the webhook has
+        # confirmed payment; until then show the "almost there" page.
+        if _DEPS["webhook_enabled"]:
+            uid = raw_request.cookies.get("ogai_uid")
+            if not uid or not _DEPS["is_entitled"](uid):
+                return HTMLResponse(content=_PENDING_HTML, status_code=200)
+        _DEPS["bump_stat"]("pro_success")
+        response = RedirectResponse(url="/", status_code=302)
+        tier = (raw_request.query_params.get("tier") or "").lower()
+        if tier not in PAID_TIERS:
+            tier = "standard"
+        response.set_cookie(
+            "ogai_tier", cookie_value(tier, _DEPS["pro_token"]),
+            max_age=_DEPS["cookie_max_age"], path="/", httponly=True,
+            samesite="lax")
+        # Legacy cookie too, for anything still reading ogai_pro.
+        response.set_cookie(
+            "ogai_pro", _DEPS["pro_token"],
+            max_age=_DEPS["cookie_max_age"], path="/", httponly=True,
+            samesite="lax")
+        return response
+
+
+_PENDING_HTML = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OG AI — Confirming your Pro</title>
+<style>
+  body { background:#0a0a0a; color:#f2f2f2; font-family: Arial, sans-serif; margin:0; padding:32px 20px; text-align:center; }
+  h1 { color:#ffc107; letter-spacing:1px; }
+  p { color:#ccc; line-height:1.6; max-width:520px; margin:12px auto; }
+  a.btn { display:inline-block; margin-top:18px; padding:12px 30px; border:2px solid #ffc107; border-radius:999px; color:#ffc107; text-decoration:none; font-weight:bold; background:rgba(255,193,7,0.08); }
+</style></head><body>
+<h1>💰 Almost there…</h1>
+<p>If you just paid, give Stripe a few seconds to confirm it with OG —
+then head back and chat, Pro will already be on.</p>
+<p>If you didn't finish paying, no charge was made and nothing is unlocked yet.</p>
+<a class="btn" href="/">← Back to OG</a>
 </body></html>"""
