@@ -252,6 +252,355 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
         return False
 
 
+# --- Web lookup (Round 3) ----------------------------------------------------
+# When a visitor's message needs current/external information, OG looks it
+# up on the live web BEFORE answering, and the results ride into the model
+# call as context — OG then answers grounded in fresh facts, in his own
+# voice. Implemented entirely in this app layer: the agent's own
+# detect_intent / web_search hooks are wrapped per instance (the agent's
+# files are never modified), so BOTH chat paths — classic process_message
+# and the streaming twin — get the upgrade through the one seam they share.
+#
+# Primary route: OpenAI's Responses API web_search tool, using the same
+# OPENAI_API_KEY the service already runs on — no new signup. Fallbacks,
+# in order: Tavily when OG_SEARCH_API_KEY is set, then the agent's original
+# DuckDuckGo search. If every route fails, chat carries on without lookup
+# results instead of erroring. A per-visitor daily cap (OG_LOOKUP_DAILY_LIMIT)
+# keeps the search bill bounded; the lookup's tokens are added to the chat
+# exchange's metered total.
+SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
+SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
+LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
+# Tokens spent by lookups during the exchange currently being processed,
+# drained into that exchange's metered total by the chat paths. All chat
+# processing is serialized under _memory_lock, so a single slot is safe.
+_lookup_tokens_stash = {"tokens": 0}
+# The visitor whose message is being processed right now (same reasoning).
+_current_uid = {"uid": ""}
+
+_LOOKUP_TRIGGER_PHRASES = (
+    "look up", "lookup", "search for", "search the web", "google it",
+    "google search", "check online", "on the internet", "on the web",
+)
+_LOOKUP_TRIGGER_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\b(today|tonight|right now|currently|latest|this week|this month)\b",
+    r"\b(news|headlines|weather|forecast)\b",
+    r"\b(score|who won|who is winning|standings)\b",
+    r"\b(price of|how much is|stock price|market cap|exchange rate)\b",
+    r"\b(current|new)\s+(president|ceo|champion|pope|prime minister)\b",
+    r"\bwhen (is|does|did)\b.*\b(release|launch|come out|happen|start)\b",
+))
+
+
+def _message_needs_lookup(message: str) -> bool:
+    """App-layer heuristic: does this message need current/external info?"""
+    if not message:
+        return False
+    low = message.lower()
+    if any(p in low for p in _LOOKUP_TRIGGER_PHRASES):
+        return True
+    return any(p.search(message) for p in _LOOKUP_TRIGGER_PATTERNS)
+
+
+def _consume_lookup(uid: str) -> bool:
+    """Record one web lookup for this visitor today (UTC); False at cap."""
+    if not uid:
+        return True
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"lookup:{uid}"
+    with _usage_lock:
+        store = _load_usage_store()
+        entry = store.get(key)
+        if not isinstance(entry, dict) or entry.get("date") != today:
+            entry = {"date": today, "count": 0}
+        if entry["count"] >= LOOKUP_DAILY_LIMIT:
+            return False
+        entry["count"] += 1
+        store[key] = entry
+        _save_usage_store(store)
+        return True
+
+
+def _drain_lookup_tokens() -> int:
+    """Take the lookup tokens stashed by the current exchange (and reset)."""
+    tokens = int(_lookup_tokens_stash.get("tokens", 0))
+    _lookup_tokens_stash["tokens"] = 0
+    return tokens
+
+
+def _openai_web_lookup(query: str):
+    """One grounded lookup via OpenAI's Responses API web_search tool.
+
+    Returns (answer_text, sources, tokens_used) — sources a list of
+    {"title", "url"} — or None when the route is unavailable or fails."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    import httpx
+    try:
+        with httpx.Client(timeout=45) as client:
+            r = client.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": SEARCH_MODEL,
+                    "tools": [{"type": "web_search"}],
+                    "input": (
+                        "Search the web and answer this with current facts, "
+                        "briefly and concretely (dates, numbers, names): "
+                        + str(query)
+                    ),
+                },
+            )
+        if r.status_code != 200:
+            logger.warning(f"Web lookup upstream status: {r.status_code}")
+            return None
+        data = r.json()
+    except Exception as e:
+        logger.warning(f"Web lookup failed: {e}")
+        return None
+    text = (data.get("output_text") or "").strip()
+    sources = []
+    for item in data.get("output") or []:
+        for content in item.get("content") or []:
+            if not text and content.get("text"):
+                text = str(content["text"]).strip()
+            for ann in content.get("annotations") or []:
+                if ann.get("type") == "url_citation" and ann.get("url"):
+                    src = {"title": ann.get("title") or ann["url"],
+                           "url": ann["url"]}
+                    if src not in sources:
+                        sources.append(src)
+    if not text:
+        return None
+    usage = data.get("usage") or {}
+    try:
+        tokens = int(usage.get("total_tokens") or 0)
+    except Exception:
+        tokens = 0
+    return text, sources[:3], tokens
+
+
+def _tavily_web_lookup(query: str):
+    """Fallback lookup via Tavily (only when OG_SEARCH_API_KEY is set).
+    Same return shape as _openai_web_lookup, or None."""
+    if not SEARCH_API_KEY:
+        return None
+    import httpx
+    try:
+        with httpx.Client(timeout=30) as client:
+            r = client.post(
+                "https://api.tavily.com/search",
+                headers={"Authorization": f"Bearer {SEARCH_API_KEY}"},
+                json={"query": query, "max_results": 3,
+                      "include_answer": True},
+            )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+    except Exception as e:
+        logger.warning(f"Tavily lookup failed: {e}")
+        return None
+    answer = (data.get("answer") or "").strip()
+    sources = [{"title": s.get("title") or s.get("url", ""),
+                "url": s.get("url", "")}
+               for s in (data.get("results") or [])[:3] if s.get("url")]
+    if not answer:
+        return None
+    return answer, sources, 0
+
+
+def _og_web_search(agent_instance, query: str, num_results: int = 5):
+    """The app-layer search behind the agent's web_search hook.
+
+    OpenAI lookup first, Tavily second, the agent's built-in DuckDuckGo
+    search last. Returns the same List[Dict] shape the agent's own
+    web_search returns ({title, body, href}) so both chat paths format the
+    results into model context exactly as before."""
+    uid = _current_uid.get("uid", "")
+    if uid and not _consume_lookup(uid):
+        logger.info("Web lookup skipped: visitor at daily lookup cap")
+        return []
+    for route in (_openai_web_lookup, _tavily_web_lookup):
+        try:
+            got = route(query)
+        except Exception as e:
+            logger.warning(f"Web lookup route failed: {e}")
+            got = None
+        if got:
+            text, sources, tokens = got
+            if tokens:
+                _lookup_tokens_stash["tokens"] += int(tokens)
+            results = [{
+                "title": "Live web lookup",
+                "body": text[:1800],
+                "href": sources[0]["url"] if sources else "",
+            }]
+            for s in sources:
+                results.append({"title": s["title"], "body": s["url"],
+                                "href": s["url"]})
+            return results[: max(1, num_results)]
+    original = getattr(agent_instance, "_og_original_web_search", None)
+    if original is not None:
+        try:
+            return original(query, num_results)
+        except Exception as e:
+            logger.warning(f"Built-in web search failed: {e}")
+    return []
+
+
+def _install_lookup_tools(agent_instance):
+    """Wrap the agent instance's detect_intent + web_search — app layer
+    only, the agent's files are never modified — so lookup triggers cover
+    current-events questions and search runs on the OpenAI route."""
+    if getattr(agent_instance, "_og_lookup_installed", False):
+        return
+    original_detect = getattr(agent_instance, "detect_intent", None)
+    original_search = getattr(agent_instance, "web_search", None)
+    if original_detect is None or original_search is None:
+        return
+    agent_instance._og_original_web_search = original_search
+
+    def detect_intent_wrapped(message):
+        intent = original_detect(message)
+        try:
+            if (isinstance(intent, dict)
+                    and not intent.get("needs_web_search")
+                    and not intent.get("needs_code_generation")
+                    and _message_needs_lookup(message)):
+                intent["needs_web_search"] = True
+                intent["search_query"] = str(message).strip()
+        except Exception as e:
+            logger.warning(f"Lookup trigger check failed: {e}")
+        return intent
+
+    def web_search_wrapped(query, num_results=5):
+        return _og_web_search(agent_instance, query, num_results)
+
+    agent_instance.detect_intent = detect_intent_wrapped
+    agent_instance.web_search = web_search_wrapped
+    agent_instance._og_lookup_installed = True
+
+
+# --- Google account connect (Round 3, ships dark) ---------------------------
+# A visitor can connect their Google account to OG ("Connect Google" in
+# the slide-over menu). OAuth 2.0 the standard way: OG never sees or stores
+# a password — Google itself confirms who they are and hands back tokens,
+# stored per visitor (keyed by ogai_uid) alongside the memory store: in
+# Postgres when OG_MEMORY_DB_URL is set, else a JSON file. v1 scopes are
+# identity only (openid email profile) — enough for OG to know who's
+# talking; no mail or calendar access.
+# Ships DISABLED: the menu button stays hidden and the routes answer 404
+# until OG_GOOGLE_ENABLED=true plus OG_GOOGLE_CLIENT_ID /
+# OG_GOOGLE_CLIENT_SECRET are set (Brent creates the OAuth client in his
+# own Google Cloud console — the steps are in the Round 3 report).
+GOOGLE_CLIENT_ID = os.getenv("OG_GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("OG_GOOGLE_CLIENT_SECRET", "")
+GOOGLE_ENABLED = (os.getenv("OG_GOOGLE_ENABLED", "false").lower() == "true"
+                  and bool(GOOGLE_CLIENT_ID) and bool(GOOGLE_CLIENT_SECRET))
+GOOGLE_REDIRECT_URI = os.getenv(
+    "OG_GOOGLE_REDIRECT_URI",
+    "https://og-ai-service.onrender.com/auth/google/callback")
+GOOGLE_STORE_FILE = "google_store.json"
+_google_lock = threading.Lock()
+
+
+def _google_db_connect():
+    """Connect to the durable DB, creating the Google tokens table."""
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+    with conn.cursor() as cur:
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS og_google_tokens ("
+            "uid TEXT PRIMARY KEY, data JSONB)"
+        )
+    conn.commit()
+    return conn
+
+
+def _load_google_store() -> Dict:
+    """Load all Google connections (durable DB when configured, otherwise
+    the JSON google store)."""
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _google_db_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT uid, data FROM og_google_tokens")
+                    return {uid: data for uid, data in cur.fetchall()}
+        except Exception as e:
+            logger.warning(f"Google store DB load failed, using file: {e}")
+    if os.path.exists(GOOGLE_STORE_FILE):
+        try:
+            with open(GOOGLE_STORE_FILE, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning(f"Could not load google store: {e}")
+    return {}
+
+
+def _save_google_store(store: Dict):
+    """Save all Google connections (durable DB when configured, otherwise
+    the JSON google store)."""
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _google_db_connect() as conn:
+                with conn.cursor() as cur:
+                    for uid, data in store.items():
+                        cur.execute(
+                            "INSERT INTO og_google_tokens (uid, data) "
+                            "VALUES (%s, %s) ON CONFLICT (uid) DO UPDATE "
+                            "SET data = EXCLUDED.data",
+                            (uid, _Jsonb(data)),
+                        )
+                    cur.execute("SELECT uid FROM og_google_tokens")
+                    existing = {row[0] for row in cur.fetchall()}
+                    for stale in existing - set(store.keys()):
+                        cur.execute(
+                            "DELETE FROM og_google_tokens WHERE uid = %s",
+                            (stale,))
+                conn.commit()
+            return
+        except Exception as e:
+            logger.warning(f"Google store DB save failed, using file: {e}")
+    try:
+        with open(GOOGLE_STORE_FILE, 'w') as f:
+            json.dump(store, f)
+    except Exception as e:
+        logger.warning(f"Could not save google store: {e}")
+
+
+def _google_connection(uid: str) -> Optional[Dict]:
+    """This visitor's stored Google connection (profile + tokens), if any."""
+    if not uid:
+        return None
+    with _google_lock:
+        store = _load_google_store()
+    entry = store.get(uid)
+    return entry if isinstance(entry, dict) else None
+
+
+def _google_state_for(uid: str) -> str:
+    """Signed OAuth state tying the connect flow to one visitor uid."""
+    sig = hmac.new(GOOGLE_CLIENT_SECRET.encode(),
+                   f"og-google:{uid}".encode(), hashlib.sha256).hexdigest()
+    return f"{uid}.{sig}"
+
+
+def _google_uid_from_state(state: str) -> Optional[str]:
+    """Recover the visitor uid from a state value we signed, else None."""
+    try:
+        uid, _, sig = str(state).partition(".")
+        if not uid or not sig:
+            return None
+        expected = hmac.new(GOOGLE_CLIENT_SECRET.encode(),
+                            f"og-google:{uid}".encode(),
+                            hashlib.sha256).hexdigest()
+        return uid if hmac.compare_digest(expected, sig) else None
+    except Exception:
+        return None
+
+
 # --- Per-visitor memory -------------------------------------------------------
 # OG remembers each visitor separately: conversation history is keyed by the
 # `ogai_uid` cookie and persisted to a JSON store, so a returning visitor
@@ -544,6 +893,7 @@ def get_agent() -> AIAgent:
         
         agent_name = config.get('agent_name', 'OG-AI')
         agent = AIAgent(name=agent_name, config=config)
+        _install_lookup_tools(agent)
         _reset_memory_store()
 
     return agent
@@ -880,6 +1230,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
     """
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
+    _current_uid["uid"] = uid
     try:
         has_learning = hasattr(agent_instance, 'learning_system') \
             and agent_instance.learning_system is not None
@@ -897,6 +1248,8 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
             sink("chunk", response)
             tokens_used = _estimate_call_tokens(agent_instance, response)
 
+        # Bill the exchange for any web lookup it ran, too.
+        tokens_used += _drain_lookup_tokens()
         history = agent_instance.get_conversation_history()
         latest_msg = history[-1] if history else None
         result = {
@@ -922,6 +1275,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
             if DEVELOPMENT_MODE else "An error occurred while processing your message"
         sink("error", {"detail": detail})
     finally:
+        _current_uid["uid"] = ""
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -1067,6 +1421,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     # visitors chatting at once can never interleave each other's history.
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
+    _current_uid["uid"] = uid
     try:
         # Check if agent has voice/learning capabilities
         has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
@@ -1093,7 +1448,8 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         # Token metering (free visitors only): the classic path gets no
         # usage back from the agent, so the call is counted by estimate.
         if not is_pro:
-            _tokens_used = _estimate_call_tokens(agent_instance, response)
+            _tokens_used = _estimate_call_tokens(agent_instance, response) \
+                + _drain_lookup_tokens()
             _record_chat_usage(uid, _tokens_used)
             _bump_stat("tokens", _tokens_used)
             result["free_tokens_left"] = _free_tokens_remaining(uid)
@@ -1111,6 +1467,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     finally:
         # Save this visitor's thread back (even on error, so what they said
         # is remembered), then hand the shared agent back.
+        _current_uid["uid"] = ""
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -1455,6 +1812,139 @@ async def clear_history(raw_request: Request):
         StatusResponse confirming the clear
     """
     return await reset_conversation(raw_request)
+
+
+# --- Google account connect routes (Round 3, dark until enabled) ------------
+
+@app.get("/auth/google")
+async def google_auth_start(raw_request: Request):
+    """
+    Begin Google connect: bounce the visitor to Google's own consent page.
+    Answers 404 while the feature is dark (keys not set), so nothing about
+    it is discoverable on the live site until Brent enables it.
+    """
+    if not GOOGLE_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+    from urllib.parse import urlencode
+    uid = raw_request.cookies.get("ogai_uid")
+    fresh_uid = None
+    if not uid:
+        uid = uuid.uuid4().hex
+        fresh_uid = uid
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": _google_state_for(uid),
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+    }
+    response = RedirectResponse(
+        url="https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params),
+        status_code=302)
+    if fresh_uid:
+        response.set_cookie(
+            "ogai_uid", fresh_uid,
+            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax")
+    return response
+
+
+@app.get("/auth/google/callback")
+async def google_auth_callback(raw_request: Request, code: str = "",
+                               state: str = "", error: str = ""):
+    """
+    Google sends the visitor back here with a code. The signed state tells
+    us which visitor this is; the code is exchanged for tokens, the
+    profile is fetched, and the connection is stored under their uid.
+    Any failure lands back on the chat with ?google=failed — no error page.
+    """
+    if not GOOGLE_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+    uid = _google_uid_from_state(state)
+    if error or not code or not uid:
+        return RedirectResponse(url="/?google=failed", status_code=302)
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            token_resp = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": GOOGLE_REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                })
+            if token_resp.status_code != 200:
+                logger.warning(
+                    f"Google token exchange status: {token_resp.status_code}")
+                return RedirectResponse(url="/?google=failed", status_code=302)
+            tokens = token_resp.json()
+            info_resp = await client.get(
+                "https://openidconnect.googleapis.com/v1/userinfo",
+                headers={
+                    "Authorization": f"Bearer {tokens.get('access_token', '')}"
+                })
+            profile = info_resp.json() if info_resp.status_code == 200 else {}
+    except Exception as e:
+        logger.warning(f"Google connect failed: {e}")
+        return RedirectResponse(url="/?google=failed", status_code=302)
+    entry = {
+        "email": profile.get("email", ""),
+        "name": profile.get("name", ""),
+        "picture": profile.get("picture", ""),
+        "access_token": tokens.get("access_token", ""),
+        "refresh_token": tokens.get("refresh_token", ""),
+        "expires_at": (datetime.now(timezone.utc).timestamp()
+                       + int(tokens.get("expires_in", 3600))),
+        "connected": datetime.now(timezone.utc).isoformat(),
+    }
+    with _google_lock:
+        store = _load_google_store()
+        old = store.get(uid)
+        if not entry["refresh_token"] and isinstance(old, dict):
+            # Google only sends a refresh token on first consent; keep the
+            # one we already hold rather than wiping it.
+            entry["refresh_token"] = old.get("refresh_token", "")
+        store[uid] = entry
+        _save_google_store(store)
+    response = RedirectResponse(url="/?google=connected", status_code=302)
+    response.set_cookie(
+        "ogai_uid", uid,
+        max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax")
+    return response
+
+
+@app.get("/auth/google/status")
+async def google_auth_status(raw_request: Request):
+    """What the slide-over menu needs: is connect enabled, and if this
+    visitor is connected, as whom? (Never returns tokens.)"""
+    entry = None
+    if GOOGLE_ENABLED:
+        entry = _google_connection(raw_request.cookies.get("ogai_uid"))
+    return {
+        "enabled": GOOGLE_ENABLED,
+        "connected": bool(entry),
+        "email": entry.get("email", "") if entry else "",
+        "name": entry.get("name", "") if entry else "",
+    }
+
+
+@app.post("/auth/google/disconnect")
+async def google_auth_disconnect(raw_request: Request):
+    """Forget this visitor's Google connection — tokens deleted server-side."""
+    if not GOOGLE_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+    uid = raw_request.cookies.get("ogai_uid")
+    if uid:
+        with _google_lock:
+            store = _load_google_store()
+            if uid in store:
+                del store[uid]
+                _save_google_store(store)
+    return {"status": "disconnected"}
 
 
 if __name__ == "__main__":
