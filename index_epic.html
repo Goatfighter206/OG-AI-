@@ -70,6 +70,9 @@
             <button class="og-menu-item" id="menuPlaidBtn" type="button" hidden><span class="og-mi">🏦</span> Connect bank (Plaid)</button>
             <div class="og-menu-item" id="menuPlaidInfo" hidden><span class="og-mi">✅</span> <span id="menuPlaidName"></span></div>
             <button class="og-menu-item" id="menuPlaidDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect bank</button>
+            <a class="og-menu-item" id="menuCoinbaseBtn" href="/auth/coinbase" hidden><span class="og-mi">🪙</span> Connect Coinbase (trading)</a>
+            <div class="og-menu-item" id="menuCoinbaseInfo" hidden><span class="og-mi">✅</span> <span id="menuCoinbaseName"></span></div>
+            <button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Coinbase</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
             <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
             <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
@@ -1084,6 +1087,34 @@
             }
             if (disc) disc.addEventListener('click', function () {
                 fetch('/auth/spotify/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+            });
+            refresh();
+        })();
+    </script>
+    <script>
+        // Round 20: Coinbase trading connect wiring. The items only
+        // appear when the server says the feature is enabled (it
+        // ships dark — Brent still has to register the Coinbase app
+        // and set the env vars). Connected visitors see their name.
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var btn = $('menuCoinbaseBtn'), info = $('menuCoinbaseInfo'),
+                nameEl = $('menuCoinbaseName'), disc = $('menuCoinbaseDisconnect');
+            if (!btn) return;
+            function refresh() {
+                fetch('/auth/coinbase/status').then(function (r) { return r.json(); }).then(function (s) {
+                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+                    if (s.connected) {
+                        btn.hidden = true; info.hidden = false; disc.hidden = false;
+                        var who = s.name || s.email;
+                        nameEl.textContent = who ? ('Coinbase: ' + who) : 'Coinbase connected';
+                    } else {
+                        btn.hidden = false; info.hidden = true; disc.hidden = true;
+                    }
+                }).catch(function () { /* feature dark or offline — stay hidden */ });
+            }
+            if (disc) disc.addEventListener('click', function () {
+                fetch('/auth/coinbase/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
             });
             refresh();
         })();
