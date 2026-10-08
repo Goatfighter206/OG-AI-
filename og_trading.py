@@ -478,13 +478,21 @@ def _cb_execute(entry: Dict, side: str, symbol: str,
 # is (price, source-label, fetched-at-UTC) — the timestamp shown
 # to the visitor is the fetch time, never a fabricated feed time.
 
+# Nasdaq/Yahoo wall non-browser user agents (proven live
+# 2026-10-08: the Round 4 data pack, which sends this browser UA,
+# quoted AAPL from the same host while an OG-AI UA got nothing) —
+# so the quote fetches send the data pack's UA.
+_FEED_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; "
+                          "x64) AppleWebKit/537.36 (KHTML, like "
+                          "Gecko) Chrome/124.0 Safari/537.36"}
+
+
 def _fetch_json(url: str, params: Dict = None) -> Optional[Dict]:
     import httpx
     try:
         with httpx.Client(timeout=12) as client:
             resp = client.get(
-                url, params=params or {},
-                headers={"User-Agent": "OG-AI/1.0 (trading preview)"})
+                url, params=params or {}, headers=_FEED_UA)
         if resp.status_code != 200:
             return None
         data = resp.json()
