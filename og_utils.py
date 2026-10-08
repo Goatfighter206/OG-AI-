@@ -565,9 +565,9 @@ def _fetch_rate(frm: str, to: str):
         return hit[1], hit[2]
     import httpx
     try:
-        with httpx.Client(timeout=8) as client:
+        with httpx.Client(timeout=8, follow_redirects=True) as client:
             resp = client.get(
-                "https://api.frankfurter.app/latest",
+                "https://api.frankfurter.dev/v1/latest",
                 params={"from": frm, "to": to})
         if resp.status_code != 200:
             logger.warning(
