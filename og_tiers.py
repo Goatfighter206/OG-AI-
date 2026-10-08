@@ -23,7 +23,9 @@ Caps are per UTC day and env-overridable per tier/kind:
 OG_CAP_<TIER>_<KIND>, e.g. OG_CAP_PRO_IMAGES=50. Kinds: images,
 uploads, lookup, tts, upload_mb, transcribe (Round 8 voice notes),
 unity (Round 16 Unity-maker packages per day), shortlink (Round 17
-short-link creations per day).
+short-link creations per day), calorie (Round 18 food-log entries
+per day), watch (Round 18 ACTIVE price watches, a count not a
+daily meter).
 Chat tokens: free is metered by
 OG_FREE_DAILY_TOKENS in app.py; every paid tier is unlimited.
 
@@ -61,6 +63,8 @@ _DEFAULT_CAPS = {
     "transcribe": {"free": 3, "standard": 15,  "pro": 50,  "blue": 150,  "blackout": 500},
     "unity":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "shortlink": {"free": 5,  "standard": 25,  "pro": 50,  "blue": 100,  "blackout": 500},
+    "calorie": {"free": 10,   "standard": 50,  "pro": 100, "blue": 200,  "blackout": 500},
+    "watch":   {"free": 3,    "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
     "upload_mb": {"free": 8,  "standard": 8,   "pro": 25,  "blue": 25,   "blackout": 25},
 }
 
