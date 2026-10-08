@@ -36,6 +36,23 @@
         </div>
     </header>
 
+    <!-- 18+ Age Gate: first-visit confirmation overlay -->
+    <div id="ageGate" class="age-gate" hidden>
+        <div class="age-gate-card">
+            <div class="age-badge-big">18+</div>
+            <h2>Adults Only</h2>
+            <p>OG is an 18+ AI — profane, uncensored, and strictly for adults.
+               Confirm you're of legal age to come in.</p>
+            <div id="ageGatePrompt">
+                <button class="age-gate-btn" id="ageGateEnter">I am 18 or older — Enter 🔥</button>
+                <button class="age-gate-btn secondary" id="ageGateDecline">I'm under 18</button>
+            </div>
+            <div id="ageGateDeclined" hidden>
+                <p>🚫 Sorry, fam — OG is strictly 18+. Come back when you're legal.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Chat Container -->
     <div class="chat-wrapper">
         <div class="chat-container">
@@ -46,7 +63,7 @@
                 </div>
 
                 <div class="ai-status">
-                    <h2>OG-AI</h2>
+                    <h2>OG-AI <span class="age-badge">18+</span></h2>
                     <p>
                         <span class="status-indicator"></span>
                         <span id="status-text">Online & Ready</span>
@@ -54,6 +71,7 @@
                     <p style="font-size: 0.9em; opacity: 0.8; margin-top: 5px;">
                         Sassy AI • Web Access • Code Execution • Voice Enabled
                     </p>
+                    <p id="tokenStatus" style="font-size: 0.85em; color: #ffc107; margin-top: 4px; min-height: 1em;"></p>
                 </div>
 
                 <div class="avatar ai-avatar">
@@ -115,6 +133,7 @@
                     </button>
                 </div>
             </div>
+            <div class="age-footer">🔞 OG AI is an 18+ AI — adults only.</div>
         </div>
     </div>
 
@@ -154,8 +173,9 @@
             // Set welcome message time
             document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
 
-            // Bring back this visitor's earlier conversation, if any
-            restoreConversation();
+            // Bring back this visitor's earlier conversation, if any —
+            // but only after the 18+ age gate (returning adults skip it).
+            initAgeGate();
         });
 
         // iOS Safari only allows speech that traces back to a tap.
@@ -289,6 +309,55 @@
         });
 
         // Send Message
+        // --- 18+ age gate ---------------------------------------------------
+        // First visit: an explicit confirmation overlay covers the chat; the
+        // chat behind it does not load (no history restore) until the visitor
+        // confirms. Confirmation persists in a cookie for a year, so returning
+        // adults are not re-gated. Declining swaps the gate to a
+        // "come back at 18" state and the chat stays unloaded.
+        function ageConfirmed() {
+            return document.cookie.split('; ').some(c => c === 'ogai_age_ok=1');
+        }
+
+        function initAgeGate() {
+            const gate = document.getElementById('ageGate');
+            if (ageConfirmed()) {
+                gate.hidden = true;
+                restoreConversation();
+                return;
+            }
+            gate.hidden = false;
+            document.getElementById('ageGateEnter').addEventListener('click', () => {
+                document.cookie = 'ogai_age_ok=1; max-age=31536000; path=/; SameSite=Lax';
+                gate.hidden = true;
+                restoreConversation();
+            });
+            document.getElementById('ageGateDecline').addEventListener('click', () => {
+                document.getElementById('ageGatePrompt').hidden = true;
+                document.getElementById('ageGateDeclined').hidden = false;
+            });
+        }
+
+        // --- Token balance (free tier) -------------------------------------
+        function updateTokenStatus(left) {
+            const el = document.getElementById('tokenStatus');
+            if (!el) return;
+            if (left === null || left === undefined) {
+                el.textContent = '💎 Pro — unlimited';
+            } else {
+                el.textContent = '🪙 ' + Number(left).toLocaleString() + ' free tokens left today';
+            }
+        }
+
+        function showUpgradeCta() {
+            const cta = document.createElement('div');
+            cta.style.cssText = 'text-align: center; padding: 8px 0 2px;';
+            cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — unlimited messages</a>';
+            document.getElementById('messagesArea').appendChild(cta);
+        }
+
+        // Send a message: token streaming first (OG's words appear the moment
+        // he produces them), the classic one-shot request as the fallback.
         async function sendMessage(speakResponse = false) {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -302,28 +371,8 @@
             updateStatus('AI is thinking...');
 
             try {
-                const response = await fetch(`${API_URL}/chat`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
-                });
-
-                if (!response.ok) throw new Error(`Server error: ${response.status}`);
-
-                const data = await response.json();
-                addMessage('ai', data.response, data.timestamp);
-
-                // Free cap hit: give them a real button, not just a raw link
-                if (data.upgrade_url) {
-                    const cta = document.createElement('div');
-                    cta.style.cssText = 'text-align: center; padding: 8px 0 2px;';
-                    cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — unlimited messages</a>';
-                    document.getElementById('messagesArea').appendChild(cta);
-                }
-
-                speakReply(data.response); // OG always talks back
-
-                updateStatus('Online & Ready');
+                const streamed = await streamReply(message);
+                if (!streamed) await classicReply(message);
             } catch (error) {
                 console.error('Error:', error);
                 addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
@@ -331,6 +380,127 @@
             } finally {
                 isProcessing = false;
             }
+        }
+
+        // The original one-shot flow — also the fallback when streaming
+        // never gets going (old browser, a proxy in the way, stream refused).
+        async function classicReply(message) {
+            const response = await fetch(`${API_URL}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
+
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+            const data = await response.json();
+            addMessage('ai', data.response, data.timestamp);
+
+            // Free cap hit: give them a real button, not just a raw link
+            if (data.upgrade_url) showUpgradeCta();
+            if ('free_tokens_left' in data) updateTokenStatus(data.free_tokens_left);
+
+            speakReply(data.response); // OG always talks back
+
+            updateStatus('Online & Ready');
+        }
+
+        // Streaming flow: POST with stream:true and render OG's reply into a
+        // live bubble token-by-token as the chunks land; when the server says
+        // done, swap in the fully rendered message (code blocks, Copy button,
+        // typing reveal) exactly like a classic reply. Returns false when
+        // streaming never got going, so the caller falls back to classicReply.
+        async function streamReply(message) {
+            let response;
+            try {
+                response = await fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message, stream: true })
+                });
+            } catch (e) {
+                return false;
+            }
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok || !response.body || !contentType.includes('text/event-stream')) {
+                return false;
+            }
+
+            const messagesArea = document.getElementById('messagesArea');
+            const bubble = document.createElement('div');
+            bubble.className = 'message ai';
+            bubble.innerHTML = `
+                <div class="message-avatar"><img class="og-avatar-sm" src="${OG_AVATAR}" alt="OG AI"></div>
+                <div class="message-content">
+                    <div class="message-text"></div>
+                    <div class="message-time">${new Date().toLocaleTimeString()}</div>
+                </div>`;
+            messagesArea.appendChild(bubble);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+            const textEl = bubble.querySelector('.message-text');
+            setMood('talking');
+            updateStatus('OG is typing...');
+
+            let full = '';
+            let doneData = null;
+            let streamError = false;
+            try {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let reading = true;
+                while (reading) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    let cut;
+                    while ((cut = buffer.indexOf('\n\n')) >= 0) {
+                        const rawEvent = buffer.slice(0, cut);
+                        buffer = buffer.slice(cut + 2);
+                        let eventName = 'message';
+                        let dataText = '';
+                        rawEvent.split('\n').forEach(line => {
+                            if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                            else if (line.startsWith('data:')) dataText += line.slice(5).trim();
+                        });
+                        if (!dataText) continue;
+                        let payload;
+                        try { payload = JSON.parse(dataText); } catch (e) { continue; }
+                        if (eventName === 'chunk') {
+                            full += payload.text || '';
+                            textEl.textContent = full;
+                            messagesArea.scrollTop = messagesArea.scrollHeight;
+                        } else if (eventName === 'done') {
+                            doneData = payload;
+                            reading = false;
+                        } else if (eventName === 'error') {
+                            streamError = true;
+                            reading = false;
+                        }
+                    }
+                }
+            } catch (e) {
+                // Dropped mid-stream: the server still finishes the reply and
+                // saves it to memory; finalize with whatever arrived. (No
+                // re-POST — the message was already processed server-side.)
+                if (!full) { bubble.remove(); setMood(''); throw new Error('Stream dropped'); }
+                streamError = true;
+            }
+
+            bubble.remove();
+            if (streamError && !doneData) {
+                addMessage('ai', full);
+                speakReply(full);
+                updateStatus('Online & Ready');
+                return true;
+            }
+            const finalText = (doneData && doneData.response) || full;
+            addMessage('ai', finalText, doneData ? doneData.timestamp : null);
+            if (doneData && doneData.upgrade_url) showUpgradeCta();
+            if (doneData && 'free_tokens_left' in doneData) updateTokenStatus(doneData.free_tokens_left);
+            speakReply(finalText);
+            updateStatus('Online & Ready');
+            return true;
         }
 
         // Text to Speech
@@ -547,6 +717,7 @@
                     else if (m.role === 'assistant' || m.role === 'ai') addMessage('ai', m.content, m.timestamp || null, true);
                 });
                 if (convo.length) updateStatus('Welcome back — OG remembers this conversation 🧠');
+                if ('free_tokens_left' in data) updateTokenStatus(data.free_tokens_left);
             } catch (e) { /* first visit or server down — nothing to restore */ }
         }
 
