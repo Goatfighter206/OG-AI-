@@ -83,11 +83,21 @@ _BODY_CAP = 3500          # chars of a full email body handed to the model
 
 def requested_scope() -> str:
     """The scope string the Round 3 connect flow asks Google for:
-    identity only while hands are off, identity + hands scopes when
-    OG_GOOGLE_HANDS_ENABLED=true."""
-    if HANDS_ENABLED:
-        return f"{BASE_SCOPES} {HANDS_SCOPES}"
-    return BASE_SCOPES
+    identity only while the extra rounds are off; identity + hands
+    scopes when OG_GOOGLE_HANDS_ENABLED=true; the Round 13 Drive/
+    Tasks scopes appended when OG_GOOGLE_DRIVE_ENABLED=true (the
+    two flags are independent — each round's scopes join only while
+    its own flag is on)."""
+    scope = f"{BASE_SCOPES} {HANDS_SCOPES}" if HANDS_ENABLED \
+        else BASE_SCOPES
+    try:
+        import og_google_drive as _drive
+        extra = _drive.extra_scopes()
+    except Exception:
+        extra = ""
+    if extra:
+        scope = f"{scope} {extra}"
+    return scope
 
 
 # Bound by app.py (install call): Round 3's store + config, which
@@ -1000,3 +1010,15 @@ def install_google_hands(agent_instance, get_uid, consume_lookup,
     agent_instance.detect_intent = detect_wrapped
     agent_instance.web_search = search_wrapped
     agent_instance._og_google_hands_installed = True
+
+    # Round 13: Google Drive/Docs + Tasks (og_google_drive.py) wraps
+    # OUTSIDE the hands wrappers so its jobs get first crack; it
+    # self-gates on OG_GOOGLE_DRIVE_ENABLED and reads this round's
+    # bound store/config through this module's shared helpers, so
+    # app.py needs no new wiring.
+    try:
+        import og_google_drive as _drive
+        _drive.install_google_drive(
+            agent_instance, get_uid, consume_lookup)
+    except Exception as e:
+        logger.warning(f"Google drive install failed: {e}")
