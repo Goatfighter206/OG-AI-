@@ -67,6 +67,9 @@
             <a class="og-menu-item" id="menuRedditBtn" href="/auth/reddit" hidden><span class="og-mi">🟠</span> Connect Reddit</a>
             <div class="og-menu-item" id="menuRedditInfo" hidden><span class="og-mi">✅</span> <span id="menuRedditName"></span></div>
             <button class="og-menu-item" id="menuRedditDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Reddit</button>
+            <button class="og-menu-item" id="menuPlaidBtn" type="button" hidden><span class="og-mi">🏦</span> Connect bank (Plaid)</button>
+            <div class="og-menu-item" id="menuPlaidInfo" hidden><span class="og-mi">✅</span> <span id="menuPlaidName"></span></div>
+            <button class="og-menu-item" id="menuPlaidDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect bank</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
             <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
             <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
@@ -1148,6 +1151,54 @@
                 refresh();
             })();
         });
+    </script>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <script>
+        // Round 18: Plaid bank connect wiring (monitoring pack).
+        // Read-only by construction — Link runs in Plaid's own hosted
+        // flow; the page only carries the public token back to OG.
+        // The items appear only when the server says Plaid is
+        // enabled (it ships dark — Brent still has to register with
+        // Plaid and set the env vars).
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var btn = $('menuPlaidBtn'), info = $('menuPlaidInfo'),
+                nameEl = $('menuPlaidName'), disc = $('menuPlaidDisconnect');
+            if (!btn) return;
+            function refresh() {
+                fetch('/plaid/status').then(function (r) { return r.json(); }).then(function (s) {
+                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+                    if (s.connected) {
+                        btn.hidden = true; info.hidden = false; disc.hidden = false;
+                        nameEl.textContent = s.institution ? ('Bank: ' + s.institution) : 'Bank connected';
+                    } else {
+                        btn.hidden = false; info.hidden = true; disc.hidden = true;
+                    }
+                }).catch(function () { /* feature dark or offline — stay hidden */ });
+            }
+            btn.addEventListener('click', function () {
+                if (typeof Plaid === 'undefined') return;
+                fetch('/plaid/link-token', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
+                    if (!d.link_token) return;
+                    var handler = Plaid.create({
+                        token: d.link_token,
+                        onSuccess: function (publicToken) {
+                            fetch('/plaid/exchange', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ public_token: publicToken })
+                            }).then(refresh).catch(refresh);
+                        },
+                        onExit: function () { /* visitor backed out — nothing stored */ }
+                    });
+                    handler.open();
+                }).catch(function () { /* Plaid unavailable */ });
+            });
+            if (disc) disc.addEventListener('click', function () {
+                fetch('/plaid/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+            });
+            refresh();
+        })();
     </script>
     <style id="og-image-css">
         .og-gen-image { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 14px; margin: 10px 0 6px; border: 1px solid rgba(255, 193, 7, .35); }
