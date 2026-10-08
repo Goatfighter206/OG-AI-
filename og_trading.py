@@ -1410,8 +1410,9 @@ def install_trading_tools(agent_instance, get_uid):
 # --- Coinbase trading connect routes (dark until enabled) ------------------------
 
 def register_trading_routes(app):
-    """Attach the four /auth/coinbase* routes to the FastAPI app.
-    Mirrors the Round 10 Spotify routes one for one."""
+    """Attach the four /auth/coinbase* routes to the FastAPI app
+    (plus the /auth/cb/callback alias — see below). Mirrors the
+    Round 10 Spotify routes one for one."""
 
     @app.get("/auth/coinbase")
     async def coinbase_auth_start(raw_request: Request):
@@ -1444,7 +1445,14 @@ def register_trading_routes(app):
                 samesite="lax")
         return response
 
+    # Coinbase's Developer Portal refuses to register any OAuth
+    # redirect URI containing the word "Coinbase", so the canonical
+    # /auth/coinbase/callback can never be registered there. The
+    # /auth/cb/callback alias below serves the SAME handler; when
+    # the connect is activated, Render sets OG_COINBASE_REDIRECT_URI
+    # to the cb URL and Coinbase sends visitors back through it.
     @app.get("/auth/coinbase/callback")
+    @app.get("/auth/cb/callback")
     async def coinbase_auth_callback(raw_request: Request,
                                      code: str = "", state: str = "",
                                      error: str = ""):
