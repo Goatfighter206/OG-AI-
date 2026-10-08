@@ -104,6 +104,7 @@
                         placeholder="Ask OG…"
                         autocomplete="off"
                     />
+                    <button class="voice-btn" id="voiceNoteBtn" type="button" title="Send a voice note" aria-label="Send a voice note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="7" x2="16" y2="17"/><line x1="20" y1="10" x2="20" y2="14"/></svg></button>
                     <button class="voice-btn" id="voiceBtn" type="button" title="Talk to OG - he talks back" aria-label="Talk to OG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
                     <button class="send-btn" id="sendBtn" type="button" aria-label="Send message"></button>
                 </div>
@@ -1259,6 +1260,142 @@
                 new MutationObserver(function () {
                     if (tier && tier !== 'free' && ts.textContent === '💎 Pro — unlimited' && tier !== 'pro') applyTier();
                 }).observe(ts, { childList: true, characterData: true, subtree: true });
+            }
+        })();
+    </script>
+
+    <style id="og-voice-css">
+        /* Round 8: voice-note recording state — red means live mic,
+           so it never gets confused with Talk mode's gold. */
+        .input-wrapper #voiceNoteBtn.recording { background: rgba(255,59,48,.18); border-color: #ff3b30; color: #ff6b62; animation: ogRecPulse 1.1s ease-in-out infinite; }
+        @keyframes ogRecPulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(255,59,48,.18), 0 0 10px rgba(255,59,48,.30); } 50% { box-shadow: 0 0 0 4px rgba(255,59,48,.30), 0 0 20px rgba(255,59,48,.55); } }
+    </style>
+    <script id="og-voice-js">
+        // Round 8: voice notes. The waveform button in the composer
+        // records a clip with MediaRecorder — separate from Talk mode,
+        // which stays a live conversation toggle. On stop, the clip
+        // goes to POST /transcribe; the transcript posts as the
+        // visitor's own message, marked 🎤, and OG answers it through
+        // the exact same streamReply/classicReply pair a typed message
+        // uses, so memory, metering and persona behave identically.
+        (function () {
+            var btn = document.getElementById('voiceNoteBtn');
+            if (!btn) return;
+            var recorder = null, chunks = [], stream = null,
+                recTimer = null, recTimeout = null, recStarted = 0;
+            var MAX_MS = 120000; // 2 minutes — far under the 10 MB cap
+
+            function fmtTime(ms) {
+                var s = Math.floor(ms / 1000);
+                return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+            }
+            function tick() {
+                updateStatus('🔴 Recording voice note — ' + fmtTime(Date.now() - recStarted) + ' — tap the waveform again to send');
+            }
+            function pickMime() {
+                var opts = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/mpeg'];
+                for (var i = 0; i < opts.length; i++) {
+                    try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(opts[i])) return opts[i]; } catch (e) { /* keep looking */ }
+                }
+                return '';
+            }
+            function extFor(mime) {
+                if (/webm/.test(mime)) return 'webm';
+                if (/ogg|opus/.test(mime)) return 'ogg';
+                if (/mp4|m4a|aac/.test(mime)) return 'm4a';
+                if (/mpeg|mp3/.test(mime)) return 'mp3';
+                if (/wav/.test(mime)) return 'wav';
+                return 'webm';
+            }
+            function stopTracks() {
+                if (stream) { stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} }); stream = null; }
+            }
+            function stopRecording() {
+                if (recTimer) { clearInterval(recTimer); recTimer = null; }
+                if (recTimeout) { clearTimeout(recTimeout); recTimeout = null; }
+                btn.classList.remove('recording');
+                if (recorder && recorder.state === 'recording') {
+                    try { recorder.stop(); } catch (e) { recorder = null; stopTracks(); updateStatus('Online & Ready'); }
+                }
+            }
+
+            btn.addEventListener('click', async function () {
+                if (recorder) { stopRecording(); return; }
+                if (isProcessing) return;
+                if (typeof voiceChatOn !== 'undefined' && voiceChatOn) {
+                    updateStatus('Turn Talk off first — then the waveform sends a voice note');
+                    return;
+                }
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+                    updateStatus('Voice notes ain\'t supported in this browser — Talk mode or typing still works');
+                    return;
+                }
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } catch (e) {
+                    updateStatus('Mic blocked — allow microphone access to send a voice note');
+                    return;
+                }
+                chunks = [];
+                var mime = pickMime();
+                try { recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+                catch (e) {
+                    try { recorder = new MediaRecorder(stream); }
+                    catch (e2) { stopTracks(); updateStatus('Voice notes ain\'t supported in this browser — Talk mode or typing still works'); return; }
+                }
+                recorder.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
+                recorder.onstop = onRecorded;
+                try { recorder.start(); }
+                catch (e) { recorder = null; stopTracks(); updateStatus('Online & Ready'); return; }
+                btn.classList.add('recording');
+                recStarted = Date.now();
+                tick();
+                recTimer = setInterval(tick, 500);
+                recTimeout = setTimeout(function () { if (recorder) stopRecording(); }, MAX_MS);
+            });
+
+            async function onRecorded() {
+                var mime = (recorder && recorder.mimeType) || 'audio/webm';
+                recorder = null;
+                stopTracks();
+                var blob = new Blob(chunks, { type: mime });
+                chunks = [];
+                if (!blob.size) { updateStatus('Online & Ready'); return; }
+                updateStatus('OG is listening to your note...');
+                var fd = new FormData();
+                fd.append('file', blob, 'voice-note.' + extFor(mime));
+                try {
+                    var r = await fetch(API_URL + '/transcribe', { method: 'POST', body: fd });
+                    var data = await r.json();
+                    if (data && data.ok && data.transcript) {
+                        await ogSendTranscript(data.transcript);
+                    } else {
+                        addMessage('ai', (data && data.response) || 'Yo, my ears glitched — run that back.');
+                        if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
+                        updateStatus('Online & Ready');
+                    }
+                } catch (e) {
+                    addMessage('ai', 'Yo, my ears glitched — run that back.');
+                    updateStatus('Online & Ready');
+                }
+            }
+
+            // The transcript becomes the visitor's message: a
+            // 🎤-marked bubble on screen, the clean text to /chat —
+            // mirroring sendMessage's own stream-first flow.
+            async function ogSendTranscript(text) {
+                addMessage('user', '🎤 ' + text);
+                isProcessing = true;
+                updateStatus('AI is thinking...');
+                try {
+                    var streamed = await streamReply(text);
+                    if (!streamed) await classicReply(text);
+                } catch (error) {
+                    addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
+                    updateStatus('Error - Check connection');
+                } finally {
+                    isProcessing = false;
+                }
             }
         })();
     </script>
