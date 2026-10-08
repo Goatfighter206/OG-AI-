@@ -16,6 +16,12 @@ pytest-asyncio>=0.21.0
 pytest-cov>=4.0.0
 httpx>=0.24.0  # For testing FastAPI endpoints
 
+# Durable memory (optional — only used when OG_MEMORY_DB_URL is set)
+psycopg[binary]>=3.1
+
+# Token counting for the free-tier token budget (falls back to an estimate if absent)
+tiktoken>=0.6.0
+
 # AI Model Integrations
 openai>=1.12.0  # For OpenAI GPT models
 anthropic>=0.18.0  # For Claude API integration

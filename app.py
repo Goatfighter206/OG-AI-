@@ -3,16 +3,21 @@ FastAPI Web Service for OG-AI Agent
 Exposes REST API endpoints for interacting with the AI agent.
 """
 
+import asyncio
+import hashlib
+import hmac
 import json
 import os
 import logging
+import re
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
@@ -32,11 +37,16 @@ logger = logging.getLogger(__name__)
 # Check if running in development mode (for error detail control)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 
-# --- OG Pro (v1 money layer) -------------------------------------------------
-# Free tier: each visitor (tracked by an `ogai_uid` cookie) gets a limited
-# number of chat messages per UTC day. Pro visitors (holding a valid
-# `ogai_pro` cookie) chat unlimited. See /pro and /pro/success below.
-FREE_DAILY_LIMIT = int(os.getenv("OG_FREE_DAILY_LIMIT", "10"))
+# --- OG Pro (money layer) ----------------------------------------------------
+# Free tier: each visitor (tracked by an `ogai_uid` cookie) gets a daily
+# budget of model tokens per UTC day (prompt + completion, metered from the
+# API's usage report; tokenizer estimate where no usage is reported). Pro
+# visitors (holding a valid `ogai_pro` cookie) are unmetered. See /pro and
+# /pro/success below. (This replaced the original 10-messages/day cap;
+# OG_FREE_DAILY_LIMIT is still honored as a legacy alias for the budget so
+# existing deployments/test setups that set it keep a working quota knob.)
+FREE_DAILY_TOKENS = int(os.getenv(
+    "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "10000")))
 PRO_UPGRADE_URL = os.getenv("OG_PRO_LINK", "#")
 # SECURITY: set OG_PRO_TOKEN to a long random secret in production. The
 # fallback below is only a placeholder and MUST be rotated before launch —
@@ -69,25 +79,85 @@ def _save_usage_store(store: Dict):
         logger.warning(f"Could not save usage store: {e}")
 
 
-def _consume_free_message(uid: str) -> bool:
-    """
-    Record one chat message for this visitor today (UTC).
-
-    Returns False when the visitor has already hit the free daily cap
-    (the message is NOT recorded in that case).
-    """
+def _today_entry(store: Dict, uid: str) -> Dict:
+    """This visitor's usage entry for today (UTC), fresh if the day rolled."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    entry = store.get(uid)
+    if not isinstance(entry, dict) or entry.get("date") != today:
+        entry = {"date": today, "count": 0, "tokens": 0}
+    entry.setdefault("count", 0)
+    entry.setdefault("tokens", 0)
+    return entry
+
+
+def _free_tokens_remaining(uid: str) -> int:
+    """Free tokens this visitor has left today (UTC)."""
     with _usage_lock:
         store = _load_usage_store()
-        entry = store.get(uid)
-        if not isinstance(entry, dict) or entry.get("date") != today:
-            entry = {"date": today, "count": 0}
-        if entry["count"] >= FREE_DAILY_LIMIT:
-            return False
-        entry["count"] += 1
+    entry = _today_entry(store, uid)
+    return max(0, FREE_DAILY_TOKENS - int(entry.get("tokens", 0)))
+
+
+def _has_free_tokens(uid: str) -> bool:
+    """True while the visitor still has free tokens today. A chat is allowed
+    while any budget remains; its actual token cost is deducted afterwards,
+    so the final call of the day can run the balance to (or past) zero."""
+    return _free_tokens_remaining(uid) > 0
+
+
+def _record_chat_usage(uid: str, tokens_used: int):
+    """Record one /chat exchange for a free visitor: counts the message and
+    deducts the model call's total tokens from today's free budget."""
+    with _usage_lock:
+        store = _load_usage_store()
+        entry = _today_entry(store, uid)
+        entry["count"] = int(entry.get("count", 0)) + 1
+        entry["tokens"] = int(entry.get("tokens", 0)) + max(0, int(tokens_used))
         store[uid] = entry
         _save_usage_store(store)
-        return True
+
+
+_token_encoder = None
+_token_encoder_tried = False
+
+
+def _count_tokens(text) -> int:
+    """Count tokens with tiktoken (cl100k_base) when available; otherwise a
+    ~4-chars-per-token estimate. Only used where the API reports no usage."""
+    global _token_encoder, _token_encoder_tried
+    if not text:
+        return 0
+    if not _token_encoder_tried:
+        _token_encoder_tried = True
+        try:
+            import tiktoken
+            _token_encoder = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            _token_encoder = None
+    if _token_encoder is not None:
+        try:
+            return len(_token_encoder.encode(str(text)))
+        except Exception:
+            pass
+    return max(1, len(str(text)) // 4)
+
+
+def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
+    """Estimate a model call's TOTAL tokens (prompt + completion) for paths
+    where the API hands back no usage: the agent's system prompt + the
+    history window that is actually sent + the reply (counted once)."""
+    total = _count_tokens(getattr(agent_instance, "system_prompt", "") or "")
+    history = getattr(agent_instance, "conversation_history", []) or []
+    window = [m for m in history[-10:]
+              if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
+    reply_counted = False
+    for m in window:
+        total += _count_tokens(m.get("content", "")) + 4  # per-message overhead
+        if reply_text and m.get("content") == reply_text:
+            reply_counted = True
+    if reply_text and not reply_counted:
+        total += _count_tokens(reply_text)
+    return total
 
 
 # --- AI voice (text-to-speech) ----------------------------------------------
@@ -115,6 +185,73 @@ def _consume_tts_call(uid: str) -> bool:
         _save_usage_store(store)
         return True
 
+
+# --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
+# v1 grants Pro to anyone who lands on /pro/success. v2 verifies payment with
+# Stripe first: Stripe calls POST /stripe/webhook when a checkout completes,
+# and the buyer is identified by the `ogai_uid` passed through checkout as
+# client_reference_id (added by /pro while v2 is on). Entitlements live in the
+# usage store, and /chat honors them directly — a confirmed buyer is Pro even
+# if they never land back on /pro/success.
+# Ships DISABLED: nothing changes until OG_WEBHOOK_ENABLED=true and
+# STRIPE_WEBHOOK_SECRET are set in the service environment (see the report).
+WEBHOOK_ENABLED = os.getenv("OG_WEBHOOK_ENABLED", "false").lower() == "true"
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+PRO_ENTITLED_KEY = "__pro_entitled__"
+STRIPE_SIG_TOLERANCE = 300  # seconds
+
+
+def _uid_is_entitled(uid: str) -> bool:
+    """True when Stripe has confirmed this visitor's Pro payment (v2 only)."""
+    if not WEBHOOK_ENABLED or not uid:
+        return False
+    with _usage_lock:
+        store = _load_usage_store()
+    entitled = store.get(PRO_ENTITLED_KEY)
+    return isinstance(entitled, dict) and uid in entitled
+
+
+def _grant_entitlement(uid: str, session_id: str = "", email: str = ""):
+    """Record a Stripe-confirmed Pro entitlement for a visitor uid."""
+    if not uid:
+        return
+    with _usage_lock:
+        store = _load_usage_store()
+        entitled = store.get(PRO_ENTITLED_KEY)
+        if not isinstance(entitled, dict):
+            entitled = {}
+        entitled[uid] = {
+            "granted": datetime.now(timezone.utc).isoformat(),
+            "session": session_id,
+            "email": email,
+        }
+        store[PRO_ENTITLED_KEY] = entitled
+        _save_usage_store(store)
+
+
+def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bool:
+    """
+    Verify a Stripe webhook signature (the v1 HMAC-SHA256 scheme) without
+    the Stripe SDK: the signed payload is "<timestamp>.<raw body>".
+    """
+    if not secret or not sig_header:
+        return False
+    try:
+        fields: Dict[str, List[str]] = {}
+        for part in sig_header.split(","):
+            k, _, v = part.strip().partition("=")
+            fields.setdefault(k, []).append(v)
+        timestamp = fields["t"][0]
+        signatures = fields.get("v1", [])
+        if abs(time.time() - int(timestamp)) > STRIPE_SIG_TOLERANCE:
+            return False
+        signed = f"{timestamp}.".encode() + payload
+        expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+        return any(hmac.compare_digest(expected, sig) for sig in signatures)
+    except Exception:
+        return False
+
+
 # --- Per-visitor memory -------------------------------------------------------
 # OG remembers each visitor separately: conversation history is keyed by the
 # `ogai_uid` cookie and persisted to a JSON store, so a returning visitor
@@ -129,6 +266,78 @@ MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
 _memory_lock = threading.Lock()
 
 
+
+# Durable backend (opt-in): when OG_MEMORY_DB_URL points at a Postgres
+# database (e.g. a free Neon or Supabase instance), visitor threads live
+# there instead of the JSON file, so memory survives full rebuilds and
+# redeploys. While the variable is unset — or the database is unreachable —
+# the JSON file store is used, exactly as before.
+MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
+try:
+    import psycopg
+    from psycopg.types.json import Jsonb as _Jsonb
+except Exception:  # psycopg not installed — DB backend simply unavailable
+    psycopg = None
+    _Jsonb = None
+
+
+def _memory_db_connect():
+    """Connect to the durable memory DB, creating the table if needed."""
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+    with conn.cursor() as cur:
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS og_visitor_memory ("
+            "uid TEXT PRIMARY KEY, updated TEXT, history JSONB)"
+        )
+    conn.commit()
+    return conn
+
+
+def _load_memory_store_db():
+    """Load all visitor threads from Postgres; None on any failure."""
+    if psycopg is None:
+        return None
+    try:
+        with _memory_db_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT uid, updated, history FROM og_visitor_memory")
+                rows = cur.fetchall()
+        return {uid: {"updated": updated, "history": history}
+                for uid, updated, history in rows}
+    except Exception as e:
+        logger.warning(f"Durable memory load failed, using file store: {e}")
+        return None
+
+
+def _save_memory_store_db(store: Dict) -> bool:
+    """Persist all visitor threads to Postgres; False on any failure."""
+    if psycopg is None:
+        return False
+    try:
+        with _memory_db_connect() as conn:
+            with conn.cursor() as cur:
+                for uid, entry in store.items():
+                    if not isinstance(entry, dict):
+                        continue
+                    cur.execute(
+                        "INSERT INTO og_visitor_memory (uid, updated, history) "
+                        "VALUES (%s, %s, %s) ON CONFLICT (uid) DO UPDATE SET "
+                        "updated = EXCLUDED.updated, history = EXCLUDED.history",
+                        (uid, entry.get("updated", ""),
+                         _Jsonb(entry.get("history", []))),
+                    )
+                cur.execute("SELECT uid FROM og_visitor_memory")
+                existing = {row[0] for row in cur.fetchall()}
+                for stale in existing - set(store.keys()):
+                    cur.execute(
+                        "DELETE FROM og_visitor_memory WHERE uid = %s", (stale,))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.warning(f"Durable memory save failed, using file store: {e}")
+        return False
+
+
 def _reset_memory_store():
     """Start the memory store empty (called when a fresh agent is created).
 
@@ -137,12 +346,29 @@ def _reset_memory_store():
     This gives the store the same lifecycle as the usage counters and stats
     in usage_store.json — they live for the service's life and reset on a
     from-scratch rebuild.
+
+    Exception: with the durable Postgres backend active (OG_MEMORY_DB_URL
+    set) the store is deliberately NOT reset — wiping it on agent creation
+    would defeat the entire point of durable memory.
     """
+    if MEMORY_DB_URL:
+        logger.info("Durable memory backend active — memory store not reset")
+        return
     with _memory_lock:
         _save_memory_store({})
 
 
 def _load_memory_store() -> Dict:
+    """Load per-visitor conversation threads (durable DB when configured,
+    otherwise the JSON memory store)."""
+    if MEMORY_DB_URL:
+        data = _load_memory_store_db()
+        if data is not None:
+            return data
+    return _load_memory_store_file()
+
+
+def _load_memory_store_file() -> Dict:
     """Load per-visitor conversation threads from the JSON memory store."""
     if os.path.exists(MEMORY_STORE_FILE):
         try:
@@ -156,6 +382,14 @@ def _load_memory_store() -> Dict:
 
 
 def _save_memory_store(store: Dict):
+    """Save per-visitor conversation threads (durable DB when configured,
+    otherwise the JSON memory store)."""
+    if MEMORY_DB_URL and _save_memory_store_db(store):
+        return
+    _save_memory_store_file(store)
+
+
+def _save_memory_store_file(store: Dict):
     """Save per-visitor conversation threads to the JSON memory store."""
     try:
         with open(MEMORY_STORE_FILE, 'w') as f:
@@ -208,7 +442,7 @@ def _clear_visitor_history(uid: str):
 # GET /stats?key=<OG_STATS_TOKEN>.
 STATS_TOKEN = os.getenv("OG_STATS_TOKEN", "")
 STATS_KEY = "__stats__"
-_STAT_FIELDS = ("messages", "cap_hits", "pro_clicks", "pro_success")
+_STAT_FIELDS = ("messages", "cap_hits", "pro_clicks", "pro_success", "tokens")
 
 
 def _bump_stat(field: str, amount: int = 1):
@@ -236,7 +470,7 @@ def _visitor_counts(store: Dict):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     total = active_today = 0
     for key, entry in store.items():
-        if key == STATS_KEY or key.startswith("tts:") or not isinstance(entry, dict):
+        if key.startswith("__") or key.startswith("tts:") or not isinstance(entry, dict):
             continue
         total += 1
         if entry.get("date") == today:
@@ -319,6 +553,9 @@ def get_agent() -> AIAgent:
 class ChatRequest(BaseModel):
     message: str
     speak_response: bool = False
+    # When true, /chat answers as Server-Sent Events (reply text streamed in
+    # chunks, then a final done event). Omit/false = the classic JSON reply.
+    stream: bool = False
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -336,6 +573,8 @@ class ChatResponse(BaseModel):
     timestamp: str
     # Only set when a free visitor hits the daily cap; omitted otherwise.
     upgrade_url: Optional[str] = None
+    # Free tokens the visitor has left today (free tier only; omitted for Pro).
+    free_tokens_left: Optional[int] = None
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -352,6 +591,8 @@ class HistoryResponse(BaseModel):
     conversation: List[Dict]
     history: List[Dict]  # Backward compatibility with Flask API
     message_count: int
+    # Free tokens the visitor has left today (omitted/null for Pro).
+    free_tokens_left: Optional[int] = None
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -442,15 +683,323 @@ async def health_check():
     }
 
 
+
+# --- Streaming chat (true token streaming) ------------------------------------
+# /chat with {"stream": true} answers as Server-Sent Events: an `event: chunk`
+# for each token piece the model API produces, as it arrives, then a final
+# `event: done` whose payload matches the classic JSON response (plus
+# `event: error` if generation fails). The classic non-streaming response is
+# completely unchanged. A finished reply is never sliced up to fake streaming:
+# the few paths that are not model token streams (the code-generation tool,
+# the local pattern fallback) deliver their result whole, in a single chunk.
+
+
+def _generate_reply_streaming(agent_instance, message: str,
+                              speak_response: bool, sink):
+    """
+    Streaming twin of the agent's process_message(): the same intent
+    detection, the same tools, the same persona prompt, the same model and
+    parameters — the agent's own logic decides WHAT OG says; this only
+    changes HOW the reply is delivered, pushing each token piece to
+    sink("chunk", text) the moment the model API produces it. Agent files
+    are never modified.
+
+    Token streaming is implemented for the OpenAI path (the live provider)
+    and the Anthropic path, in both cases building exactly the request the
+    agent's own response methods build. If a token stream fails before any
+    text is produced, it falls back to the agent's own full-text generation
+    (which carries its own in-persona fallback inside), delivered whole.
+
+    Returns (response_text, tokens_used): tokens_used is the API-reported
+    total (prompt + completion) when the provider reports usage, otherwise
+    a tokenizer estimate of the whole call.
+    """
+    agent = agent_instance
+    agent.add_message('user', message)
+
+    learned_hint = ""
+    if getattr(agent, 'learning_system', None):
+        learned_hint = agent.learning_system.get_learned_response(message)
+
+    intent = agent.detect_intent(message)
+
+    context = learned_hint + "\n" if learned_hint else ""
+
+    def _finish(response: str, speech_text: str = None) -> str:
+        agent.add_message('assistant', response)
+        if getattr(agent, 'learning_system', None):
+            agent.learning_system.learn_from_conversation(
+                message, response, was_helpful=True)
+        should_speak = speak_response if speak_response is not None \
+            else getattr(agent, 'voice_enabled', False)
+        if should_speak and getattr(agent, 'voice', None):
+            agent.voice.speak(agent._prepare_for_speech(
+                speech_text if speech_text is not None else response))
+        return response
+
+    # Handle CODE GENERATION first (same priority as process_message). The
+    # code generator is a tool call with an atomic result — delivered whole.
+    if intent['needs_code_generation'] and getattr(agent, 'code_generator', None):
+        code, explanation = agent.code_generator.generate_code_from_request(message)
+        if code:
+            response = f"{explanation}\n\n```python\n{code}\n```"
+            sink("chunk", response)
+            finished = _finish(response, speech_text=explanation)
+            return finished, _estimate_call_tokens(agent, finished)
+
+    if intent['needs_web_search'] and intent['search_query']:
+        search_results = agent.web_search(intent['search_query'])
+        if search_results:
+            context += "\n\n[WEB SEARCH RESULTS]:\n"
+            for i, result in enumerate(search_results[:3], 1):
+                if 'error' not in result:
+                    context += f"{i}. {result.get('title', 'N/A')}: {result.get('body', 'N/A')}\n"
+                else:
+                    context += f"Search error: {result['error']}\n"
+
+    if intent['needs_wikipedia'] and intent['search_query']:
+        wiki_result = agent.wikipedia_search(intent['search_query'])
+        context += f"\n\n[WIKIPEDIA]:\n{wiki_result}\n"
+
+    if intent['needs_code_execution'] and intent['code']:
+        exec_result = agent.execute_code(intent['code'], intent['language'])
+        context += f"\n\n[CODE EXECUTION RESULT]:\n{exec_result}\n"
+
+    if intent['needs_url_scrape'] and intent['url']:
+        scrape_result = agent.scrape_webpage(intent['url'])
+        context += f"\n\n[WEBPAGE CONTENT]:\n{scrape_result}\n"
+
+    provider = getattr(agent, 'ai_provider', None)
+
+    # --- OpenAI: true token streaming, the request built exactly like the
+    # agent's own _openai_response (same prompt, history window, context,
+    # model, temperature and token cap) — only stream=True is added.
+    if provider == "openai" and getattr(agent, 'openai_client', None):
+        parts = []
+        try:
+            messages = [{"role": "system", "content": agent.system_prompt}]
+            for msg in agent.conversation_history[-10:]:
+                if msg['role'] in ['user', 'assistant']:
+                    messages.append({"role": msg['role'], "content": msg['content']})
+            if context:
+                messages.append({"role": "system",
+                                 "content": f"Additional context:\n{context}"})
+            stream = agent.openai_client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                messages=messages,
+                temperature=0.9,
+                max_tokens=1000,
+                stream=True,
+                stream_options={"include_usage": True}
+            )
+            usage_total = None
+            for event in stream:
+                usage = getattr(event, "usage", None)
+                if usage is not None:
+                    try:
+                        usage_total = int(usage.total_tokens)
+                    except Exception:
+                        pass
+                try:
+                    delta = event.choices[0].delta.content or ""
+                except Exception:
+                    delta = ""
+                if delta:
+                    parts.append(delta)
+                    sink("chunk", delta)
+            if parts:
+                finished = _finish("".join(parts))
+                return finished, (usage_total if usage_total is not None
+                                  else _estimate_call_tokens(agent, finished))
+            logger.warning("Token stream produced no text; using full-text generation")
+        except Exception as e:
+            if parts:
+                finished = _finish("".join(parts))
+                return finished, _estimate_call_tokens(agent, finished)
+            logger.warning(f"Token streaming failed, using full-text: {e}")
+
+    # --- Anthropic: true token streaming, the request built exactly like
+    # the agent's own _anthropic_response — only streamed.
+    elif provider == "anthropic" and getattr(agent, 'anthropic_client', None):
+        parts = []
+        try:
+            messages = []
+            for msg in agent.conversation_history[-10:]:
+                if msg['role'] in ['user', 'assistant']:
+                    messages.append({"role": msg['role'], "content": msg['content']})
+            if context and messages:
+                messages[-1]['content'] += f"\n\nAdditional context:\n{context}"
+            with agent.anthropic_client.messages.stream(
+                model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+                max_tokens=1000,
+                system=agent.system_prompt,
+                messages=messages
+            ) as stream:
+                for text in stream.text_stream:
+                    if text:
+                        parts.append(text)
+                        sink("chunk", text)
+                usage_total = None
+                try:
+                    final_message = stream.get_final_message()
+                    usage = getattr(final_message, "usage", None)
+                    if usage is not None:
+                        usage_total = (int(usage.input_tokens)
+                                       + int(usage.output_tokens))
+                except Exception:
+                    pass
+            if parts:
+                finished = _finish("".join(parts))
+                return finished, (usage_total if usage_total is not None
+                                  else _estimate_call_tokens(agent, finished))
+            logger.warning("Token stream produced no text; using full-text generation")
+        except Exception as e:
+            if parts:
+                finished = _finish("".join(parts))
+                return finished, _estimate_call_tokens(agent, finished)
+            logger.warning(f"Token streaming failed, using full-text: {e}")
+
+    # Every remaining path (Ollama, the local pattern fallback, a provider
+    # whose stream failed above) produces its reply inside the agent, whole.
+    # It is delivered as ONE chunk — never sliced to imitate streaming.
+    response = agent._generate_ai_response(message, context)
+    sink("chunk", response)
+    finished = _finish(response)
+    return finished, _estimate_call_tokens(agent, finished)
+
+
+def _stream_chat_worker(agent_instance, uid: str, message: str,
+                        speak_response: bool, sink, meter: bool = True):
+    """
+    Worker-thread body for a streaming /chat request. Mirrors the classic
+    /chat bookkeeping exactly: this visitor's own thread is swapped into the
+    shared agent under the memory lock, the message stat is bumped, and the
+    thread is saved back in a finally block — so if the visitor's browser
+    disconnects mid-stream, generation still finishes server-side and the
+    conversation is still remembered (the non-streaming fallback).
+    """
+    _memory_lock.acquire()
+    agent_instance.conversation_history = _load_visitor_history_locked(uid)
+    try:
+        has_learning = hasattr(agent_instance, 'learning_system') \
+            and agent_instance.learning_system is not None
+        if hasattr(agent_instance, 'detect_intent'):
+            response, tokens_used = _generate_reply_streaming(
+                agent_instance, message, speak_response, sink)
+        else:
+            # Agent without streaming internals: its classic full-text reply,
+            # delivered whole in a single chunk (never sliced).
+            try:
+                response = agent_instance.process_message(
+                    message, speak_response=speak_response)
+            except TypeError:
+                response = agent_instance.process_message(message)
+            sink("chunk", response)
+            tokens_used = _estimate_call_tokens(agent_instance, response)
+
+        history = agent_instance.get_conversation_history()
+        latest_msg = history[-1] if history else None
+        result = {
+            "response": response,
+            "agent_name": agent_instance.name,
+            "timestamp": latest_msg['timestamp'] if latest_msg else ""
+        }
+        _bump_stat("messages")
+        # Token metering (free visitors only; Pro is unmetered).
+        if meter:
+            _record_chat_usage(uid, tokens_used)
+            _bump_stat("tokens", tokens_used)
+            result["free_tokens_left"] = _free_tokens_remaining(uid)
+        else:
+            result["free_tokens_left"] = None
+        if has_learning:
+            report = agent_instance.learning_system.get_intelligence_report()
+            result["intelligence"] = report.get("intelligence_level", 1.0)
+        sink("done", result)
+    except Exception as e:
+        logger.error(f"Error processing streamed message: {str(e)}")
+        detail = f"An error occurred while processing your message: {str(e)}" \
+            if DEVELOPMENT_MODE else "An error occurred while processing your message"
+        sink("error", {"detail": detail})
+    finally:
+        try:
+            _save_visitor_history_locked(
+                uid, list(getattr(agent_instance, "conversation_history", []) or []))
+        finally:
+            _memory_lock.release()
+
+
+def _sse_streaming_response(event_gen, http_response, entitled: bool):
+    """Build the SSE response, carrying over cookies the handler already set
+    (e.g. a fresh ogai_uid) plus the Pro cookie for entitled visitors."""
+    resp = StreamingResponse(
+        event_gen,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+    for name, value in http_response.raw_headers:
+        if name.lower() == b"set-cookie":
+            resp.raw_headers.append((name, value))
+    if entitled:
+        resp.set_cookie(
+            "ogai_pro", PRO_TOKEN,
+            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
+        )
+    return resp
+
+
+def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
+                          http_response: Response, entitled: bool,
+                          meter: bool = True):
+    """Start the worker thread and return the SSE response for /chat."""
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def sink(kind, payload):
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, (kind, payload))
+        except RuntimeError:
+            pass  # client/event loop gone — worker still finishes and saves
+
+    worker = threading.Thread(
+        target=_stream_chat_worker,
+        args=(agent_instance, uid, request.message.strip(),
+              request.speak_response, sink),
+        kwargs={"meter": meter},
+        daemon=True,
+    )
+    worker.start()
+
+    async def event_gen():
+        while True:
+            kind, payload = await queue.get()
+            if kind == "chunk":
+                yield f"event: chunk\ndata: {json.dumps({'text': payload})}\n\n"
+            elif kind == "done":
+                yield f"event: done\ndata: {json.dumps(payload)}\n\n"
+                return
+            else:
+                yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+                return
+
+    return _sse_streaming_response(event_gen(), http_response, entitled)
+
+
 @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
 async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
     """
     Send a message to the AI agent and receive a response.
 
-    Free visitors get FREE_DAILY_LIMIT messages per UTC day (tracked by an
-    `ogai_uid` cookie); Pro visitors (valid `ogai_pro` cookie) are unlimited.
+    Free visitors get FREE_DAILY_TOKENS tokens of model usage per UTC day
+    (tracked by an `ogai_uid` cookie); Pro visitors (valid `ogai_pro` cookie,
+    or a Stripe-confirmed entitlement while v2 is enabled) are unmetered.
     A capped visitor still gets HTTP 200 with an in-persona reply pointing
     at the upgrade URL.
+
+    With {"stream": true} the reply is delivered as Server-Sent Events —
+    the model's tokens streamed as they are produced, then a done event
+    carrying this same payload; cap counting and the per-visitor memory
+    write are identical either way.
 
     Args:
         request: ChatRequest containing the user's message and optional voice setting
@@ -472,20 +1021,46 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
-    # Freemium gate: Pro cookie holders skip the daily cap entirely.
-    if raw_request.cookies.get("ogai_pro") != PRO_TOKEN:
-        if not _consume_free_message(uid):
+    # Freemium gate: Pro cookie holders skip the daily cap entirely. With
+    # webhook entitlement (v2) enabled, a Stripe-confirmed buyer is Pro even
+    # before the cookie lands — and is handed the cookie on this response.
+    is_pro = raw_request.cookies.get("ogai_pro") == PRO_TOKEN
+    entitled = False
+    if not is_pro and _uid_is_entitled(uid):
+        is_pro = True
+        entitled = True
+
+    if not is_pro:
+        if not _has_free_tokens(uid):
             _bump_stat("cap_hits")
-            return {
+            cap_payload = {
                 "response": (
-                    f"Yo, real talk — you're outta free messages for today "
-                    f"({FREE_DAILY_LIMIT} a day on the free plan), and the OG don't work for free forever. "
+                    f"Yo, real talk — you're outta free tokens for today "
+                    f"({FREE_DAILY_TOKENS:,} a day on the free plan), and the OG don't work for free forever. "
                     f"Go Pro for unlimited: {PRO_UPGRADE_URL} — or slide back tomorrow when your freebies reset."
                 ),
                 "agent_name": agent_instance.name,
                 "timestamp": datetime.now().isoformat(),
-                "upgrade_url": PRO_UPGRADE_URL
+                "upgrade_url": PRO_UPGRADE_URL,
+                "free_tokens_left": 0
             }
+            if request.stream:
+                async def cap_events():
+                    yield f"event: chunk\ndata: {json.dumps({'text': cap_payload['response']})}\n\n"
+                    yield f"event: done\ndata: {json.dumps(cap_payload)}\n\n"
+                return _sse_streaming_response(cap_events(), http_response, entitled)
+            return cap_payload
+
+    if request.stream:
+        return _stream_chat_response(
+            agent_instance, uid, request, http_response, entitled,
+            meter=not is_pro)
+
+    if entitled:
+        http_response.set_cookie(
+            "ogai_pro", PRO_TOKEN,
+            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
+        )
 
     # Per-visitor memory: swap this visitor's own thread into the shared
     # agent and hold the memory lock until it is saved back below, so two
@@ -514,6 +1089,14 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         }
         
         _bump_stat("messages")
+
+        # Token metering (free visitors only): the classic path gets no
+        # usage back from the agent, so the call is counted by estimate.
+        if not is_pro:
+            _tokens_used = _estimate_call_tokens(agent_instance, response)
+            _record_chat_usage(uid, _tokens_used)
+            _bump_stat("tokens", _tokens_used)
+            result["free_tokens_left"] = _free_tokens_remaining(uid)
 
         # Add intelligence info if learning is enabled
         if has_learning:
@@ -574,28 +1157,59 @@ async def text_to_speech(raw_request: Request):
 
 
 @app.get("/pro")
-async def pro_upgrade():
+async def pro_upgrade(raw_request: Request):
     """
     Send visitors to the Pro checkout.
 
     The destination is the Stripe payment link configured via OG_PRO_LINK;
     Stripe should be set to redirect buyers to /pro/success after checkout.
+    While webhook entitlement (v2) is enabled, the visitor's ogai_uid rides
+    along as client_reference_id so the Stripe webhook can grant the
+    entitlement to the right visitor.
     """
     _bump_stat("pro_clicks")
-    return RedirectResponse(url=PRO_UPGRADE_URL, status_code=302)
+    url = PRO_UPGRADE_URL
+    if WEBHOOK_ENABLED:
+        uid = raw_request.cookies.get("ogai_uid")
+        if uid and url.startswith("http"):
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}client_reference_id={uid}"
+    return RedirectResponse(url=url, status_code=302)
 
 
 @app.get("/pro/success")
-async def pro_success():
+async def pro_success(raw_request: Request):
     """
-    Pro unlock landing page (v1 entitlement model).
+    Pro unlock landing page.
 
-    v1 is deliberately simple: the Stripe payment link redirects buyers here
-    after checkout and we just set the `ogai_pro` cookie, which lifts the
-    daily cap. Anyone who reaches this URL gets Pro, so the v2 upgrade is
-    to verify payment first (Stripe webhook or a signed/email-verified link)
-    before granting the cookie.
+    v1 (default): the Stripe payment link redirects buyers here after
+    checkout and we just set the `ogai_pro` cookie, which lifts the daily
+    cap. Anyone who reaches this URL gets Pro.
+
+    v2 (OG_WEBHOOK_ENABLED=true): the cookie is set only once the Stripe
+    webhook has confirmed this visitor's payment. Until then this page asks
+    them to give it a moment — and as soon as the webhook lands, /chat
+    honors the entitlement directly, cookie or not.
     """
+    if WEBHOOK_ENABLED:
+        uid = raw_request.cookies.get("ogai_uid")
+        if not uid or not _uid_is_entitled(uid):
+            return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OG AI — Confirming your Pro</title>
+<style>
+  body { background:#0a0a0a; color:#f2f2f2; font-family: Arial, sans-serif; margin:0; padding:32px 20px; text-align:center; }
+  h1 { color:#ffc107; letter-spacing:1px; }
+  p { color:#ccc; line-height:1.6; max-width:520px; margin:12px auto; }
+  a.btn { display:inline-block; margin-top:18px; padding:12px 30px; border:2px solid #ffc107; border-radius:999px; color:#ffc107; text-decoration:none; font-weight:bold; background:rgba(255,193,7,0.08); }
+</style></head><body>
+<h1>💰 Almost there…</h1>
+<p>If you just paid, give Stripe a few seconds to confirm it with OG —
+then head back and chat, Pro will already be on.</p>
+<p>If you didn't finish paying, no charge was made and nothing is unlocked yet.</p>
+<a class="btn" href="/">← Back to OG</a>
+</body></html>""", status_code=200)
     _bump_stat("pro_success")
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie(
@@ -604,6 +1218,43 @@ async def pro_success():
     )
     return response
 
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(raw_request: Request):
+    """
+    Stripe webhook: grant a Pro entitlement on checkout.session.completed.
+
+    Inert unless OG_WEBHOOK_ENABLED=true and STRIPE_WEBHOOK_SECRET is set —
+    while disabled it answers 404 and /pro/success keeps the v1 behavior.
+    The buyer is identified by client_reference_id (the visitor's ogai_uid,
+    added by /pro while v2 is enabled); the event signature is verified
+    against STRIPE_WEBHOOK_SECRET before anything is granted.
+    """
+    if not WEBHOOK_ENABLED:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="Webhook not configured")
+    payload = await raw_request.body()
+    signature = raw_request.headers.get("stripe-signature", "")
+    if not _verify_stripe_signature(payload, signature, STRIPE_WEBHOOK_SECRET):
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    try:
+        event = json.loads(payload)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    if event.get("type") == "checkout.session.completed":
+        session = (event.get("data") or {}).get("object") or {}
+        uid = session.get("client_reference_id") or ""
+        email = ((session.get("customer_details") or {}).get("email")
+                 or session.get("customer_email") or "")
+        if uid:
+            _grant_entitlement(uid, session.get("id", ""), email)
+            logger.info("Pro entitlement granted via Stripe webhook")
+        else:
+            logger.warning(
+                "Stripe checkout completed without client_reference_id; "
+                "no entitlement granted")
+    return {"received": True}
 
 
 @app.get("/stats", response_class=HTMLResponse)
@@ -653,6 +1304,7 @@ async def stats_page(key: str = ""):
 <div class="grid">
   {card("Visitors", today_visitors)}
   {card("Messages answered", n(day, "messages"))}
+  {card("Free tokens used", n(day, "tokens"), "metered today")}
   {card("Hit the free cap", n(day, "cap_hits"), "ran out of freebies")}
   {card("Pro clicks", n(day, "pro_clicks"), "went to checkout")}
   {card("Pro signups", n(day, "pro_success"), "landed after payment")}
@@ -661,6 +1313,7 @@ async def stats_page(key: str = ""):
 <div class="grid">
   {card("Visitors", total_visitors)}
   {card("Messages answered", n(stats, "messages"))}
+  {card("Free tokens used", n(stats, "tokens"), "metered, free tier")}
   {card("Hit the free cap", n(stats, "cap_hits"))}
   {card("Pro clicks", n(stats, "pro_clicks"))}
   {card("Pro signups", n(stats, "pro_success"))}
@@ -688,10 +1341,17 @@ async def get_history(raw_request: Request):
         if uid:
             with _memory_lock:
                 history = _load_visitor_history_locked(uid)
+        if raw_request.cookies.get("ogai_pro") == PRO_TOKEN or _uid_is_entitled(uid or ""):
+            tokens_left = None
+        elif uid:
+            tokens_left = _free_tokens_remaining(uid)
+        else:
+            tokens_left = FREE_DAILY_TOKENS
         return {
             "conversation": history,
             "history": history,  # Backward compatibility with Flask API
-            "message_count": len(history)
+            "message_count": len(history),
+            "free_tokens_left": tokens_left
         }
     except Exception as e:
         logger.error(f"Error retrieving history: {str(e)}")

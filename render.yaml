@@ -12,4 +12,13 @@ services:
         value: production
       - key: DEVELOPMENT_MODE
         value: false
+      # OG Pro entitlement v2 (Stripe webhook) — ships OFF; see the Round-2
+      # section of og-what-people-want-fixes.md for the one-time setup.
+      - key: OG_WEBHOOK_ENABLED
+        value: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Durable memory — free Postgres connection string (Neon/Supabase).
+      - key: OG_MEMORY_DB_URL
+        sync: false
     healthCheckPath: /health
