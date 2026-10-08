@@ -83,6 +83,14 @@
                 </div>
             </div>
 
+            <!-- Starter prompts: one tap and you're talking -->
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 12px 12px 0;">
+                <button class="starter-chip" data-prompt="Write me a Python script that renames files in bulk" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">💻 Write me some code</button>
+                <button class="starter-chip" data-prompt="Roast this business idea: a food truck that only sells cereal" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">🔥 Roast my idea</button>
+                <button class="starter-chip" data-prompt="Explain Bitcoin like I'm five" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">📈 Explain Bitcoin simply</button>
+                <button class="starter-chip" data-prompt="Give me a 20-minute home workout plan, no equipment" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">💪 Build me a workout</button>
+            </div>
+
             <!-- Input Area -->
             <div class="input-area">
                 <div class="input-wrapper">
@@ -101,6 +109,9 @@
                     </button>
                     <button class="send-btn" id="clearBtn" style="background: linear-gradient(135deg, #b900ff, #00d9ff);">
                         Clear 🗑️
+                    </button>
+                    <button class="send-btn" id="shareBtn" style="background: linear-gradient(135deg, #00c853, #00d9ff);">
+                        Share 📤
                     </button>
                 </div>
             </div>
@@ -142,6 +153,9 @@
 
             // Set welcome message time
             document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
+
+            // Bring back this visitor's earlier conversation, if any
+            restoreConversation();
         });
 
         // iOS Safari only allows speech that traces back to a tap.
@@ -299,6 +313,14 @@
                 const data = await response.json();
                 addMessage('ai', data.response, data.timestamp);
 
+                // Free cap hit: give them a real button, not just a raw link
+                if (data.upgrade_url) {
+                    const cta = document.createElement('div');
+                    cta.style.cssText = 'text-align: center; padding: 8px 0 2px;';
+                    cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — unlimited messages</a>';
+                    document.getElementById('messagesArea').appendChild(cta);
+                }
+
                 speakReply(data.response); // OG always talks back
 
                 updateStatus('Online & Ready');
@@ -452,7 +474,7 @@
             pre.classList.remove('typing');
         }
 
-        function addMessage(role, content, timestamp = null) {
+        function addMessage(role, content, timestamp = null, instant = false) {
             const messagesArea = document.getElementById('messagesArea');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
@@ -476,7 +498,11 @@
                 setMood('nod');
                 setTimeout(() => { if (!speakingNow) setMood(voiceChatOn ? 'listening' : ''); }, 620);
             }
-            rich.blockIds.forEach(id => typeCode(document.getElementById(id)));
+            rich.blockIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (instant) finishType(el); else typeCode(el);
+            });
         }
 
         // Copy buttons + tap a code block to reveal it instantly
@@ -507,6 +533,23 @@
             done();
         }
 
+        // Restore this visitor's own conversation — OG remembers you now,
+        // so a refresh or a return visit picks up right where you left off.
+        async function restoreConversation() {
+            try {
+                const r = await fetch(`${API_URL}/history`);
+                if (!r.ok) return;
+                const data = await r.json();
+                const convo = (data.conversation || []).slice(-30);
+                convo.forEach(m => {
+                    if (!m || !m.content) return;
+                    if (m.role === 'user') addMessage('user', m.content, m.timestamp || null, true);
+                    else if (m.role === 'assistant' || m.role === 'ai') addMessage('ai', m.content, m.timestamp || null, true);
+                });
+                if (convo.length) updateStatus('Welcome back — OG remembers this conversation 🧠');
+            } catch (e) { /* first visit or server down — nothing to restore */ }
+        }
+
         // Clear Chat
         document.getElementById('clearBtn').addEventListener('click', async () => {
             if (!confirm('Clear conversation history?')) return;
@@ -531,6 +574,40 @@
         // Send button
         document.getElementById('sendBtn').addEventListener('click', () => {
             sendMessage(true);
+        });
+
+        // Starter chips: fill the box with the prompt and send it
+        document.querySelectorAll('.starter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                document.getElementById('messageInput').value = chip.dataset.prompt;
+                sendMessage(true);
+            });
+        });
+
+        // Share the conversation (falls back to sharing the site itself)
+        document.getElementById('shareBtn').addEventListener('click', async () => {
+            let text = 'Talk to OG-AI — the realest AI in the game 🔥';
+            try {
+                const r = await fetch(`${API_URL}/history`);
+                if (r.ok) {
+                    const data = await r.json();
+                    const lines = (data.conversation || []).slice(-20).map(m =>
+                        (m.role === 'user' ? 'Me: ' : 'OG-AI: ') + String(m.content || ''));
+                    if (lines.length) text = 'My conversation with OG-AI:\n\n' + lines.join('\n\n');
+                }
+            } catch (e) { /* no history yet — share the pitch instead */ }
+            const url = window.location.origin + '/';
+            if (navigator.share) {
+                try { await navigator.share({ title: 'OG-AI', text: text, url: url }); } catch (e) { /* user cancelled */ }
+            } else {
+                const done = () => updateStatus('Conversation copied — paste it anywhere 📤');
+                const payload = text + '\n' + url;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(payload).then(done).catch(() => fallbackCopy(payload, done));
+                } else {
+                    fallbackCopy(payload, done);
+                }
+            }
         });
 
         // Utility

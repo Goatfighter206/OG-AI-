@@ -115,6 +115,92 @@ def _consume_tts_call(uid: str) -> bool:
         _save_usage_store(store)
         return True
 
+# --- Per-visitor memory -------------------------------------------------------
+# OG remembers each visitor separately: conversation history is keyed by the
+# `ogai_uid` cookie and persisted to a JSON store, so a returning visitor
+# picks up right where they left off. (Before this, every visitor shared one
+# global conversation — strangers' messages bled into each other's context,
+# anyone could read the shared history at /history, and one person's /reset
+# wiped it for everybody.) The store lives next to the usage store and has
+# the same durability: it survives restarts, resets on a from-scratch rebuild.
+MEMORY_STORE_FILE = "memory_store.json"
+MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
+MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
+_memory_lock = threading.Lock()
+
+
+def _reset_memory_store():
+    """Start the memory store empty (called when a fresh agent is created).
+
+    A new agent instance is a new OG: it should not inherit a previous
+    instance's visitor threads while its own in-memory state starts blank.
+    This gives the store the same lifecycle as the usage counters and stats
+    in usage_store.json — they live for the service's life and reset on a
+    from-scratch rebuild.
+    """
+    with _memory_lock:
+        _save_memory_store({})
+
+
+def _load_memory_store() -> Dict:
+    """Load per-visitor conversation threads from the JSON memory store."""
+    if os.path.exists(MEMORY_STORE_FILE):
+        try:
+            with open(MEMORY_STORE_FILE, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning(f"Could not load memory store: {e}")
+    return {}
+
+
+def _save_memory_store(store: Dict):
+    """Save per-visitor conversation threads to the JSON memory store."""
+    try:
+        with open(MEMORY_STORE_FILE, 'w') as f:
+            json.dump(store, f)
+    except Exception as e:
+        logger.warning(f"Could not save memory store: {e}")
+
+
+# The *_locked helpers assume the caller holds _memory_lock: /chat holds it
+# across swap-in -> process -> save-back so one visitor's thread can never be
+# clobbered by another request touching the shared agent instance.
+def _load_visitor_history_locked(uid: str) -> List[Dict]:
+    """This visitor's stored conversation thread (most recent last)."""
+    entry = _load_memory_store().get(uid)
+    if isinstance(entry, dict) and isinstance(entry.get("history"), list):
+        return list(entry["history"])
+    return []
+
+
+def _save_visitor_history_locked(uid: str, history: List[Dict]):
+    """Persist this visitor's thread, trimmed, pruning the stalest threads."""
+    store = _load_memory_store()
+    store[uid] = {
+        "updated": datetime.now(timezone.utc).isoformat(),
+        "history": list(history)[-MEMORY_MAX_MESSAGES:],
+    }
+    if len(store) > MEMORY_MAX_VISITORS:
+        ordered = sorted(
+            store.items(),
+            key=lambda kv: kv[1].get("updated", "") if isinstance(kv[1], dict) else "",
+        )
+        for old_uid, _ in ordered[: len(store) - MEMORY_MAX_VISITORS]:
+            store.pop(old_uid, None)
+    _save_memory_store(store)
+
+
+def _clear_visitor_history(uid: str):
+    """Forget one visitor's thread (their /reset or /clear, nobody else's)."""
+    with _memory_lock:
+        store = _load_memory_store()
+        if uid in store:
+            del store[uid]
+            _save_memory_store(store)
+
+
 # --- Business stats (for the owner) ------------------------------------------
 # OG keeps his own scorecard: chat messages, visitors who hit the free cap,
 # Pro checkout clicks, and post-payment landings. Counters live in the same
@@ -198,9 +284,9 @@ if not os.path.exists("static"):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Global agent instance
-# NOTE: This is a simplified implementation where all users share the same conversation history.
-# For production multi-user scenarios, implement per-session or per-user agent instances
-# using session cookies, JWT tokens, or a database-backed session store.
+# NOTE: The agent object itself is shared, but conversation history is NOT:
+# /chat swaps in each visitor's own persisted thread (see "Per-visitor
+# memory" above) under _memory_lock for the duration of their request.
 agent = None
 
 
@@ -224,7 +310,8 @@ def get_agent() -> AIAgent:
         
         agent_name = config.get('agent_name', 'OG-AI')
         agent = AIAgent(name=agent_name, config=config)
-    
+        _reset_memory_store()
+
     return agent
 
 
@@ -400,6 +487,11 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
                 "upgrade_url": PRO_UPGRADE_URL
             }
 
+    # Per-visitor memory: swap this visitor's own thread into the shared
+    # agent and hold the memory lock until it is saved back below, so two
+    # visitors chatting at once can never interleave each other's history.
+    _memory_lock.acquire()
+    agent_instance.conversation_history = _load_visitor_history_locked(uid)
     try:
         # Check if agent has voice/learning capabilities
         has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
@@ -433,6 +525,14 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         logger.error(f"Error processing message: {str(e)}")
         detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
         raise HTTPException(status_code=500, detail=detail)
+    finally:
+        # Save this visitor's thread back (even on error, so what they said
+        # is remembered), then hand the shared agent back.
+        try:
+            _save_visitor_history_locked(
+                uid, list(getattr(agent_instance, "conversation_history", []) or []))
+        finally:
+            _memory_lock.release()
 
 
 @app.post("/tts")
@@ -573,17 +673,21 @@ the server and reset if the service gets rebuilt from scratch.</p>
 
 
 @app.get("/history", response_model=HistoryResponse)
-async def get_history():
+async def get_history(raw_request: Request):
     """
-    Get the full conversation history.
-    
-    Returns:
-        HistoryResponse with all conversation messages
+    Get the requesting visitor's own conversation history.
+
+    Keyed by the `ogai_uid` cookie — a visitor only ever sees their own
+    thread, never anyone else's. Visitors without a cookie (they have not
+    chatted yet) get an empty history.
     """
-    agent_instance = get_agent()
-    
+    get_agent()  # a fresh agent instance starts with a fresh memory store
     try:
-        history = agent_instance.get_conversation_history()
+        uid = raw_request.cookies.get("ogai_uid")
+        history: List[Dict] = []
+        if uid:
+            with _memory_lock:
+                history = _load_visitor_history_locked(uid)
         return {
             "conversation": history,
             "history": history,  # Backward compatibility with Flask API
@@ -596,17 +700,21 @@ async def get_history():
 
 
 @app.post("/reset", response_model=StatusResponse)
-async def reset_conversation():
+async def reset_conversation(raw_request: Request):
     """
-    Clear the conversation history.
-    
+    Clear the requesting visitor's conversation history — only theirs.
+
     Returns:
         StatusResponse confirming the reset
     """
     agent_instance = get_agent()
-    
+
     try:
-        agent_instance.clear_history()
+        uid = raw_request.cookies.get("ogai_uid")
+        if uid:
+            _clear_visitor_history(uid)
+        with _memory_lock:
+            agent_instance.clear_history()
         return {
             "status": "success",
             "agent_name": agent_instance.name,
@@ -679,14 +787,14 @@ async def manual_improvement():
 
 
 @app.post("/clear", response_model=StatusResponse)
-async def clear_history():
+async def clear_history(raw_request: Request):
     """
     Clear the conversation history (Flask API backward compatibility alias for /reset).
     
     Returns:
         StatusResponse confirming the clear
     """
-    return await reset_conversation()
+    return await reset_conversation(raw_request)
 
 
 if __name__ == "__main__":
