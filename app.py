@@ -662,6 +662,52 @@ def _geocode(place: str):
     return None
 
 
+def _weather_wttr(place: str, key: str):
+    """Weather fallback on wttr.in (it resolves place names itself, on
+    a different host than the Open-Meteo chain). Same return shape as
+    _tool_weather, or None."""
+    import urllib.parse
+    data = _fetch_json("https://wttr.in/" + urllib.parse.quote(place)
+                       + "?format=j1")
+    if not data:
+        return None
+    try:
+        cur = (data.get("current_condition") or [{}])[0]
+        days = data.get("weather") or []
+        area = (data.get("nearest_area") or [{}])[0]
+        name = area.get("areaName", [{}])[0].get("value") or place
+        region = area.get("region", [{}])[0].get("value") or ""
+        desc = cur.get("weatherDesc", [{}])[0].get("value") or ""
+        lines = ["Weather for " + str(name)
+                 + (f", {region}" if region else "") + " (wttr.in, live):",
+                 f"Right now: {cur.get('temp_F')}°F, {desc.strip().lower()}, "
+                 f"feels like {cur.get('FeelsLikeF')}°F, humidity "
+                 f"{cur.get('humidity')}%, wind "
+                 f"{cur.get('windspeedMiles')} mph."]
+        for i, d in enumerate(days[:3]):
+            label = ("Today" if i == 0
+                     else ("Tomorrow" if i == 1 else d.get("date", "")))
+            hourly = d.get("hourly") or []
+            pop = None
+            if hourly:
+                try:
+                    pop = max(int(h.get("chanceofrain") or 0)
+                              for h in hourly)
+                except Exception:
+                    pop = None
+            line = (f"{label}: high {d.get('maxtempF')}°F / low "
+                    f"{d.get('mintempF')}°F")
+            if pop:
+                line += f", rain chance up to {pop}%"
+            lines.append(line + ".")
+    except Exception as e:
+        logger.warning(f"wttr.in parse failed: {e}")
+        return None
+    return _data_store(key, ("Live weather data", "\n".join(lines),
+                             "https://wttr.in/"),
+                       _DATA_TTL["weather"])
+
+
 def _tool_weather(query: str):
     """Live weather via Open-Meteo. (label, text, source) or None."""
     low = str(query).lower()
@@ -678,7 +724,7 @@ def _tool_weather(query: str):
     import urllib.parse
     geo = _geocode(place)
     if not geo:
-        return None
+        return _weather_wttr(place, key)
     g = {"latitude": geo[0], "longitude": geo[1], "name": geo[2],
          "admin1": geo[3]}
     fc = _fetch_json("https://api.open-meteo.com/v1/forecast?"
@@ -695,7 +741,7 @@ def _tool_weather(query: str):
                          "wind_speed_unit": "mph",
                          "forecast_days": 3, "timezone": "auto"}))
     if not fc:
-        return None
+        return _weather_wttr(place, key)
     cur = fc.get("current") or {}
     daily = fc.get("daily") or {}
 
@@ -882,6 +928,9 @@ def _tool_sports(query: str):
                          + f" (played {finals[-1].get('date', '')[:10]}).")
         if upcoming:
             lines.append("Next game: " + _espn_game_line(upcoming[0]) + ".")
+        elif finals and not live:
+            lines.append("No upcoming game on the schedule — their "
+                         "season is over (or not posted yet).")
         if len(lines) == 1:
             return None
         return ("Live sports data", "\n".join(lines),
