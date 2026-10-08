@@ -225,6 +225,11 @@ import og_spotify as _og_spotify
 import og_google_hands as _og_google_hands
 # --- GitHub connect (Round 14): everything lives in og_github.py ---
 import og_github as _og_github
+# --- Connect pack 2 (Round 15): everything lives in the og_<service>.py ---
+import og_youtube as _og_youtube
+import og_discord as _og_discord
+import og_twitch as _og_twitch
+import og_reddit as _og_reddit
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ---
 # v1 grants Pro to anyone landing on /pro/success; v2 verifies payment via
@@ -302,14 +307,13 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
 
 # --- Web lookup (Round 3) ---
 # App-layer wrap of the agent's detect_intent/web_search hooks (agent
-# files never modified): when a message needs current info, OG looks it
-# up BEFORE answering; results ride into the model call as context, so
+# files never modified): questions needing current info are looked up
+# BEFORE answering; results ride into the model call as context, so
 # both chat paths answer grounded, in persona. Primary: OpenAI
-# Responses API web_search on the service's existing key; fallbacks:
-# Tavily (OG_SEARCH_API_KEY), then the agent's DuckDuckGo. All routes
-# failing = chat carries on ungrounded, never an error. Per-visitor
-# daily cap OG_LOOKUP_DAILY_LIMIT bounds the bill; lookup tokens join
-# the metered total weighed at OG_LOOKUP_METER_CAP.
+# Responses API web_search; fallbacks: Tavily (OG_SEARCH_API_KEY),
+# then DuckDuckGo. All routes failing = ungrounded chat, never an
+# error. Daily cap OG_LOOKUP_DAILY_LIMIT; lookup tokens metered at
+# OG_LOOKUP_METER_CAP.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
@@ -532,18 +536,13 @@ def _install_lookup_tools(agent_instance):
     agent_instance._og_lookup_installed = True
 
 # --- Live data pack (Round 4) ---
-# First-class data tools behind the web_search seam: weather, scores,
-# stock/crypto quotes and headlines from live structured sources, all
-# keyless/public — WEATHER Open-Meteo geocode+forecast; SPORTS ESPN
-# public scoreboard/schedule JSON; STOCKS Nasdaq API, Yahoo chart
-# fallback (Stooq is JS-bot-walled from server IPs); CRYPTO Coinbase
-# Exchange stats, CoinGecko fallback; NEWS Google News RSS. A tool
-# returns None on a parse/route miss; the question falls through to
-# Round 3's lookup chain untouched. Results share the {title, body,
-# href} shape; brief per-category caching (2–5 min; team lists 1 h).
-# Metering: data questions share the Round 3 lookup budget (checked in
-# _og_web_search); keyless fetches bill no upstream tokens, so the
-# exchange's metered total stays the honest bill, like a lookup.
+# Data tools behind the web_search seam (weather/scores/quotes/news),
+# all keyless/public: WEATHER Open-Meteo; SPORTS ESPN JSON; STOCKS
+# Nasdaq API + Yahoo fallback; CRYPTO Coinbase stats + CoinGecko
+# fallback; NEWS Google News RSS. A miss returns None and the question
+# falls through to Round 3's lookup chain. Results share the {title,
+# body, href} shape; brief per-category caching. Data questions share
+# the Round 3 lookup budget (checked in _og_web_search).
 _DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/124.0 Safari/537.36"}
@@ -1379,15 +1378,13 @@ def _message_needs_data(message: str) -> bool:
     return False
 
 # --- Google account connect (Round 3, ships dark) ---
-# "Connect Google" in the slide-over menu: OAuth 2.0 the standard way — OG
-# never sees/stores a password; Google confirms identity and returns tokens,
-# stored per visitor (ogai_uid) alongside the memory store (Postgres when
-# OG_MEMORY_DB_URL is set, else a JSON file). v1 scopes: identity only
-# (openid email profile); Round 12 extends this in og_google_hands.py
-# (OG_GOOGLE_HANDS_ENABLED=true adds Gmail/Calendar scopes; the stored
-# entry records what was granted). Ships DISABLED — menu hidden, routes
-# 404 — until OG_GOOGLE_ENABLED=true + client id/secret are set (Brent
-# creates the OAuth client in his Google Cloud console — Round 3 report).
+# "Connect Google" in the slide-over menu: OAuth 2.0 — OG never sees
+# a password; tokens stored per visitor (Postgres when
+# OG_MEMORY_DB_URL is set, else a JSON file). v1 scopes: identity
+# only (openid email profile); Round 12 extends this in
+# og_google_hands.py (OG_GOOGLE_HANDS_ENABLED=true adds Gmail/
+# Calendar scopes). Ships DISABLED — menu hidden, routes 404 — until
+# OG_GOOGLE_ENABLED=true + client id/secret are set (Round 3 report).
 GOOGLE_CLIENT_ID = os.getenv("OG_GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("OG_GOOGLE_CLIENT_SECRET", "")
 GOOGLE_ENABLED = (os.getenv("OG_GOOGLE_ENABLED", "false").lower() == "true"
@@ -1489,12 +1486,10 @@ def _google_uid_from_state(state: str) -> Optional[str]:
         return None
 
 # --- Per-visitor memory ---
-# OG remembers each visitor separately: conversation history is keyed by
-# the `ogai_uid` cookie and persisted to a JSON store, so a returning
-# visitor picks up where they left off. (Before this, every visitor
-# shared one global conversation — strangers' messages bled into each
-# other's context, and one /reset wiped it for everybody.) The store
-# lives next to the usage store: survives restarts, resets on rebuild.
+# Conversation history is keyed by the `ogai_uid` cookie and persisted
+# to a JSON store, so each visitor keeps their own thread (before
+# this, all visitors shared one global conversation). The store lives
+# next to the usage store: survives restarts, resets on rebuild.
 MEMORY_STORE_FILE = "memory_store.json"
 MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
 MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
@@ -1568,17 +1563,12 @@ def _save_memory_store_db(store: Dict) -> bool:
         return False
 
 def _reset_memory_store():
-    """Start the memory store empty (called when a fresh agent is created).
-
-    A new agent instance is a new OG: it should not inherit a previous
-    instance's visitor threads while its own in-memory state starts blank.
-    This gives the store the same lifecycle as the usage counters and stats
-    in usage_store.json — they live for the service's life and reset on a
-    from-scratch rebuild.
-
-    Exception: with the durable Postgres backend active (OG_MEMORY_DB_URL
-    set) the store is deliberately NOT reset — wiping it on agent creation
-    would defeat the entire point of durable memory.
+    """Start the memory store empty (called when a fresh agent is
+    created): a new agent instance must not inherit a previous
+    instance's visitor threads. Same lifecycle as the usage counters —
+    live for the service's life, reset on a from-scratch rebuild.
+    Exception: with the Postgres backend active (OG_MEMORY_DB_URL set)
+    the store is deliberately NOT reset (durable memory is the point).
     """
     if MEMORY_DB_URL:
         logger.info("Durable memory backend active — memory store not reset")
@@ -1770,6 +1760,14 @@ def get_agent() -> AIAgent:
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
         _og_github.install_github_tools(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_youtube.install_youtube_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_discord.install_discord_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_twitch.install_twitch_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_reddit.install_reddit_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
         _og_google_hands.install_google_hands(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
             {"connection": _google_connection,
@@ -1914,31 +1912,21 @@ async def health_check():
 
 # --- Streaming chat (true token streaming) ---
 # /chat with {"stream": true} answers as Server-Sent Events: an `event:
-# chunk` per token piece as it arrives, then a final `event: done` whose
-# payload matches the classic JSON response (plus `event: error` on
-# failure). The classic response is unchanged. A finished reply is never
-# faked streaming: non-token-stream paths (the code-generation tool, the
-# local pattern fallback) deliver their result whole, in a single chunk.
+# chunk` per token piece, then a final `event: done` matching the
+# classic JSON response (plus `event: error` on failure). Non-streaming
+# paths (code-gen tool, local fallback) deliver whole, in one chunk.
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
     """
-    Streaming twin of the agent's process_message(): the same intent
-    detection, the same tools, the same persona prompt, the same model and
-    parameters — the agent's own logic decides WHAT OG says; this only
+    Streaming twin of the agent's process_message(): same intent
+    detection, tools, persona prompt, model and parameters — this only
     changes HOW the reply is delivered, pushing each token piece to
-    sink("chunk", text) the moment the model API produces it. Agent files
-    are never modified.
-
-    Token streaming is implemented for the OpenAI path (the live provider)
-    and the Anthropic path, in both cases building exactly the request the
-    agent's own response methods build. If a token stream fails before any
-    text is produced, it falls back to the agent's own full-text generation
-    (which carries its own in-persona fallback inside), delivered whole.
-
-    Returns (response_text, tokens_used): tokens_used is the API-reported
-    total (prompt + completion) when the provider reports usage, otherwise
-    a tokenizer estimate of the whole call.
+    sink("chunk", text) as the model API produces it. Agent files are
+    never modified. OpenAI and Anthropic paths build exactly the
+    request the agent's own response methods build; a stream failing
+    before any text falls back to the agent's full-text generation,
+    delivered whole. Returns (response_text, tokens_used).
     """
     agent = agent_instance
     agent.add_message('user', message)
@@ -2525,6 +2513,17 @@ _og_spotify.register_spotify_routes(app)
 _og_github.bind_app({"cookie_max_age": COOKIE_MAX_AGE,
                      "load_history": _load_visitor_history_locked})
 _og_github.register_github_routes(app)
+
+# Connect pack 2 (Round 15, dark): /auth/youtube*, /auth/discord*,
+# /auth/twitch* and /auth/reddit* routes live in their modules.
+_og_youtube.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
+_og_youtube.register_youtube_routes(app)
+_og_discord.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
+_og_discord.register_discord_routes(app)
+_og_twitch.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
+_og_twitch.register_twitch_routes(app)
+_og_reddit.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
+_og_reddit.register_reddit_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
