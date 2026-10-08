@@ -49,6 +49,9 @@
             <a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi">🔗</span> Connect Google</a>
             <div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi">✅</span> <span id="menuGoogleEmail"></span></div>
             <button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Google</button>
+            <a class="og-menu-item" id="menuSpotifyBtn" href="/auth/spotify" hidden><span class="og-mi">🎧</span> Connect Spotify</a>
+            <div class="og-menu-item" id="menuSpotifyInfo" hidden><span class="og-mi">✅</span> <span id="menuSpotifyName"></span></div>
+            <button class="og-menu-item" id="menuSpotifyDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Spotify</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
         </nav>
         <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.</div>
@@ -1027,6 +1030,33 @@
             }
             if (disc) disc.addEventListener('click', function () {
                 fetch('/auth/google/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+            });
+            refresh();
+        })();
+    </script>
+    <script>
+        // Round 10: Spotify connect wiring. The items only appear when
+        // the server says the feature is enabled (it ships dark — Brent
+        // still has to create the Spotify app and set the env vars).
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var btn = $('menuSpotifyBtn'), info = $('menuSpotifyInfo'),
+                nameEl = $('menuSpotifyName'), disc = $('menuSpotifyDisconnect');
+            if (!btn) return;
+            function refresh() {
+                fetch('/auth/spotify/status').then(function (r) { return r.json(); }).then(function (s) {
+                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+                    if (s.connected) {
+                        btn.hidden = true; info.hidden = false; disc.hidden = false;
+                        var who = s.name || s.email;
+                        nameEl.textContent = who ? ('Spotify: ' + who) : 'Spotify connected';
+                    } else {
+                        btn.hidden = false; info.hidden = true; disc.hidden = true;
+                    }
+                }).catch(function () { /* feature dark or offline — stay hidden */ });
+            }
+            if (disc) disc.addEventListener('click', function () {
+                fetch('/auth/spotify/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
             });
             refresh();
         })();
