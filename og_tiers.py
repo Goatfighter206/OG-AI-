@@ -21,7 +21,8 @@ enabled (see .env.example):
 
 Caps are per UTC day and env-overridable per tier/kind:
 OG_CAP_<TIER>_<KIND>, e.g. OG_CAP_PRO_IMAGES=50. Kinds: images,
-uploads, lookup, tts, upload_mb. Chat tokens: free is metered by
+uploads, lookup, tts, upload_mb, transcribe (Round 8 voice notes).
+Chat tokens: free is metered by
 OG_FREE_DAILY_TOKENS in app.py; every paid tier is unlimited.
 
 Payment links default to the live Stripe links created 2026-10-08;
@@ -55,6 +56,7 @@ _DEFAULT_CAPS = {
     "uploads": {"free": 3,    "standard": 25,  "pro": 30,  "blue": 100,  "blackout": 300},
     "lookup":  {"free": 25,   "standard": 250, "pro": 250, "blue": 250,  "blackout": 1000},
     "tts":     {"free": 60,   "standard": 60,  "pro": 300, "blue": 600,  "blackout": 2000},
+    "transcribe": {"free": 3, "standard": 15,  "pro": 50,  "blue": 150,  "blackout": 500},
     "upload_mb": {"free": 8,  "standard": 8,   "pro": 25,  "blue": 25,   "blackout": 25},
 }
 
@@ -164,6 +166,7 @@ _FEATURES = {
         "10 images a day, drawn by OG",
         "25 file uploads a day (PDFs & photos OG can read)",
         "Voice replies + Talk mode",
+        "Voice notes — talk instead of typing (15 a day)",
     ],
     "pro": [
         "50 images a day",
