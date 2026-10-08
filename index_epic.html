@@ -55,6 +55,18 @@
             <a class="og-menu-item" id="menuGithubBtn" href="/auth/github" hidden><span class="og-mi">🐙</span> Connect GitHub</a>
             <div class="og-menu-item" id="menuGithubInfo" hidden><span class="og-mi">✅</span> <span id="menuGithubName"></span></div>
             <button class="og-menu-item" id="menuGithubDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect GitHub</button>
+            <a class="og-menu-item" id="menuYoutubeBtn" href="/auth/youtube" hidden><span class="og-mi">📺</span> Connect YouTube</a>
+            <div class="og-menu-item" id="menuYoutubeInfo" hidden><span class="og-mi">✅</span> <span id="menuYoutubeName"></span></div>
+            <button class="og-menu-item" id="menuYoutubeDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect YouTube</button>
+            <a class="og-menu-item" id="menuDiscordBtn" href="/auth/discord" hidden><span class="og-mi">🎮</span> Connect Discord</a>
+            <div class="og-menu-item" id="menuDiscordInfo" hidden><span class="og-mi">✅</span> <span id="menuDiscordName"></span></div>
+            <button class="og-menu-item" id="menuDiscordDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Discord</button>
+            <a class="og-menu-item" id="menuTwitchBtn" href="/auth/twitch" hidden><span class="og-mi">💜</span> Connect Twitch</a>
+            <div class="og-menu-item" id="menuTwitchInfo" hidden><span class="og-mi">✅</span> <span id="menuTwitchName"></span></div>
+            <button class="og-menu-item" id="menuTwitchDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Twitch</button>
+            <a class="og-menu-item" id="menuRedditBtn" href="/auth/reddit" hidden><span class="og-mi">🟠</span> Connect Reddit</a>
+            <div class="og-menu-item" id="menuRedditInfo" hidden><span class="og-mi">✅</span> <span id="menuRedditName"></span></div>
+            <button class="og-menu-item" id="menuRedditDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Reddit</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
             <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
             <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
@@ -1099,6 +1111,42 @@
             });
             refresh();
         })();
+    </script>
+    <script>
+        // Round 15: connect pack 2 wiring (YouTube / Discord / Twitch /
+        // Reddit). Same shape as the Spotify/GitHub wiring above, one
+        // block per service: the items only appear when the server says
+        // that service is enabled (each ships dark — Brent still has to
+        // register each app and set its env vars).
+        [['Youtube', 'youtube', function (s) { return s.name || s.email; }, 'YouTube'],
+         ['Discord', 'discord', function (s) { return s.username || s.name; }, 'Discord'],
+         ['Twitch', 'twitch', function (s) { return s.login || s.name || s.email; }, 'Twitch'],
+         ['Reddit', 'reddit', function (s) { return s.username || s.name; }, 'Reddit']
+        ].forEach(function (cfg) {
+            var key = cfg[0], path = cfg[1], pick = cfg[2], label = cfg[3];
+            (function () {
+                function $(id) { return document.getElementById(id); }
+                var btn = $('menu' + key + 'Btn'), info = $('menu' + key + 'Info'),
+                    nameEl = $('menu' + key + 'Name'), disc = $('menu' + key + 'Disconnect');
+                if (!btn) return;
+                function refresh() {
+                    fetch('/auth/' + path + '/status').then(function (r) { return r.json(); }).then(function (s) {
+                        if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+                        if (s.connected) {
+                            btn.hidden = true; info.hidden = false; disc.hidden = false;
+                            var who = pick(s);
+                            nameEl.textContent = who ? (label + ': ' + who) : (label + ' connected');
+                        } else {
+                            btn.hidden = false; info.hidden = true; disc.hidden = true;
+                        }
+                    }).catch(function () { /* feature dark or offline — stay hidden */ });
+                }
+                if (disc) disc.addEventListener('click', function () {
+                    fetch('/auth/' + path + '/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+                });
+                refresh();
+            })();
+        });
     </script>
     <style id="og-image-css">
         .og-gen-image { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 14px; margin: 10px 0 6px; border: 1px solid rgba(255, 193, 7, .35); }
