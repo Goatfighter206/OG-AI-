@@ -27,7 +27,24 @@ when OSM carries them, never a rating (OSM has none worth trusting)
 — plus a tappable Google Maps link per place (or a directions link
 for a route). When the visitor names no location, maps returns a
 note that makes OG ask ONE short clarifying question instead of
-guessing; there is no visitor geolocation in this app, on purpose.
+guessing.
+
+Round 11 adds GPS "near me": when the visitor opts in on the chat
+page (their browser's own permission prompt — one getCurrentPosition
+per opt-in), the page attaches {lat, lon} to that ONE /chat request
+as a separate field. app.py hands it to note_request_coords() at
+the start of the exchange; the seam below reads it back for that
+exchange only. Coordinates are used to center a nearby search or
+to origin a route, and for nothing else: they are NEVER stored,
+NEVER logged (not even rounded), NEVER written to the visitor
+store or the conversation history — the slot is overwritten by
+every exchange and cleared the moment the seam consumes it. Even
+the directions link for a from-here route carries no coordinates
+(it opens from the visitor's own location in Google Maps), so
+nothing OG can quote back contains them. A NAMED place in the
+message always wins over shared coordinates; stale/absurd
+coordinates (out of range, (0, 0)) are ignored and the normal
+clarifying flow runs.
 
 Budget: place/route answers share the Round 3 lookup budget — one
 unit of og's per-tier "lookup" cap (app.py's _consume_lookup) is
@@ -185,6 +202,69 @@ def _dir_link(origin_label, dest_label):
     d = urllib.parse.quote_plus(dest_label)
     return ("https://www.google.com/maps/dir/?api=1"
             f"&origin={o}&destination={d}")
+
+
+def _dir_link_from_here(dest_label):
+    """Directions link with NO origin baked in: Google Maps opens
+    it with the visitor's own current location as the start. The
+    Round 11 route answer uses this so the coordinates the visitor
+    shared ride NO text that could be quoted back or saved — the
+    link works from wherever they actually are."""
+    d = urllib.parse.quote_plus(dest_label)
+    return ("https://www.google.com/maps/dir/?api=1"
+            f"&destination={d}")
+
+
+# ---------------------------------------------------------------------------
+# Round 11: per-request visitor coordinates ("near me")
+# ---------------------------------------------------------------------------
+
+# The current exchange's shared coordinates, noted by app.py under
+# _memory_lock (alongside its _current_uid slot) and consumed by the
+# maps seam. Single slot is safe for the same reason app.py's own
+# slots are: chat processing is serialized under that lock.
+_request_coords = {"uid": None, "coords": None}
+
+
+def _valid_coords(raw):
+    """A raw coords payload -> (lat, lon) floats, or None. Rejects
+    non-dicts, missing/non-numeric fields, out-of-range values and
+    the (0, 0) null-island placeholder browsers/tests love to send."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        lat = float(raw.get("lat"))
+        lon = float(raw.get("lon"))
+    except (TypeError, ValueError):
+        return None
+    if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lon <= 180.0):
+        return None
+    if lat == 0.0 and lon == 0.0:
+        return None
+    return (lat, lon)
+
+
+def note_request_coords(raw, uid):
+    """app.py binding: note this exchange's coordinates (validated)
+    in the per-request slot. Called for EVERY chat exchange — with
+    None when the request carried none — and again with None when
+    the exchange ends, so a value can never leak into another
+    visitor's answer. Nothing here is persisted or logged."""
+    _request_coords["uid"] = uid
+    _request_coords["coords"] = _valid_coords(raw)
+
+
+def _take_request_coords(uid):
+    """Read + clear the slot for the exchange being processed. Only
+    the uid the slot was noted for may consume it; a mismatched or
+    empty slot reads as 'no location shared'."""
+    noted_uid = _request_coords.get("uid")
+    coords = _request_coords.get("coords")
+    _request_coords["uid"] = None
+    _request_coords["coords"] = None
+    if coords is None or noted_uid != uid:
+        return None
+    return coords
 
 
 # ---------------------------------------------------------------------------
@@ -610,10 +690,12 @@ def _places_results(parsed):
     if not location:
         return _clarify_result(
             f"(Maps note for OG: the visitor asked for {label} but "
-            "did NOT name a city or area, and you can't see their "
-            "live location. Do NOT invent a place or any results. "
-            "Ask them ONE short question in your own voice: what "
-            "city or neighborhood should you look in?)")
+            "did NOT name a city or area, and no location was "
+            "shared for this question. Do NOT invent a place or "
+            "any results. Ask them ONE short question in your own "
+            "voice: what city or neighborhood should you look in? "
+            "They can also tap the 📍 location button in the chat "
+            "to share where they are for one answer.)")
     ref = geocode(location)
     if ref is None:
         return None  # couldn't pin the place — fall through
@@ -661,7 +743,55 @@ def _places_results(parsed):
     ]
 
 
-def _route_results(parsed):
+def _places_near_coords(parsed, coords):
+    """Round 11: places around the visitor's shared coordinates.
+    Distances are computed from the supplied point itself (never a
+    geocoded stand-in); the coordinates appear in NO result text —
+    only the places' own data is stated, framed as 'from you'."""
+    lat, lon = coords
+    label = _CATEGORIES[parsed["category"]]["label"]
+    places = nearby_places(lat, lon, parsed["category"], "")
+    if places is None:
+        return None  # Overpass down — fall through to the lookup chain
+    if not places:
+        return [{
+            "title": f"{label} near your location (OpenStreetMap, live)",
+            "body": (f"(Maps note for OG: the visitor shared their "
+                     f"location for THIS answer only, and "
+                     f"OpenStreetMap has NO {label} listed near "
+                     f"them right now. Tell them straight that "
+                     f"nothing came up nearby — do NOT invent "
+                     f"places, and do NOT state or guess where they "
+                     f"are.)"),
+            "href": f"https://www.openstreetmap.org/#map=14/"
+                    f"{lat:.5f}/{lon:.5f}",
+        }]
+    lines = []
+    for p in places:
+        line = f"- {p['name']}"
+        if p["address"]:
+            line += f" — {p['address']}"
+        line += f" · {_fmt_dist(p['dist_m'])} from the visitor"
+        if p["hours"]:
+            line += f" · Hours: {p['hours']}"
+        line += f" · Map: {p['link']}"
+        lines.append(line)
+    body = (
+        f"The visitor asked for {label} near them and shared their "
+        f"location for this answer only. These are REAL places from "
+        f"OpenStreetMap, nearest first — give them in your own "
+        f"voice and include the map links:\n"
+        + "\n".join(lines)
+        + "\n(Only the details listed here are known — do NOT invent "
+          "hours, ratings, reviews or phone numbers, and do NOT "
+          "state or guess the visitor's location or coordinates.)")
+    return [{
+        "title": f"{label} near your location (OpenStreetMap, live)",
+        "body": body[:1800], "href": places[0]["link"],
+    }]
+
+
+def _route_results(parsed, coords=None):
     origin_q, dest_q = parsed["origin"], parsed["destination"]
     if not dest_q:
         return _clarify_result(
@@ -669,53 +799,104 @@ def _route_results(parsed):
             "info but didn't say WHERE they're headed. Do NOT invent "
             "a destination. Ask them ONE short question in your own "
             "voice: where are they trying to get to?)")
-    if not origin_q:
+    # A NAMED origin always wins; shared coordinates only stand in
+    # when the message named no starting point ("from here…").
+    origin_coords = None if origin_q else coords
+    if not origin_q and not origin_coords:
         return _clarify_result(
             f"(Maps note for OG: the visitor wants a route to "
             f"{dest_q} but didn't say where they're starting from, "
-            "and you can't see their live location. Do NOT invent a "
-            "starting point or a distance. Ask them ONE short "
-            "question in your own voice: where are they starting "
-            "from?)")
-    a, b = geocode(origin_q), geocode(dest_q)
-    if a is None or b is None:
-        return None  # couldn't pin an endpoint — fall through
+            "and no location was shared for this question. Do NOT "
+            "invent a starting point or a distance. Ask them ONE "
+            "short question in your own voice: where are they "
+            "starting from? They can also tap the 📍 location "
+            "button in the chat to share where they are for one "
+            "answer.)")
+    b = geocode(dest_q)
+    if b is None:
+        return None  # couldn't pin the destination — fall through
+    b_label = b["label"] or dest_q
+    if origin_q:
+        a = geocode(origin_q)
+        if a is None:
+            return None  # couldn't pin the origin — fall through
+        a_label = a["label"] or origin_q
+        link = _dir_link(a_label, b_label)
+        from_desc = a_label
+    else:
+        a = {"lat": origin_coords[0], "lon": origin_coords[1]}
+        a_label = "your location"
+        link = _dir_link_from_here(b_label)
+        from_desc = ("where the visitor is right now (they shared "
+                     "their location for this answer only)")
     route = route_between(a, b)
     if route is None:
         return None  # OSRM down — fall through
-    a_label = a["label"] or origin_q
-    b_label = b["label"] or dest_q
-    link = _dir_link(a_label, b_label)
-    body = (
-        f"Real driving route (OSRM, live): {a_label} to {b_label} "
-        f"is {_fmt_dist(route['dist_m'])}, {_fmt_duration(route['secs'])} "
-        f"by car. Directions: {link}. State it plainly in your own "
-        f"voice — do NOT invent traffic conditions, road names or "
-        f"alternate routes.")
+    dist = _fmt_dist(route["dist_m"])
+    dur = _fmt_duration(route["secs"])
+    if origin_q:
+        body = (
+            f"Real driving route (OSRM, live): {a_label} to "
+            f"{b_label} is {dist}, {dur} by car. Directions: "
+            f"{link}. State it plainly in your own voice — do NOT "
+            f"invent traffic conditions, road names or alternate "
+            f"routes.")
+        title = f"Route: {a_label} → {b_label} (OSRM, live)"
+    else:
+        body = (
+            f"Real driving route (OSRM, live): from {from_desc} to "
+            f"{b_label} is {dist}, {dur} by car. Directions: "
+            f"{link} (the link carries no start point — it opens "
+            f"directions from the visitor's own location when they "
+            f"tap it). State it plainly in your own voice — do NOT "
+            f"invent traffic conditions, road names or alternate "
+            f"routes, and do NOT state or guess the visitor's "
+            f"coordinates.")
+        title = f"Route: your location → {b_label} (OSRM, live)"
     return [
-        {"title": f"Route: {a_label} → {b_label} (OSRM, live)",
-         "body": body[:1800], "href": link},
+        {"title": title, "body": body[:1800], "href": link},
         {"title": "Route — source", "body": link, "href": link},
     ]
 
 
-def maps_search_results(parsed, uid, consume_lookup):
+def maps_search_results(parsed, uid, consume_lookup, coords=None):
     """Run one parsed maps job. Returns web_search-shaped results on
     a hit (or the clarifying-question note when a detail is missing),
     None on a miss (unknown place / upstream down) so the caller
     falls through to the previous search. One unit of the shared
     lookup budget is consumed per REAL answer — never for a
-    clarifying ask, never for a miss."""
+    clarifying ask, never for a miss.
+
+    coords (Round 11) is the exchange's validated (lat, lon) or
+    None. It only ever fills a gap the message left open — a place
+    search with no named location, a route with no named origin. A
+    named place in the message always wins over the coordinates."""
     if not parsed:
         return None
+    if coords:
+        # Accept the seam's validated (lat, lon) tuple or a raw
+        # {"lat", "lon"} payload; either way it is (re)validated.
+        if not isinstance(coords, dict):
+            try:
+                coords = {"lat": coords[0], "lon": coords[1]}
+            except Exception:
+                coords = None
+        coords = _valid_coords(coords) if coords else None
+    else:
+        coords = None
     if parsed["kind"] == "places":
-        if not parsed.get("location"):
+        if parsed.get("location"):
+            results = _places_results(parsed)   # named place wins
+        elif coords:
+            results = _places_near_coords(parsed, coords)
+        else:
             return _places_results(parsed)  # clarifying ask, no spend
-        results = _places_results(parsed)
     elif parsed["kind"] == "route":
-        if not parsed.get("origin") or not parsed.get("destination"):
+        if not parsed.get("destination"):
             return _route_results(parsed)   # clarifying ask, no spend
-        results = _route_results(parsed)
+        if not parsed.get("origin") and not coords:
+            return _route_results(parsed)   # clarifying ask, no spend
+        results = _route_results(parsed, coords)
     else:
         return None
     if not results:
@@ -777,8 +958,13 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
         _pending["parsed"] = None
         if parsed:
             try:
+                uid = get_uid()
+                # Round 11: consume this exchange's shared
+                # coordinates (if any) — read once, cleared here,
+                # used for this answer only, never stored/logged.
+                coords = _take_request_coords(uid)
                 results = maps_search_results(
-                    parsed, get_uid(), consume_lookup)
+                    parsed, uid, consume_lookup, coords)
             except Exception as e:
                 logger.warning(f"Maps search failed: {e}")
                 results = None
