@@ -214,6 +214,40 @@ def _consume_image(uid: str):
         store[key] = entry
         _save_usage_store(store)
 
+# --- Unity maker (Round 16): per-tier daily package cap ---
+def _unity_used_today(uid: str) -> int:
+    """Unity projects this visitor has packaged today (UTC)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _usage_lock:
+        store = _load_usage_store()
+    entry = store.get(f"unity:{uid}")
+    if not isinstance(entry, dict) or entry.get("date") != today:
+        return 0
+    return int(entry.get("count", 0))
+
+def _unity_left(uid: str) -> int:
+    """Unity packages left today for the current request's tier."""
+    cap = _og_tiers.cap(_current_tier.get("tier", "free"), "unity")
+    return max(0, cap - _unity_used_today(uid))
+
+def _consume_unity(uid: str) -> bool:
+    """Record one packaged Unity project today (UTC); False at cap.
+    Success-only — called only after a package succeeds."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"unity:{uid}"
+    with _usage_lock:
+        store = _load_usage_store()
+        entry = store.get(key)
+        if not isinstance(entry, dict) or entry.get("date") != today:
+            entry = {"date": today, "count": 0}
+        cap = _og_tiers.cap(_current_tier.get("tier", "free"), "unity")
+        if int(entry.get("count", 0)) >= cap:
+            return False
+        entry["count"] = int(entry.get("count", 0)) + 1
+        store[key] = entry
+        _save_usage_store(store)
+        return True
+
 # --- File reading (Round 6): everything lives in og_file_read.py ---
 import og_file_read as _og_files
 import og_tiers as _og_tiers
@@ -230,13 +264,14 @@ import og_youtube as _og_youtube
 import og_discord as _og_discord
 import og_twitch as _og_twitch
 import og_reddit as _og_reddit
+# --- Unity maker (Round 16): everything lives in og_unity.py ---
+import og_unity as _og_unity
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ---
 # v1 grants Pro to anyone landing on /pro/success; v2 verifies payment via
-# POST /stripe/webhook on checkout completion (buyer = the `ogai_uid` passed
-# as client_reference_id). Entitlements live in the usage store; /chat
-# honors them directly. DISABLED until OG_WEBHOOK_ENABLED=true +
-# STRIPE_WEBHOOK_SECRET are set (see the report).
+# POST /stripe/webhook (buyer = `ogai_uid` as client_reference_id).
+# Entitlements live in the usage store. DISABLED until OG_WEBHOOK_ENABLED
+# + STRIPE_WEBHOOK_SECRET are set.
 WEBHOOK_ENABLED = os.getenv("OG_WEBHOOK_ENABLED", "false").lower() == "true"
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 PRO_ENTITLED_KEY = "__pro_entitled__"
@@ -312,8 +347,7 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
 # both chat paths answer grounded, in persona. Primary: OpenAI
 # Responses API web_search; fallbacks: Tavily (OG_SEARCH_API_KEY),
 # then DuckDuckGo. All routes failing = ungrounded chat, never an
-# error. Daily cap OG_LOOKUP_DAILY_LIMIT; lookup tokens metered at
-# OG_LOOKUP_METER_CAP.
+# error. Cap OG_LOOKUP_DAILY_LIMIT; tokens metered at OG_LOOKUP_METER_CAP.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
@@ -457,12 +491,10 @@ def _tavily_web_lookup(query: str):
     return answer, sources, 0
 
 def _og_web_search(agent_instance, query: str, num_results: int = 5):
-    """The app-layer search behind the agent's web_search hook.
-
-    OpenAI lookup first, Tavily second, the agent's built-in DuckDuckGo
-    search last. Returns the same List[Dict] shape the agent's own
-    web_search returns ({title, body, href}) so both chat paths format the
-    results into model context exactly as before."""
+    """The app-layer search behind the agent's web_search hook:
+    OpenAI lookup first, Tavily second, the agent's built-in
+    DuckDuckGo search last. Returns the agent's own List[Dict]
+    shape ({title, body, href})."""
     uid = _current_uid.get("uid", "")
     if uid and not _consume_lookup(uid):
         logger.info("Web lookup skipped: visitor at daily lookup cap")
@@ -539,10 +571,9 @@ def _install_lookup_tools(agent_instance):
 # Data tools behind the web_search seam (weather/scores/quotes/news),
 # all keyless/public: WEATHER Open-Meteo; SPORTS ESPN JSON; STOCKS
 # Nasdaq API + Yahoo fallback; CRYPTO Coinbase stats + CoinGecko
-# fallback; NEWS Google News RSS. A miss returns None and the question
-# falls through to Round 3's lookup chain. Results share the {title,
-# body, href} shape; brief per-category caching. Data questions share
-# the Round 3 lookup budget (checked in _og_web_search).
+# fallback; NEWS Google News RSS. A miss falls through to Round 3's
+# lookup chain. Results share the {title, body, href} shape; brief
+# per-category caching; data questions share the lookup budget.
 _DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/124.0 Safari/537.36"}
@@ -1383,8 +1414,7 @@ def _message_needs_data(message: str) -> bool:
 # OG_MEMORY_DB_URL is set, else a JSON file). v1 scopes: identity
 # only (openid email profile); Round 12 extends this in
 # og_google_hands.py (OG_GOOGLE_HANDS_ENABLED=true adds Gmail/
-# Calendar scopes). Ships DISABLED — menu hidden, routes 404 — until
-# OG_GOOGLE_ENABLED=true + client id/secret are set (Round 3 report).
+# Calendar scopes). DISABLED until OG_GOOGLE_ENABLED + keys are set.
 GOOGLE_CLIENT_ID = os.getenv("OG_GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("OG_GOOGLE_CLIENT_SECRET", "")
 GOOGLE_ENABLED = (os.getenv("OG_GOOGLE_ENABLED", "false").lower() == "true"
@@ -1564,11 +1594,10 @@ def _save_memory_store_db(store: Dict) -> bool:
 
 def _reset_memory_store():
     """Start the memory store empty (called when a fresh agent is
-    created): a new agent instance must not inherit a previous
-    instance's visitor threads. Same lifecycle as the usage counters —
-    live for the service's life, reset on a from-scratch rebuild.
-    Exception: with the Postgres backend active (OG_MEMORY_DB_URL set)
-    the store is deliberately NOT reset (durable memory is the point).
+    created): a new agent must not inherit a previous instance's
+    visitor threads. Reset on a from-scratch rebuild — EXCEPT with
+    the Postgres backend active (OG_MEMORY_DB_URL), where the store
+    is deliberately NOT reset (durable memory is the point).
     """
     if MEMORY_DB_URL:
         logger.info("Durable memory backend active — memory store not reset")
@@ -1777,6 +1806,9 @@ def get_agent() -> AIAgent:
              "client_id": GOOGLE_CLIENT_ID,
              "client_secret": GOOGLE_CLIENT_SECRET,
              "google_enabled": GOOGLE_ENABLED})
+        _og_unity.install_unity_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_unity,
+            _unity_left)
         _reset_memory_store()
 
     return agent
@@ -1919,14 +1951,11 @@ async def health_check():
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
     """
-    Streaming twin of the agent's process_message(): same intent
-    detection, tools, persona prompt, model and parameters — this only
-    changes HOW the reply is delivered, pushing each token piece to
-    sink("chunk", text) as the model API produces it. Agent files are
-    never modified. OpenAI and Anthropic paths build exactly the
-    request the agent's own response methods build; a stream failing
-    before any text falls back to the agent's full-text generation,
-    delivered whole. Returns (response_text, tokens_used).
+    Streaming twin of the agent's process_message(): same intent,
+    tools, persona, model and parameters — only the delivery changes
+    (each token piece pushed to sink("chunk", text)). Agent files
+    never modified. A stream failing before any text falls back to
+    the agent's full-text generation. Returns (response, tokens).
     """
     agent = agent_instance
     agent.add_message('user', message)
@@ -2085,12 +2114,11 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
                         speak_response: bool, sink, meter: bool = True,
                         tier: str = "free", coords=None):
     """
-    Worker-thread body for a streaming /chat request. Mirrors the classic
-    /chat bookkeeping exactly: this visitor's own thread is swapped into the
-    shared agent under the memory lock, the message stat is bumped, and the
-    thread is saved back in a finally block — so if the visitor's browser
-    disconnects mid-stream, generation still finishes server-side and the
-    conversation is still remembered (the non-streaming fallback).
+    Worker-thread body for a streaming /chat request. Mirrors the
+    classic /chat bookkeeping: the visitor's own thread is swapped
+    into the shared agent under the memory lock and saved back in a
+    finally block — a mid-stream disconnect still finishes
+    server-side and the conversation is still remembered.
     """
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
@@ -2207,22 +2235,11 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     """
     Send a message to the AI agent and receive a response.
 
-    Free visitors get FREE_DAILY_TOKENS tokens of model usage per UTC day
-    (tracked by an `ogai_uid` cookie); Pro visitors (valid `ogai_pro` cookie,
-    or a Stripe-confirmed entitlement while v2 is enabled) are unmetered.
-    A capped visitor still gets HTTP 200 with an in-persona reply pointing
-    at the upgrade URL.
-
-    With {"stream": true} the reply is delivered as Server-Sent Events —
-    the model's tokens streamed as they are produced, then a done event
-    carrying this same payload; cap counting and the per-visitor memory
-    write are identical either way.
-
-    Args:
-        request: ChatRequest containing the user's message and optional voice setting
-
-    Returns:
-        ChatResponse with the agent's reply
+    Free visitors get FREE_DAILY_TOKENS tokens per UTC day (tracked
+    by the `ogai_uid` cookie); paid tiers are unmetered. A capped
+    visitor still gets HTTP 200 with an in-persona upgrade reply.
+    With {"stream": true} the reply is Server-Sent Events (tokens
+    as produced, then a done event with this same payload).
     """
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
@@ -2525,16 +2542,19 @@ _og_twitch.register_twitch_routes(app)
 _og_reddit.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
 _og_reddit.register_reddit_routes(app)
 
+# Unity maker (Round 16, live): GET /unity/download/<id> lives in
+# og_unity.py (load_history = the packaging extraction reader).
+_og_unity.bind_app({"load_history": _load_visitor_history_locked})
+_og_unity.register_unity_routes(app)
+
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
     """
-    Stripe webhook: grant a Pro entitlement on checkout.session.completed.
-
-    Inert unless OG_WEBHOOK_ENABLED=true and STRIPE_WEBHOOK_SECRET is set —
-    while disabled it answers 404 and /pro/success keeps the v1 behavior.
-    The buyer is identified by client_reference_id (the visitor's ogai_uid,
-    added by /pro while v2 is enabled); the event signature is verified
-    against STRIPE_WEBHOOK_SECRET before anything is granted.
+    Stripe webhook: grant a Pro entitlement on
+    checkout.session.completed. Inert unless OG_WEBHOOK_ENABLED=true
+    and STRIPE_WEBHOOK_SECRET is set (404 while disabled). The buyer
+    is client_reference_id (the ogai_uid); the signature is verified
+    before anything is granted.
     """
     if not WEBHOOK_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
