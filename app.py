@@ -37,16 +37,14 @@ logger = logging.getLogger(__name__)
 # Check if running in development mode (for error detail control)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 
-# --- OG Pro (money layer): free tier gets a daily per-visitor
-# token budget (UTC day, API-metered); paid tiers unmetered.
-# OG_FREE_DAILY_LIMIT is a legacy alias.
+# --- OG Pro (money layer): free = daily per-visitor token budget
+# (UTC day); paid unmetered. OG_FREE_DAILY_LIMIT = legacy alias.
 FREE_DAILY_TOKENS = int(os.getenv(
     "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
-# (Raised 10k -> 25k 2026-10-08, Brent's call: bigger free budget
-# over shorter replies.)
+# (Raised 10k -> 25k 2026-10-08, Brent's call.)
 PRO_UPGRADE_URL = os.getenv("OG_PRO_LINK", "#")
-# SECURITY: set OG_PRO_TOKEN to a long random secret in production. The
-# fallback below is a placeholder — anyone who knows it can mint a Pro cookie.
+# SECURITY: set OG_PRO_TOKEN to a long random secret in production;
+# the fallback placeholder lets anyone who knows it mint a Pro cookie.
 PRO_TOKEN = os.getenv("OG_PRO_TOKEN", "CHANGE_ME_PRO_TOKEN")
 USAGE_STORE_FILE = "usage_store.json"
 COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year
@@ -308,6 +306,8 @@ import og_plaid as _og_plaid
 import og_ordering as _og_ordering
 # Trading on approval (Round 20): og_trading.py
 import og_trading as _og_trading
+# File locker (Round 21, dark): og_storage.py
+import og_storage as _og_storage
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -380,19 +380,17 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
         return False
 
 # --- Web lookup (Round 3): app-layer wrap of the agent's
-# detect_intent/web_search hooks (agent files never modified).
-# OpenAI Responses web_search; fallbacks Tavily/DuckDuckGo.
+# detect_intent/web_search hooks; Responses web_search + fallbacks.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
 LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
-# Lookup tokens spent by the current exchange (drained into its
-# metered total); single slots safe — chat is serialized.
+# Lookup tokens for the current exchange; single slots safe
+# (chat is serialized).
 _lookup_tokens_stash = {"tokens": 0}
 _current_uid = {"uid": ""}
 _current_tier = {"tier": "free"}
-# The raw message being processed (set by the wrapped
-# detect_intent); the Round 4 data router tries it first.
+# Raw message being processed; Round 4 data router tries it first.
 _current_message = {"text": ""}
 
 _LOOKUP_TRIGGER_PHRASES = (
@@ -599,9 +597,8 @@ def _install_lookup_tools(agent_instance):
     agent_instance.web_search = web_search_wrapped
     agent_instance._og_lookup_installed = True
 
-# --- Live data pack (Round 4): keyless tools behind the seam —
-# WEATHER Open-Meteo; SPORTS ESPN; STOCKS Nasdaq+Yahoo; CRYPTO
-# Coinbase+CoinGecko; NEWS Google News RSS. Shares lookup budget.
+# --- Live data pack (Round 4): keyless tools behind the seam
+# (weather/sports/stocks/crypto/news); shares lookup budget.
 _DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/124.0 Safari/537.36"}
@@ -1434,9 +1431,8 @@ def _message_needs_data(message: str) -> bool:
             return True
     return False
 
-# --- Google connect (Round 3, dark): OAuth 2.0, per-visitor tokens
-# (Postgres when OG_MEMORY_DB_URL set, else JSON file); v1 scopes
-# identity only; Round 12 extends in og_google_hands.py.
+# --- Google connect (Round 3): OAuth 2.0, per-visitor tokens
+# (Postgres or JSON file); Round 12 extends in og_google_hands.py.
 GOOGLE_CLIENT_ID = os.getenv("OG_GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("OG_GOOGLE_CLIENT_SECRET", "")
 GOOGLE_ENABLED = (os.getenv("OG_GOOGLE_ENABLED", "false").lower() == "true"
@@ -1537,16 +1533,14 @@ def _google_uid_from_state(state: str) -> Optional[str]:
     except Exception:
         return None
 
-# --- Per-visitor memory: history keyed by `ogai_uid`, persisted
-# to a JSON store — each visitor keeps their own thread.
+# --- Per-visitor memory: history keyed by `ogai_uid` (JSON store).
 MEMORY_STORE_FILE = "memory_store.json"
 MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
 MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
 _memory_lock = threading.Lock()
 
-# Durable backend (opt-in): OG_MEMORY_DB_URL (Postgres, e.g. Neon)
-# stores visitor threads so memory survives rebuilds; unset or
-# unreachable falls back to the JSON file store.
+# Durable backend: OG_MEMORY_DB_URL (Postgres) keeps threads across
+# rebuilds; unset/unreachable falls back to the JSON file store.
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
 try:
     import psycopg
@@ -1658,9 +1652,8 @@ def _save_memory_store_file(store: Dict):
     except Exception as e:
         logger.warning(f"Could not save memory store: {e}")
 
-# The *_locked helpers assume the caller holds _memory_lock: /chat holds it
-# across swap-in -> process -> save-back so one visitor's thread can never be
-# clobbered by another request touching the shared agent instance.
+# The *_locked helpers assume the caller holds _memory_lock (/chat
+# holds it across swap-in -> process -> save-back).
 def _load_visitor_history_locked(uid: str) -> List[Dict]:
     """This visitor's stored conversation thread (most recent last)."""
     entry = _load_memory_store().get(uid)
@@ -1835,6 +1828,8 @@ def get_agent() -> AIAgent:
         _og_ordering.install_ordering_tools(
             agent, lambda: _current_uid.get("uid", ""))
         _og_trading.install_trading_tools(
+            agent, lambda: _current_uid.get("uid", ""))
+        _og_storage.install_storage_tools(
             agent, lambda: _current_uid.get("uid", ""))
         _reset_memory_store()
 
@@ -2590,6 +2585,13 @@ _og_trading.bind_app({"cookie_max_age": COOKIE_MAX_AGE,
     "usage_lock": _usage_lock,
     "get_tier": lambda: _current_tier.get("tier", "free")})
 _og_trading.register_trading_routes(app)
+
+# File locker (Round 21, dark): /storage/* routes in og_storage.py.
+_og_storage.bind_app({
+    "get_tier": lambda: _current_tier.get("tier", "free"),
+    "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
+    "get_api_key": lambda: os.getenv("OPENAI_API_KEY")})
+_og_storage.register_storage_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
