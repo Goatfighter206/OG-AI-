@@ -1026,5 +1026,117 @@
             refresh();
         })();
     </script>
+    <style id="og-image-css">
+        .og-gen-image { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 14px; margin: 10px 0 6px; border: 1px solid rgba(255, 193, 7, .35); }
+        .og-img-download { display: inline-block; margin: 2px 0 4px; color: #ffc107; font-weight: 600; text-decoration: none; }
+        .og-img-download:hover { text-decoration: underline; }
+        .og-drawing-pulse { animation: ogDrawingPulse 1.1s ease-in-out infinite; }
+        @keyframes ogDrawingPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+    </style>
+    <script id="og-image-js">
+        // Round 5: image generation. Intent detection lives here,
+        // wrapping sendMessage like the earlier restyle wiring — so a
+        // drawing request behaves identically on the streamed and the
+        // classic chat paths (it never reaches /chat or the token meter
+        // at all). The server (POST /image) cleans the prompt, enforces
+        // the free/Pro daily caps, and generates with the OpenAI key.
+        (function () {
+            var DENY = /\b(draw\s+(an?\s+)?(conclusion|attention|breath|blood)|draw\s+(near|closer)|draw\s+the\s+(curtains?|blinds?))\b/i;
+            var VERB_ART = /\b(draw|paint|sketch|illustrate|render)\b/i;
+            var MAKE_ART = /\b(generate|create|make|design|show|give|get)\b[^.!?\n]{0,30}\b(image|picture|pic|photo|drawing|painting|illustration|logo|artwork|poster|wallpaper|sticker|meme)\b/i;
+            var ART_OF = /\b(image|picture|photo|drawing|painting|illustration|logo)\s+of\b/i;
+            function wantsImage(msg) {
+                if (!msg || DENY.test(msg)) return false;
+                if (VERB_ART.test(msg)) return true;
+                return MAKE_ART.test(msg) || ART_OF.test(msg);
+            }
+
+            var prevSend = sendMessage;
+            sendMessage = function () {
+                var input = document.getElementById('messageInput');
+                var msg = input ? input.value.trim() : '';
+                if (msg && !isProcessing && wantsImage(msg)) {
+                    ogDrawImage(msg);
+                    return Promise.resolve();
+                }
+                return prevSend.apply(this, arguments);
+            };
+
+            async function ogDrawImage(message) {
+                var input = document.getElementById('messageInput');
+                addMessage('user', message);
+                input.value = '';
+                input.dispatchEvent(new Event('input'));
+                isProcessing = true;
+                updateStatus('OG is drawing...');
+                if (typeof setMood === 'function') setMood('talking');
+
+                var area = document.getElementById('messagesArea');
+                var bubble = document.createElement('div');
+                bubble.className = 'message ai';
+                bubble.innerHTML =
+                    '<div class="message-avatar"><img class="og-avatar-sm" src="' + OG_AVATAR + '" alt="OG AI"></div>' +
+                    '<div class="message-content"><div class="message-text"><span class="og-drawing-pulse">🎨 Drawing that up for you…</span></div>' +
+                    '<div class="message-time">' + new Date().toLocaleTimeString() + '</div></div>';
+                area.appendChild(bubble);
+                area.scrollTop = area.scrollHeight;
+
+                try {
+                    var r = await fetch(API_URL + '/image', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: message })
+                    });
+                    var data = await r.json();
+                    bubble.remove();
+                    if (data && data.ok && data.image) {
+                        addImageMessage(data);
+                        if (typeof speakReply === 'function') speakReply(data.response || '');
+                    } else {
+                        addMessage('ai', (data && data.response) || 'Yo, the drawing board glitched — hit me again in a sec.');
+                        if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
+                    }
+                } catch (e) {
+                    bubble.remove();
+                    addMessage('ai', 'Yo, the drawing board glitched — hit me again in a sec.');
+                } finally {
+                    isProcessing = false;
+                    updateStatus('Online & Ready');
+                    if (typeof setMood === 'function') setMood('');
+                }
+            }
+
+            function addImageMessage(data) {
+                var area = document.getElementById('messagesArea');
+                var div = document.createElement('div');
+                div.className = 'message ai';
+                div.innerHTML =
+                    '<div class="message-avatar"><img class="og-avatar-sm" src="' + OG_AVATAR + '" alt="OG AI"></div>' +
+                    '<div class="message-content"><div class="message-text"></div>' +
+                    '<div class="message-time">' + new Date().toLocaleTimeString() + '</div></div>';
+                var textEl = div.querySelector('.message-text');
+                var cap = document.createElement('div');
+                cap.textContent = data.response || '';
+                textEl.appendChild(cap);
+                var img = document.createElement('img');
+                img.className = 'og-gen-image';
+                img.alt = 'OG generated image: ' + (data.prompt || '');
+                img.src = data.image;
+                textEl.appendChild(img);
+                var a = document.createElement('a');
+                a.className = 'og-img-download';
+                a.href = data.image;
+                a.setAttribute('download', 'og-image.png');
+                a.textContent = '⬇ Download image';
+                textEl.appendChild(a);
+                area.appendChild(div);
+                area.scrollTop = area.scrollHeight;
+                if (typeof setMood === 'function') {
+                    setMood('nod');
+                    setTimeout(function () { setMood(''); }, 620);
+                }
+            }
+        })();
+    </script>
 </body>
 </html>
