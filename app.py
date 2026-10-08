@@ -37,12 +37,11 @@ logger = logging.getLogger(__name__)
 # Check if running in development mode (for error detail control)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 
-# --- OG Pro (money layer) ----------------------------------------------------
-# Free tier: each visitor (`ogai_uid` cookie) gets a daily budget of
-# model tokens per UTC day (prompt + completion, metered from the API's
-# usage report; tokenizer estimate where none is reported). Pro visitors
-# (valid `ogai_pro` cookie) are unmetered. See /pro + /pro/success below.
-# OG_FREE_DAILY_LIMIT remains a legacy alias for the budget.
+# --- OG Pro (money layer) ---
+# Free tier: each visitor (`ogai_uid` cookie) gets a daily budget of model
+# tokens per UTC day (prompt + completion, metered from the API's usage
+# report; tokenizer estimate where none is reported). Pro visitors (valid
+# `ogai_pro` cookie) are unmetered. OG_FREE_DAILY_LIMIT is a legacy alias.
 FREE_DAILY_TOKENS = int(os.getenv(
     "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
 # (Default raised 10,000 → 25,000 on 2026-10-08 at Brent's direction —
@@ -150,7 +149,7 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
         total += _count_tokens(reply_text)
     return total
 
-# --- AI voice (text-to-speech) ----------------------------------------------
+# --- AI voice (text-to-speech) ---
 # When OPENAI_API_KEY is set, /tts turns OG's replies into realistic
 # spoken audio (OpenAI TTS, deep male "onyx" voice). Without the key the
 # endpoint answers 503 and the web page falls back to the device voice.
@@ -175,12 +174,12 @@ def _consume_tts_call(uid: str, limit: int = None) -> bool:
         _save_usage_store(store)
         return True
 
-# --- OG image generation (Round 5) -------------------------------------------
-# POST /image generates ONE image per ask (API call + prompt cleanup
-# in og_image_gen.py). Images cost real cents, so a per-visitor daily
-# cap guards the key: free OG_IMAGE_FREE_DAILY (default 2), Pro
-# OG_IMAGE_PRO_DAILY (default 25). Page-side intent detection keeps
-# image asks out of /chat entirely. Failures answer 200 in persona.
+# --- OG image generation (Round 5) ---
+# POST /image generates ONE image per ask (API call + prompt cleanup in
+# og_image_gen.py). Images cost real cents, so a per-visitor daily cap
+# guards the key: free OG_IMAGE_FREE_DAILY (default 2), Pro
+# OG_IMAGE_PRO_DAILY (default 25). Page-side intent detection keeps image
+# asks out of /chat entirely. Failures answer 200 in persona.
 from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
     IMAGE_DOWN_LINE as _IMAGE_DOWN_LINE,
     clean_image_prompt as _clean_image_prompt,
@@ -215,22 +214,24 @@ def _consume_image(uid: str):
         store[key] = entry
         _save_usage_store(store)
 
-# --- File reading (Round 6): everything lives in og_file_read.py ------------
+# --- File reading (Round 6): everything lives in og_file_read.py ---
 import og_file_read as _og_files
 import og_tiers as _og_tiers
-# --- Maps & places (Round 9): everything lives in og_maps.py ----------------
+# --- Maps & places (Round 9): everything lives in og_maps.py ---
 import og_maps as _og_maps
-# --- Spotify connect (Round 10): everything lives in og_spotify.py ----------
+# --- Spotify connect (Round 10): everything lives in og_spotify.py ---
 import og_spotify as _og_spotify
-# --- Google hands (Round 12): everything lives in og_google_hands.py --------
+# --- Google hands (Round 12): everything lives in og_google_hands.py ---
 import og_google_hands as _og_google_hands
+# --- GitHub connect (Round 14): everything lives in og_github.py ---
+import og_github as _og_github
 
-# --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
-# v1 grants Pro to anyone who lands on /pro/success. v2 verifies payment with
-# Stripe first: POST /stripe/webhook on checkout completion; the buyer is the
-# `ogai_uid` passed through checkout as client_reference_id. Entitlements live
-# in the usage store and /chat honors them directly. Ships DISABLED until
-# OG_WEBHOOK_ENABLED=true + STRIPE_WEBHOOK_SECRET are set (see the report).
+# --- OG Pro entitlement v2 (Stripe webhook, ships dark) ---
+# v1 grants Pro to anyone landing on /pro/success; v2 verifies payment via
+# POST /stripe/webhook on checkout completion (buyer = the `ogai_uid` passed
+# as client_reference_id). Entitlements live in the usage store; /chat
+# honors them directly. DISABLED until OG_WEBHOOK_ENABLED=true +
+# STRIPE_WEBHOOK_SECRET are set (see the report).
 WEBHOOK_ENABLED = os.getenv("OG_WEBHOOK_ENABLED", "false").lower() == "true"
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 PRO_ENTITLED_KEY = "__pro_entitled__"
@@ -299,16 +300,16 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
     except Exception:
         return False
 
-# --- Web lookup (Round 3) ----------------------------------------------------
+# --- Web lookup (Round 3) ---
 # App-layer wrap of the agent's detect_intent/web_search hooks (agent
 # files never modified): when a message needs current info, OG looks it
-# up BEFORE answering and the results ride into the model call as
-# context, so both chat paths answer grounded, in persona. Primary:
-# OpenAI Responses API web_search on the service's existing key;
-# fallbacks: Tavily (OG_SEARCH_API_KEY), then the agent's DuckDuckGo.
-# All routes failing = chat carries on ungrounded, never an error.
-# Per-visitor daily cap OG_LOOKUP_DAILY_LIMIT bounds the bill; lookup
-# tokens join the metered total weighed at OG_LOOKUP_METER_CAP.
+# up BEFORE answering; results ride into the model call as context, so
+# both chat paths answer grounded, in persona. Primary: OpenAI
+# Responses API web_search on the service's existing key; fallbacks:
+# Tavily (OG_SEARCH_API_KEY), then the agent's DuckDuckGo. All routes
+# failing = chat carries on ungrounded, never an error. Per-visitor
+# daily cap OG_LOOKUP_DAILY_LIMIT bounds the bill; lookup tokens join
+# the metered total weighed at OG_LOOKUP_METER_CAP.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
@@ -530,21 +531,19 @@ def _install_lookup_tools(agent_instance):
     agent_instance.web_search = web_search_wrapped
     agent_instance._og_lookup_installed = True
 
-# --- Live data pack (Round 4) ------------------------------------------------
-# First-class data tools behind the same web_search seam: data
-# questions (weather, scores, stock/crypto quotes, headlines) answer
-# from live structured sources instead of general web search. All
-# routes keyless/public: WEATHER Open-Meteo geocode+forecast; SPORTS
-# ESPN public scoreboard/schedule JSON; STOCKS Nasdaq API, Yahoo chart
+# --- Live data pack (Round 4) ---
+# First-class data tools behind the web_search seam: weather, scores,
+# stock/crypto quotes and headlines from live structured sources, all
+# keyless/public — WEATHER Open-Meteo geocode+forecast; SPORTS ESPN
+# public scoreboard/schedule JSON; STOCKS Nasdaq API, Yahoo chart
 # fallback (Stooq is JS-bot-walled from server IPs); CRYPTO Coinbase
 # Exchange stats, CoinGecko fallback; NEWS Google News RSS. A tool
-# returns None when its category doesn't parse or its routes fail —
-# the question falls through to Round 3's lookup chain untouched.
-# Results use the same {title, body, href} shape, size-capped like a
-# lookup; brief per-category caching (2–5 min; team lists 1 h).
-# Metering: data questions share the Round 3 lookup budget via
-# _og_web_search's cap check; keyless fetches bill no upstream tokens,
-# so the exchange's metered total stays the honest bill, like a lookup.
+# returns None on a parse/route miss; the question falls through to
+# Round 3's lookup chain untouched. Results share the {title, body,
+# href} shape; brief per-category caching (2–5 min; team lists 1 h).
+# Metering: data questions share the Round 3 lookup budget (checked in
+# _og_web_search); keyless fetches bill no upstream tokens, so the
+# exchange's metered total stays the honest bill, like a lookup.
 _DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/124.0 Safari/537.36"}
@@ -593,7 +592,7 @@ def _fetch_text(url: str, timeout: float = 20.0):
         logger.warning(f"Data fetch failed ({url[:60]}...): {e}")
         return None
 
-# --- Round 4: weather (Open-Meteo) -------------------------------------------
+# --- Round 4: weather (Open-Meteo) ---
 _WMO_CODES = {
     0: "clear sky", 1: "mostly clear", 2: "partly cloudy", 3: "overcast",
     45: "foggy", 48: "foggy with frost", 51: "light drizzle",
@@ -784,7 +783,7 @@ def _tool_weather(query: str):
                              "https://open-meteo.com/"),
                        _DATA_TTL["weather"])
 
-# --- Round 4: sports (ESPN public JSON) --------------------------------------
+# --- Round 4: sports (ESPN public JSON) ---
 _ESPN_LEAGUES = {
     "nfl": ("football", "nfl", "NFL"),
     "nba": ("basketball", "nba", "NBA"),
@@ -971,7 +970,7 @@ def _tool_sports(query: str):
                     "https://www.espn.com/")
     return None
 
-# --- Round 4: stocks (Nasdaq API, Yahoo Finance fallback) --------------------
+# --- Round 4: stocks (Nasdaq API, Yahoo Finance fallback) ---
 _STOCK_NAME_MAP = {
     "apple": "AAPL", "microsoft": "MSFT", "tesla": "TSLA",
     "amazon": "AMZN", "nvidia": "NVDA", "google": "GOOGL",
@@ -1104,7 +1103,7 @@ def _tool_stocks(query: str):
                              "https://www.nasdaq.com/market-activity"),
                        _DATA_TTL["stocks"])
 
-# --- Round 4: crypto (Coinbase Exchange, CoinGecko fallback) ------------------
+# --- Round 4: crypto (Coinbase Exchange, CoinGecko fallback) ---
 # alias -> (Coinbase product or None, CoinGecko id, display, needs_context)
 # Short/ambiguous aliases (btc, link, dot...) only route with a price-ish
 # context or a very short query, so ordinary chat never trips them.
@@ -1211,7 +1210,7 @@ def _tool_crypto(query: str):
     return _data_store(key, ("Live crypto quote", text, source),
                        _DATA_TTL["crypto"])
 
-# --- Round 4: news (Google News RSS) ------------------------------------------
+# --- Round 4: news (Google News RSS) ---
 def _clean_topic(topic: str):
     t = " ".join(str(topic).split()).strip(" ?.!,")
     low = t.lower()
@@ -1288,7 +1287,7 @@ def _tool_news(query: str):
                              "https://news.google.com/"),
                        _DATA_TTL["news"])
 
-# --- Round 4: router + detect heuristic ---------------------------------------
+# --- Round 4: router + detect heuristic ---
 def _og_data_tools(query: str):
     """Round 4 router: try the live data pack for this query. On a hit,
     return results in the web_search shape; on a miss return None and
@@ -1379,19 +1378,16 @@ def _message_needs_data(message: str) -> bool:
             return True
     return False
 
-# --- Google account connect (Round 3, ships dark) ---------------------------
-# A visitor can connect their Google account to OG ("Connect Google" in
-# the slide-over menu). OAuth 2.0 the standard way: OG never sees or stores
-# a password — Google itself confirms who they are and hands back tokens,
-# stored per visitor (keyed by ogai_uid) alongside the memory store: in
-# Postgres when OG_MEMORY_DB_URL is set, else a JSON file. v1 scopes are
-# identity only (openid email profile). Round 12 extends this in
-# og_google_hands.py: with OG_GOOGLE_HANDS_ENABLED=true the connect flow
-# also asks for Gmail/Calendar scopes, and the stored entry records what
-# was actually granted. Ships DISABLED: the menu button stays hidden and
-# the routes answer 404 until OG_GOOGLE_ENABLED=true plus
-# OG_GOOGLE_CLIENT_ID / OG_GOOGLE_CLIENT_SECRET are set (Brent creates
-# the OAuth client in his own Google Cloud console — Round 3 report).
+# --- Google account connect (Round 3, ships dark) ---
+# "Connect Google" in the slide-over menu: OAuth 2.0 the standard way — OG
+# never sees/stores a password; Google confirms identity and returns tokens,
+# stored per visitor (ogai_uid) alongside the memory store (Postgres when
+# OG_MEMORY_DB_URL is set, else a JSON file). v1 scopes: identity only
+# (openid email profile); Round 12 extends this in og_google_hands.py
+# (OG_GOOGLE_HANDS_ENABLED=true adds Gmail/Calendar scopes; the stored
+# entry records what was granted). Ships DISABLED — menu hidden, routes
+# 404 — until OG_GOOGLE_ENABLED=true + client id/secret are set (Brent
+# creates the OAuth client in his Google Cloud console — Round 3 report).
 GOOGLE_CLIENT_ID = os.getenv("OG_GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("OG_GOOGLE_CLIENT_SECRET", "")
 GOOGLE_ENABLED = (os.getenv("OG_GOOGLE_ENABLED", "false").lower() == "true"
@@ -1492,13 +1488,13 @@ def _google_uid_from_state(state: str) -> Optional[str]:
     except Exception:
         return None
 
-# --- Per-visitor memory -------------------------------------------------------
-# OG remembers each visitor separately: conversation history is keyed by the
-# `ogai_uid` cookie and persisted to a JSON store, so a returning visitor
-# picks up right where they left off. (Before this, every visitor shared one
-# global conversation — strangers' messages bled into each other's context,
-# and one person's /reset wiped it for everybody.) The store lives next to
-# the usage store: survives restarts, resets on a from-scratch rebuild.
+# --- Per-visitor memory ---
+# OG remembers each visitor separately: conversation history is keyed by
+# the `ogai_uid` cookie and persisted to a JSON store, so a returning
+# visitor picks up where they left off. (Before this, every visitor
+# shared one global conversation — strangers' messages bled into each
+# other's context, and one /reset wiped it for everybody.) The store
+# lives next to the usage store: survives restarts, resets on rebuild.
 MEMORY_STORE_FILE = "memory_store.json"
 MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
 MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
@@ -1660,7 +1656,7 @@ def _clear_visitor_history(uid: str):
             del store[uid]
             _save_memory_store(store)
 
-# --- Business stats (for the owner) ------------------------------------------
+# --- Business stats (for the owner) ---
 # OG keeps his own scorecard: chat messages, visitors who hit the free cap,
 # Pro checkout clicks, and post-payment landings. Counters live in the same
 # JSON store as usage counts (key "__stats__"). The owner reads them at
@@ -1771,6 +1767,8 @@ def get_agent() -> AIAgent:
         _og_maps.install_maps_tools(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
         _og_spotify.install_spotify_tools(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_github.install_github_tools(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
         _og_google_hands.install_google_hands(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
@@ -1914,13 +1912,13 @@ async def health_check():
         "message": "Service is running"
     }
 
-# --- Streaming chat (true token streaming) ------------------------------------
-# /chat with {"stream": true} answers as Server-Sent Events: an `event: chunk`
-# per token piece as it arrives, then a final `event: done` whose payload
-# matches the classic JSON response (plus `event: error` on failure). The
-# classic response is unchanged. A finished reply is never faked streaming:
-# the few paths that are not model token streams (the code-generation tool,
-# the local pattern fallback) deliver their result whole, in a single chunk.
+# --- Streaming chat (true token streaming) ---
+# /chat with {"stream": true} answers as Server-Sent Events: an `event:
+# chunk` per token piece as it arrives, then a final `event: done` whose
+# payload matches the classic JSON response (plus `event: error` on
+# failure). The classic response is unchanged. A finished reply is never
+# faked streaming: non-token-stream paths (the code-generation tool, the
+# local pattern fallback) deliver their result whole, in a single chunk.
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
@@ -2522,6 +2520,12 @@ _og_voice.register_voice_routes(app)
 _og_spotify.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
 _og_spotify.register_spotify_routes(app)
 
+# GitHub connect (Round 14, dark): /auth/github* routes live in
+# og_github.py (load_history = the approved-PR extraction reader).
+_og_github.bind_app({"cookie_max_age": COOKIE_MAX_AGE,
+                     "load_history": _load_visitor_history_locked})
+_og_github.register_github_routes(app)
+
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
     """
@@ -2757,7 +2761,7 @@ async def clear_history(raw_request: Request):
     """
     return await reset_conversation(raw_request)
 
-# --- Google account connect routes (Round 3, dark until enabled) ------------
+# --- Google account connect routes (Round 3, dark until enabled) ---
 
 @app.get("/auth/google")
 async def google_auth_start(raw_request: Request):
