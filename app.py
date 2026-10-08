@@ -38,13 +38,11 @@ logger = logging.getLogger(__name__)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 
 # --- OG Pro (money layer) ----------------------------------------------------
-# Free tier: each visitor (tracked by an `ogai_uid` cookie) gets a daily
-# budget of model tokens per UTC day (prompt + completion, metered from the
-# API's usage report; tokenizer estimate where no usage is reported). Pro
-# visitors (holding a valid `ogai_pro` cookie) are unmetered. See /pro and
-# /pro/success below. (This replaced the original 10-messages/day cap;
-# OG_FREE_DAILY_LIMIT is still honored as a legacy alias for the budget so
-# existing deployments/test setups that set it keep a working quota knob.)
+# Free tier: each visitor (`ogai_uid` cookie) gets a daily budget of
+# model tokens per UTC day (prompt + completion, metered from the API's
+# usage report; tokenizer estimate where none is reported). Pro visitors
+# (valid `ogai_pro` cookie) are unmetered. See /pro + /pro/success below.
+# OG_FREE_DAILY_LIMIT remains a legacy alias for the budget.
 FREE_DAILY_TOKENS = int(os.getenv(
     "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
 # (Default raised 10,000 → 25,000 on 2026-10-08 at Brent's direction —
@@ -224,16 +222,15 @@ import og_tiers as _og_tiers
 import og_maps as _og_maps
 # --- Spotify connect (Round 10): everything lives in og_spotify.py ----------
 import og_spotify as _og_spotify
+# --- Google hands (Round 12): everything lives in og_google_hands.py --------
+import og_google_hands as _og_google_hands
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
 # v1 grants Pro to anyone who lands on /pro/success. v2 verifies payment with
-# Stripe first: Stripe calls POST /stripe/webhook when a checkout completes,
-# and the buyer is identified by the `ogai_uid` passed through checkout as
-# client_reference_id (added by /pro while v2 is on). Entitlements live in the
-# usage store, and /chat honors them directly — a confirmed buyer is Pro even
-# if they never land back on /pro/success.
-# Ships DISABLED: nothing changes until OG_WEBHOOK_ENABLED=true and
-# STRIPE_WEBHOOK_SECRET are set in the service environment (see the report).
+# Stripe first: POST /stripe/webhook on checkout completion; the buyer is the
+# `ogai_uid` passed through checkout as client_reference_id. Entitlements live
+# in the usage store and /chat honors them directly. Ships DISABLED until
+# OG_WEBHOOK_ENABLED=true + STRIPE_WEBHOOK_SECRET are set (see the report).
 WEBHOOK_ENABLED = os.getenv("OG_WEBHOOK_ENABLED", "false").lower() == "true"
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 PRO_ENTITLED_KEY = "__pro_entitled__"
@@ -311,9 +308,7 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
 # fallbacks: Tavily (OG_SEARCH_API_KEY), then the agent's DuckDuckGo.
 # All routes failing = chat carries on ungrounded, never an error.
 # Per-visitor daily cap OG_LOOKUP_DAILY_LIMIT bounds the bill; lookup
-# tokens join the exchange's metered total weighed at
-# OG_LOOKUP_METER_CAP (the search API counts the whole results page —
-# ~8k for one lookup — which would eat a free day in one question).
+# tokens join the metered total weighed at OG_LOOKUP_METER_CAP.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
@@ -547,12 +542,9 @@ def _install_lookup_tools(agent_instance):
 # the question falls through to Round 3's lookup chain untouched.
 # Results use the same {title, body, href} shape, size-capped like a
 # lookup; brief per-category caching (2–5 min; team lists 1 h).
-# Metering: data questions pass through _og_web_search AFTER its
-# per-visitor daily lookup-cap check, so they share the Round 3 lookup
-# budget (OG_LOOKUP_DAILY_LIMIT); the fetches themselves are keyless and
-# bill no upstream tokens, so nothing is added to the lookup token
-# stash — the exchange's metered total (which includes this context)
-# remains the honest end-to-end bill, exactly like a lookup.
+# Metering: data questions share the Round 3 lookup budget via
+# _og_web_search's cap check; keyless fetches bill no upstream tokens,
+# so the exchange's metered total stays the honest bill, like a lookup.
 _DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/124.0 Safari/537.36"}
@@ -1393,12 +1385,13 @@ def _message_needs_data(message: str) -> bool:
 # a password — Google itself confirms who they are and hands back tokens,
 # stored per visitor (keyed by ogai_uid) alongside the memory store: in
 # Postgres when OG_MEMORY_DB_URL is set, else a JSON file. v1 scopes are
-# identity only (openid email profile) — enough for OG to know who's
-# talking; no mail or calendar access.
-# Ships DISABLED: the menu button stays hidden and the routes answer 404
-# until OG_GOOGLE_ENABLED=true plus OG_GOOGLE_CLIENT_ID /
-# OG_GOOGLE_CLIENT_SECRET are set (Brent creates the OAuth client in his
-# own Google Cloud console — the steps are in the Round 3 report).
+# identity only (openid email profile). Round 12 extends this in
+# og_google_hands.py: with OG_GOOGLE_HANDS_ENABLED=true the connect flow
+# also asks for Gmail/Calendar scopes, and the stored entry records what
+# was actually granted. Ships DISABLED: the menu button stays hidden and
+# the routes answer 404 until OG_GOOGLE_ENABLED=true plus
+# OG_GOOGLE_CLIENT_ID / OG_GOOGLE_CLIENT_SECRET are set (Brent creates
+# the OAuth client in his own Google Cloud console — Round 3 report).
 GOOGLE_CLIENT_ID = os.getenv("OG_GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("OG_GOOGLE_CLIENT_SECRET", "")
 GOOGLE_ENABLED = (os.getenv("OG_GOOGLE_ENABLED", "false").lower() == "true"
@@ -1504,9 +1497,8 @@ def _google_uid_from_state(state: str) -> Optional[str]:
 # `ogai_uid` cookie and persisted to a JSON store, so a returning visitor
 # picks up right where they left off. (Before this, every visitor shared one
 # global conversation — strangers' messages bled into each other's context,
-# anyone could read the shared history at /history, and one person's /reset
-# wiped it for everybody.) The store lives next to the usage store and has
-# the same durability: it survives restarts, resets on a from-scratch rebuild.
+# and one person's /reset wiped it for everybody.) The store lives next to
+# the usage store: survives restarts, resets on a from-scratch rebuild.
 MEMORY_STORE_FILE = "memory_store.json"
 MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
 MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
@@ -1780,6 +1772,15 @@ def get_agent() -> AIAgent:
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
         _og_spotify.install_spotify_tools(
             agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
+        _og_google_hands.install_google_hands(
+            agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
+            {"connection": _google_connection,
+             "load_store": _load_google_store,
+             "save_store": _save_google_store,
+             "lock": _google_lock,
+             "client_id": GOOGLE_CLIENT_ID,
+             "client_secret": GOOGLE_CLIENT_SECRET,
+             "google_enabled": GOOGLE_ENABLED})
         _reset_memory_store()
 
     return agent
@@ -1915,10 +1916,9 @@ async def health_check():
 
 # --- Streaming chat (true token streaming) ------------------------------------
 # /chat with {"stream": true} answers as Server-Sent Events: an `event: chunk`
-# for each token piece the model API produces, as it arrives, then a final
-# `event: done` whose payload matches the classic JSON response (plus
-# `event: error` if generation fails). The classic non-streaming response is
-# completely unchanged. A finished reply is never sliced up to fake streaming:
+# per token piece as it arrives, then a final `event: done` whose payload
+# matches the classic JSON response (plus `event: error` on failure). The
+# classic response is unchanged. A finished reply is never faked streaming:
 # the few paths that are not model token streams (the code-generation tool,
 # the local pattern fallback) deliver their result whole, in a single chunk.
 
@@ -2778,7 +2778,8 @@ async def google_auth_start(raw_request: Request):
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": GOOGLE_REDIRECT_URI,
         "response_type": "code",
-        "scope": "openid email profile",
+        # Round 12: scope string from og_google_hands (hands-gated).
+        "scope": _og_google_hands.requested_scope(),
         "state": _google_state_for(uid),
         "access_type": "offline",
         "prompt": "consent",
@@ -2839,6 +2840,8 @@ async def google_auth_callback(raw_request: Request, code: str = "",
         "picture": profile.get("picture", ""),
         "access_token": tokens.get("access_token", ""),
         "refresh_token": tokens.get("refresh_token", ""),
+        # Round 12: granted-scope record (hands checks v1 vs hands).
+        "scope": tokens.get("scope", ""),
         "expires_at": (datetime.now(timezone.utc).timestamp()
                        + int(tokens.get("expires_in", 3600))),
         "connected": datetime.now(timezone.utc).isoformat(),
