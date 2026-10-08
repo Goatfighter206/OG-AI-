@@ -46,7 +46,9 @@ DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 # OG_FREE_DAILY_LIMIT is still honored as a legacy alias for the budget so
 # existing deployments/test setups that set it keep a working quota knob.)
 FREE_DAILY_TOKENS = int(os.getenv(
-    "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "10000")))
+    "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
+# (Default raised 10,000 → 25,000 on 2026-10-08 at Brent's direction —
+# he chose a bigger free budget over shortening OG's replies.)
 PRO_UPGRADE_URL = os.getenv("OG_PRO_LINK", "#")
 # SECURITY: set OG_PRO_TOKEN to a long random secret in production. The
 # fallback below is only a placeholder and MUST be rotated before launch —
@@ -426,6 +428,12 @@ def _og_web_search(agent_instance, query: str, num_results: int = 5):
     if uid and not _consume_lookup(uid):
         logger.info("Web lookup skipped: visitor at daily lookup cap")
         return []
+    # Round 4: structured live data (weather, scores, quotes, headlines)
+    # gets first crack at the question; a miss falls through to the
+    # general web lookup routes below.
+    data_results = _og_data_tools(query)
+    if data_results:
+        return data_results[: max(1, num_results)]
     for route in (_openai_web_lookup, _tavily_web_lookup):
         try:
             got = route(query)
@@ -473,7 +481,8 @@ def _install_lookup_tools(agent_instance):
             if (isinstance(intent, dict)
                     and not intent.get("needs_web_search")
                     and not intent.get("needs_code_generation")
-                    and _message_needs_lookup(message)):
+                    and (_message_needs_lookup(message)
+                         or _message_needs_data(message))):
                 intent["needs_web_search"] = True
                 intent["search_query"] = str(message).strip()
         except Exception as e:
@@ -486,6 +495,810 @@ def _install_lookup_tools(agent_instance):
     agent_instance.detect_intent = detect_intent_wrapped
     agent_instance.web_search = web_search_wrapped
     agent_instance._og_lookup_installed = True
+
+
+# --- Live data pack (Round 4) ------------------------------------------------
+# First-class data tools behind the same web_search seam as Round 3's
+# lookup: when a visitor's question is really a data question — weather,
+# a score, a stock or crypto quote, headlines — OG answers from a live
+# structured source instead of a general web search. Every route is
+# keyless/public (no new signups):
+#   WEATHER  Open-Meteo geocoding + forecast APIs
+#   SPORTS   ESPN's public scoreboard / team-schedule JSON
+#   STOCKS   Nasdaq API quote info, Yahoo Finance chart API fallback
+#            (Stooq's CSV feed is bot-walled behind a JS challenge from
+#            server IPs, so it can't serve as a server-side route)
+#   CRYPTO   Coinbase Exchange public stats, CoinGecko free fallback
+#   NEWS     Google News RSS (top stories, or a per-topic search feed)
+# A tool returns None when its category doesn't parse (weather with no
+# place named, an unrecognized ticker) or its routes fail — the question
+# then falls through to Round 3's web lookup chain untouched, so every
+# category still answers live via some route. Results ride into the
+# model call in the same {title, body, href} shape both chat paths
+# already format, size-capped like a lookup result. Responses are
+# cached briefly (2–5 minutes per category; team lists an hour) to stay
+# a good citizen on free endpoints.
+# Metering: data questions pass through _og_web_search AFTER its
+# per-visitor daily lookup-cap check, so they share the Round 3 lookup
+# budget (OG_LOOKUP_DAILY_LIMIT); the fetches themselves are keyless and
+# bill no upstream tokens, so nothing is added to the lookup token
+# stash — the exchange's metered total (which includes this context)
+# remains the honest end-to-end bill, exactly like a lookup.
+_DATA_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/124.0 Safari/537.36"}
+_data_cache: Dict[str, tuple] = {}
+_data_cache_lock = threading.Lock()
+_DATA_TTL = {"weather": 300, "sports": 120, "stocks": 180,
+             "crypto": 120, "news": 300}
+
+
+def _data_cached(key: str):
+    with _data_cache_lock:
+        hit = _data_cache.get(key)
+        if hit and hit[0] > time.time():
+            return hit[1]
+    return None
+
+
+def _data_store(key: str, value, ttl: int):
+    with _data_cache_lock:
+        _data_cache[key] = (time.time() + ttl, value)
+    return value
+
+
+def _fetch_json(url: str, timeout: float = 12.0):
+    """GET a JSON document for the data pack; None on any failure."""
+    import httpx
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            r = client.get(url, headers=_DATA_UA)
+        if r.status_code != 200:
+            logger.warning(f"Data fetch {r.status_code}: {url[:90]}")
+            return None
+        return r.json()
+    except Exception as e:
+        logger.warning(f"Data fetch failed ({url[:60]}...): {e}")
+        return None
+
+
+def _fetch_text(url: str, timeout: float = 12.0):
+    """GET a text document for the data pack; None on any failure."""
+    import httpx
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            r = client.get(url, headers=_DATA_UA)
+        if r.status_code != 200:
+            logger.warning(f"Data fetch {r.status_code}: {url[:90]}")
+            return None
+        return r.text
+    except Exception as e:
+        logger.warning(f"Data fetch failed ({url[:60]}...): {e}")
+        return None
+
+
+# --- Round 4: weather (Open-Meteo) -------------------------------------------
+_WMO_CODES = {
+    0: "clear sky", 1: "mostly clear", 2: "partly cloudy", 3: "overcast",
+    45: "foggy", 48: "foggy with frost", 51: "light drizzle",
+    53: "drizzle", 55: "steady drizzle", 56: "freezing drizzle",
+    57: "freezing drizzle", 61: "light rain", 63: "rain",
+    65: "heavy rain", 66: "freezing rain", 67: "freezing rain",
+    71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains",
+    80: "light rain showers", 81: "rain showers",
+    82: "violent rain showers", 85: "snow showers", 86: "snow showers",
+    95: "thunderstorms", 96: "thunderstorms with hail",
+    99: "thunderstorms with hail",
+}
+_PLACE_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\bweather\s+(?:in|for|at|near)\s+([A-Za-z][A-Za-z .'-]{1,40})",
+    r"\bforecast\s+(?:in|for|at|near)\s+([A-Za-z][A-Za-z .'-]{1,40})",
+    r"\btemperature\s+in\s+([A-Za-z][A-Za-z .'-]{1,40})",
+    r"\braining\s+in\s+([A-Za-z][A-Za-z .'-]{1,40})",
+    r"\bsnowing\s+in\s+([A-Za-z][A-Za-z .'-]{1,40})",
+    r"^([A-Za-z][A-Za-z .'-]{1,40}?)\s+weather\b",
+))
+_PLACE_STOPWORDS = {"today", "tomorrow", "tonight", "outside", "here",
+                    "there", "the", "my", "this", "week", "weekend"}
+
+
+def _extract_place(query: str):
+    """Pull the place out of a weather question; None when unnamed."""
+    q = " ".join(str(query).split())
+    for pat in _PLACE_PATTERNS:
+        m = pat.search(q)
+        if not m:
+            continue
+        place = m.group(1)
+        low = place.lower()
+        for stop in (" today", " tomorrow", " tonight", " this week",
+                     " this weekend", " right now", " please", " near me"):
+            idx = low.find(stop)
+            if idx > 0:
+                place = place[:idx]
+                low = place.lower()
+        place = place.strip(" .,'-")
+        if len(place) >= 2 and low.strip() not in _PLACE_STOPWORDS:
+            return place
+    return None
+
+
+def _tool_weather(query: str):
+    """Live weather via Open-Meteo. (label, text, source) or None."""
+    low = str(query).lower()
+    if not any(w in low for w in ("weather", "forecast", "temperature",
+                                  "raining", "snowing")):
+        return None
+    place = _extract_place(query)
+    if not place:
+        return None  # no place named — the web lookup route takes it
+    key = "weather:" + place.lower()
+    hit = _data_cached(key)
+    if hit:
+        return hit
+    import urllib.parse
+    geo = _fetch_json("https://geocoding-api.open-meteo.com/v1/search?"
+                      + urllib.parse.urlencode(
+                          {"name": place, "count": 1, "language": "en",
+                           "format": "json"}))
+    results = (geo or {}).get("results") or []
+    if not results:
+        return None
+    g = results[0]
+    fc = _fetch_json("https://api.open-meteo.com/v1/forecast?"
+                     + urllib.parse.urlencode({
+                         "latitude": g["latitude"],
+                         "longitude": g["longitude"],
+                         "current": "temperature_2m,relative_humidity_2m,"
+                                    "apparent_temperature,weather_code,"
+                                    "wind_speed_10m",
+                         "daily": "temperature_2m_max,temperature_2m_min,"
+                                  "weather_code,"
+                                  "precipitation_probability_max",
+                         "temperature_unit": "fahrenheit",
+                         "wind_speed_unit": "mph",
+                         "forecast_days": 3, "timezone": "auto"}))
+    if not fc:
+        return None
+    cur = fc.get("current") or {}
+    daily = fc.get("daily") or {}
+
+    def _wmo(code):
+        try:
+            return _WMO_CODES.get(int(code), "mixed conditions")
+        except Exception:
+            return "mixed conditions"
+
+    where = g.get("name") or place
+    region = g.get("admin1") or g.get("country") or ""
+    lines = ["Weather for " + str(where)
+             + (f", {region}" if region else "") + " (Open-Meteo, live):"]
+    if cur:
+        lines.append(
+            f"Right now: {cur.get('temperature_2m')}°F, "
+            f"{_wmo(cur.get('weather_code'))}, feels like "
+            f"{cur.get('apparent_temperature')}°F, humidity "
+            f"{cur.get('relative_humidity_2m')}%, wind "
+            f"{cur.get('wind_speed_10m')} mph.")
+    days = daily.get("time") or []
+    highs = daily.get("temperature_2m_max") or []
+    lows_d = daily.get("temperature_2m_min") or []
+    codes = daily.get("weather_code") or []
+    pops = daily.get("precipitation_probability_max") or []
+    for i in range(min(3, len(days), len(highs), len(lows_d), len(codes))):
+        label = "Today" if i == 0 else ("Tomorrow" if i == 1 else days[i])
+        line = (f"{label}: high {highs[i]}°F / low {lows_d[i]}°F, "
+                f"{_wmo(codes[i])}")
+        if i < len(pops) and pops[i] is not None:
+            line += f", rain chance {pops[i]}%"
+        lines.append(line + ".")
+    return _data_store(key, ("Live weather data", "\n".join(lines),
+                             "https://open-meteo.com/"),
+                       _DATA_TTL["weather"])
+
+
+# --- Round 4: sports (ESPN public JSON) --------------------------------------
+_ESPN_LEAGUES = {
+    "nfl": ("football", "nfl", "NFL"),
+    "nba": ("basketball", "nba", "NBA"),
+    "mlb": ("baseball", "mlb", "MLB"),
+    "nhl": ("hockey", "nhl", "NHL"),
+}
+_SPORTS_CUE_RE = re.compile(
+    r"\b(score|scores|game|games|win|won|beat|playing|played|plays|"
+    r"schedule|standings|playoffs?|final|results?|tonight|today|"
+    r"yesterday|season|next|last|doing|vs|versus)\b", re.IGNORECASE)
+
+
+def _espn_teams(league_key: str) -> Dict[str, Dict]:
+    """All teams in one ESPN league with alias sets (cached an hour).
+    Aliases come from the display name and mascot name only — bare city
+    names are ambiguous across teams, so they never match a team."""
+    key = "teams:" + league_key
+    hit = _data_cached(key)
+    if hit is not None:
+        return hit
+    sport, league, _label = _ESPN_LEAGUES[league_key]
+    data = _fetch_json("https://site.api.espn.com/apis/site/v2/sports/"
+                       f"{sport}/{league}/teams")
+    teams: Dict[str, Dict] = {}
+    try:
+        raw = data["sports"][0]["leagues"][0]["teams"]
+    except Exception:
+        raw = []
+    for entry in raw or []:
+        t = entry.get("team") or {}
+        if not t.get("id"):
+            continue
+        aliases = set()
+        for field in ("displayName", "name"):
+            v = str(t.get(field) or "").strip().lower()
+            if len(v) >= 3:
+                aliases.add(v)
+        teams[str(t["id"])] = {
+            "id": str(t["id"]),
+            "name": t.get("displayName") or t.get("name") or "?",
+            "abbr": t.get("abbreviation") or "?",
+            "aliases": aliases,
+        }
+    if teams:
+        _data_store(key, teams, 3600)
+    return teams
+
+
+def _find_team(query_low: str, league_key: str = None):
+    """Longest-alias team match: (league_key, team, alias) or None."""
+    best = None
+    for lk in ([league_key] if league_key else list(_ESPN_LEAGUES)):
+        for team in _espn_teams(lk).values():
+            for alias in team["aliases"]:
+                if alias in query_low:
+                    if best is None or len(alias) > best[0]:
+                        best = (len(alias), lk, team, alias)
+    return (best[1], best[2], best[3]) if best else None
+
+
+def _espn_score_str(competitor) -> str:
+    s = (competitor or {}).get("score")
+    if isinstance(s, dict):
+        return str(s.get("displayValue") or "0")
+    return str(s) if s is not None else "0"
+
+
+def _espn_game_state(event) -> str:
+    try:
+        return event["competitions"][0]["status"]["type"]["state"] or ""
+    except Exception:
+        return ""
+
+
+def _espn_game_line(event) -> str:
+    comp = (event.get("competitions") or [{}])[0]
+    st = ((comp.get("status") or {}).get("type") or {})
+    state = st.get("state") or ""
+    detail = st.get("shortDetail") or st.get("detail") or ""
+    cs = comp.get("competitors") or []
+
+    def _nm(c):
+        return (c.get("team") or {}).get("abbreviation") or "?"
+
+    away = next((c for c in cs if c.get("homeAway") == "away"),
+                cs[0] if cs else {})
+    home = next((c for c in cs if c.get("homeAway") == "home"),
+                cs[1] if len(cs) > 1 else away)
+    if state == "in":
+        return (f"{_nm(away)} {_espn_score_str(away)} at "
+                f"{_nm(home)} {_espn_score_str(home)} — live ({detail})")
+    if state == "post":
+        return (f"Final: {_nm(away)} {_espn_score_str(away)} at "
+                f"{_nm(home)} {_espn_score_str(home)}")
+    return f"{_nm(away)} at {_nm(home)} — {detail or event.get('date', '')}"
+
+
+def _espn_events(url: str, cache_key: str):
+    hit = _data_cached(cache_key)
+    if hit is not None:
+        return hit
+    data = _fetch_json(url)
+    events = (data or {}).get("events") or []
+    return _data_store(cache_key, events, _DATA_TTL["sports"])
+
+
+def _tool_sports(query: str):
+    """Live scores/schedules via ESPN. (label, text, source) or None."""
+    from datetime import timedelta
+    low = str(query).lower()
+    league_key = None
+    for lk in _ESPN_LEAGUES:
+        if re.search(rf"\b{lk}\b", low):
+            league_key = lk
+            break
+    found = _find_team(low, league_key)
+    if found:
+        lk, team, alias_hit = found
+        # A bare mascot match with no sports cue at all ("movie stars")
+        # is not a sports question — let another route take it.
+        if not (league_key or _SPORTS_CUE_RE.search(low)
+                or " at " in f" {low} " or len(alias_hit) >= 8):
+            found = None
+    if found:
+        lk, team, _alias = found
+        sport, league, label = _ESPN_LEAGUES[lk]
+        sched_url = ("https://site.api.espn.com/apis/site/v2/sports/"
+                     f"{sport}/{league}/teams/{team['id']}/schedule")
+        events = _espn_events(sched_url, f"sched:{lk}:{team['id']}")
+        if not events:
+            # The default schedule only covers the current phase (e.g.
+            # MLB's postseason) — a team that's done for the year shows
+            # zero games there, so retry the regular-season phase.
+            events = _espn_events(sched_url + "?seasontype=2",
+                                  f"sched:{lk}:{team['id']}:reg")
+        if not events:
+            return None
+        live = [e for e in events if _espn_game_state(e) == "in"]
+        finals = [e for e in events if _espn_game_state(e) == "post"]
+        upcoming = [e for e in events if _espn_game_state(e) == "pre"]
+        lines = [f"{team['name']} ({label}) — latest from ESPN:"]
+        for e in live[:1]:
+            lines.append(_espn_game_line(e) + ".")
+        if finals:
+            lines.append(_espn_game_line(finals[-1])
+                         + f" (played {finals[-1].get('date', '')[:10]}).")
+        if upcoming:
+            lines.append("Next game: " + _espn_game_line(upcoming[0]) + ".")
+        if len(lines) == 1:
+            return None
+        return ("Live sports data", "\n".join(lines),
+                "https://www.espn.com/")
+    if league_key or "score" in low:
+        keys = [league_key] if league_key else list(_ESPN_LEAGUES)
+        blocks = []
+        for lk in keys:
+            sport, league, label = _ESPN_LEAGUES[lk]
+            base = ("https://site.api.espn.com/apis/site/v2/sports/"
+                    f"{sport}/{league}/scoreboard")
+            merged: Dict[str, Dict] = {}
+            urls = [(base, f"sb:{lk}")]
+            yday = (datetime.now(timezone.utc) - timedelta(days=1)
+                    ).strftime("%Y%m%d")
+            urls.append((f"{base}?dates={yday}", f"sb:{lk}:{yday}"))
+            if lk == "nfl":
+                d4 = (datetime.now(timezone.utc) - timedelta(days=4)
+                      ).strftime("%Y%m%d")
+                urls.append((f"{base}?dates={d4}", f"sb:{lk}:{d4}"))
+            for url, ck in urls:
+                for e in _espn_events(url, ck):
+                    merged[str(e.get("id"))] = e
+            events = list(merged.values())
+            if not events:
+                continue
+            live = [e for e in events if _espn_game_state(e) == "in"]
+            finals = sorted(
+                (e for e in events if _espn_game_state(e) == "post"),
+                key=lambda e: e.get("date", ""))
+            sched = sorted(
+                (e for e in events if _espn_game_state(e) == "pre"),
+                key=lambda e: e.get("date", ""))
+            picks = live[:2] + finals[-3:] + sched[:2]
+            if picks:
+                blocks.append(label + " — " + "; ".join(
+                    _espn_game_line(e) for e in picks))
+        if blocks:
+            return ("Live sports scores", "\n".join(blocks),
+                    "https://www.espn.com/")
+    return None
+
+
+# --- Round 4: stocks (Nasdaq API, Yahoo Finance fallback) --------------------
+_STOCK_NAME_MAP = {
+    "apple": "AAPL", "microsoft": "MSFT", "tesla": "TSLA",
+    "amazon": "AMZN", "nvidia": "NVDA", "google": "GOOGL",
+    "alphabet": "GOOGL", "meta": "META", "facebook": "META",
+    "netflix": "NFLX", "amd": "AMD", "advanced micro devices": "AMD",
+    "ford": "F", "boeing": "BA", "disney": "DIS", "walmart": "WMT",
+    "jpmorgan": "JPM", "bank of america": "BAC", "exxon": "XOM",
+    "chevron": "CVX", "pfizer": "PFE", "coca-cola": "KO", "coke": "KO",
+    "pepsi": "PEP", "nike": "NKE", "starbucks": "SBUX",
+    "paypal": "PYPL", "intel": "INTC", "coinbase": "COIN",
+    "gamestop": "GME", "amc": "AMC", "palantir": "PLTR", "visa": "V",
+    "mastercard": "MA", "home depot": "HD", "costco": "COST",
+    "target": "TGT", "uber": "UBER", "lyft": "LYFT", "airbnb": "ABNB",
+    "snap": "SNAP", "spotify": "SPOT", "roblox": "RBLX",
+    "rivian": "RIVN", "lucid": "LCID", "alibaba": "BABA",
+    "shopify": "SHOP", "salesforce": "CRM", "oracle": "ORCL",
+    "adobe": "ADBE", "broadcom": "AVGO", "micron": "MU", "arm": "ARM",
+    "berkshire hathaway": "BRK.B", "berkshire": "BRK.B",
+}
+_STOCK_INDEX_MAP = {
+    "s&p 500": "^GSPC", "s&p500": "^GSPC", "sp500": "^GSPC",
+    "s&p": "^GSPC", "dow jones": "^DJI", "the dow": "^DJI", "dow": "^DJI",
+    "nasdaq composite": "^IXIC", "nasdaq": "^IXIC",
+    "russell 2000": "^RUT",
+}
+_STOCK_ETFS = {"SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "GLD", "SLV",
+               "TLT", "ARKK", "XLF", "XLK", "EEM", "AGG", "BND", "USO",
+               "SMH", "SOXX", "HYG", "LQD"}
+_CAPS_STOPWORDS = {
+    "THE", "AND", "FOR", "YOU", "ARE", "NOT", "ALL", "CAN", "GET",
+    "HAS", "HOW", "NEW", "NOW", "ONE", "OUR", "OUT", "SEE", "TWO",
+    "WAY", "WHO", "DID", "SAY", "SHE", "TOO", "USE", "USA", "GDP",
+    "CEO", "CFO", "IPO", "FED", "SEC", "FDA", "CDC", "FBI", "CIA",
+    "NFL", "NBA", "MLB", "NHL", "AI", "OK", "VS", "AM", "PM", "ET",
+    "PT", "EST", "PST", "EDT", "PDT", "USD", "LOL", "OMG", "FAQ",
+}
+_STOCK_CTX = ("stock", "share", "ticker", "trading", "quote", "market",
+              "nasdaq", "nyse", "earnings", "dividend")
+
+
+def _stock_quote_nasdaq(ticker: str):
+    order = ("etf", "stocks") if ticker in _STOCK_ETFS else ("stocks", "etf")
+    for asset in order:
+        data = _fetch_json("https://api.nasdaq.com/api/quote/"
+                           f"{ticker}/info?assetclass={asset}")
+        d = (data or {}).get("data") or {}
+        p = d.get("primaryData") or {}
+        if p.get("lastSalePrice"):
+            vol = p.get("volume")
+            try:
+                vol = f"{float(str(vol).replace(',', '')):,.0f}"
+            except Exception:
+                vol = vol or "n/a"
+            return (f"{d.get('companyName') or ticker} ({ticker}) — "
+                    f"{p.get('lastSalePrice')}, {p.get('netChange') or ''} "
+                    f"({p.get('percentageChange') or ''}) on the day "
+                    f"(Nasdaq, live). Volume {vol}. "
+                    f"Market status: {d.get('marketStatus') or 'unknown'}; "
+                    f"last trade {p.get('lastTradeTimestamp') or 'n/a'}.")
+    return None
+
+
+def _stock_quote_yahoo(symbol: str):
+    import urllib.parse
+    data = _fetch_json("https://query1.finance.yahoo.com/v8/finance/chart/"
+                       + urllib.parse.quote(symbol, safe="")
+                       + "?range=5d&interval=1d")
+    try:
+        meta = data["chart"]["result"][0]["meta"]
+    except Exception:
+        return None
+    price = meta.get("regularMarketPrice")
+    if price is None:
+        return None
+    name = meta.get("longName") or meta.get("shortName") or symbol
+    out = f"{name} ({symbol}) — ${price:,.2f} (Yahoo Finance, live)"
+    prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+    if prev:
+        chg = price - prev
+        out += f", {chg:+,.2f} ({chg / prev * 100:+.2f}%) vs previous close"
+    out += "."
+    lo = meta.get("regularMarketDayLow")
+    hi = meta.get("regularMarketDayHigh")
+    if lo is not None and hi is not None:
+        out += f" Day range ${lo:,.2f}–${hi:,.2f}."
+    vol = meta.get("regularMarketVolume")
+    if vol:
+        out += f" Volume {vol:,}."
+    return out
+
+
+def _tool_stocks(query: str):
+    """Live stock quote. (label, text, source) or None."""
+    low = str(query).lower()
+    ticker = None
+    m = re.search(r"\$([A-Za-z]{1,5}(?:\.[A-Za-z]{1,2})?)\b", str(query))
+    if m:
+        ticker = m.group(1).upper()
+    if not ticker:
+        for phrase, sym in sorted(_STOCK_INDEX_MAP.items(),
+                                  key=lambda kv: -len(kv[0])):
+            if phrase in low:
+                ticker = sym
+                break
+    ctx = (any(w in low for w in _STOCK_CTX) or "price" in low
+           or "doing" in low or "worth" in low)
+    if not ticker and ctx:
+        for name, sym in sorted(_STOCK_NAME_MAP.items(),
+                                key=lambda kv: -len(kv[0])):
+            if re.search(rf"\b{re.escape(name)}\b", low):
+                ticker = sym
+                break
+    if not ticker and ctx:
+        for tok in re.findall(r"\b[A-Z]{2,5}\b", str(query)):
+            if tok not in _CAPS_STOPWORDS:
+                ticker = tok
+                break
+    if not ticker:
+        return None
+    key = "stock:" + ticker
+    hit = _data_cached(key)
+    if hit:
+        return hit
+    if ticker.startswith("^"):
+        text = _stock_quote_yahoo(ticker)
+    elif "." in ticker:
+        text = _stock_quote_yahoo(ticker.replace(".", "-"))
+    else:
+        text = _stock_quote_nasdaq(ticker) or _stock_quote_yahoo(ticker)
+    if not text:
+        return None
+    return _data_store(key, ("Live stock quote", text,
+                             "https://www.nasdaq.com/market-activity"),
+                       _DATA_TTL["stocks"])
+
+
+# --- Round 4: crypto (Coinbase Exchange, CoinGecko fallback) ------------------
+# alias -> (Coinbase product or None, CoinGecko id, display, needs_context)
+# Short/ambiguous aliases (btc, link, dot...) only route with a price-ish
+# context or a very short query, so ordinary chat never trips them.
+_CRYPTO_MAP = {
+    "bitcoin": ("BTC-USD", "bitcoin", "Bitcoin (BTC)", False),
+    "btc": ("BTC-USD", "bitcoin", "Bitcoin (BTC)", True),
+    "ethereum": ("ETH-USD", "ethereum", "Ethereum (ETH)", False),
+    "eth": ("ETH-USD", "ethereum", "Ethereum (ETH)", True),
+    "solana": ("SOL-USD", "solana", "Solana (SOL)", False),
+    "sol": ("SOL-USD", "solana", "Solana (SOL)", True),
+    "dogecoin": ("DOGE-USD", "dogecoin", "Dogecoin (DOGE)", False),
+    "doge": ("DOGE-USD", "dogecoin", "Dogecoin (DOGE)", True),
+    "ripple": ("XRP-USD", "ripple", "XRP", False),
+    "xrp": ("XRP-USD", "ripple", "XRP", True),
+    "cardano": ("ADA-USD", "cardano", "Cardano (ADA)", False),
+    "ada": ("ADA-USD", "cardano", "Cardano (ADA)", True),
+    "litecoin": ("LTC-USD", "litecoin", "Litecoin (LTC)", False),
+    "ltc": ("LTC-USD", "litecoin", "Litecoin (LTC)", True),
+    "chainlink": ("LINK-USD", "chainlink", "Chainlink (LINK)", False),
+    "link": ("LINK-USD", "chainlink", "Chainlink (LINK)", True),
+    "polkadot": ("DOT-USD", "polkadot", "Polkadot (DOT)", False),
+    "dot": ("DOT-USD", "polkadot", "Polkadot (DOT)", True),
+    "avalanche": ("AVAX-USD", "avalanche-2", "Avalanche (AVAX)", False),
+    "avax": ("AVAX-USD", "avalanche-2", "Avalanche (AVAX)", True),
+    "polygon": ("MATIC-USD", "matic-network", "Polygon (MATIC)", False),
+    "matic": ("MATIC-USD", "matic-network", "Polygon (MATIC)", True),
+    "shiba inu": ("SHIB-USD", "shiba-inu", "Shiba Inu (SHIB)", False),
+    "shib": ("SHIB-USD", "shiba-inu", "Shiba Inu (SHIB)", True),
+    "bitcoin cash": ("BCH-USD", "bitcoin-cash", "Bitcoin Cash (BCH)",
+                     False),
+    "bch": ("BCH-USD", "bitcoin-cash", "Bitcoin Cash (BCH)", True),
+    "stellar": ("XLM-USD", "stellar", "Stellar (XLM)", False),
+    "xlm": ("XLM-USD", "stellar", "Stellar (XLM)", True),
+    "cosmos": ("ATOM-USD", "cosmos", "Cosmos (ATOM)", False),
+    "atom": ("ATOM-USD", "cosmos", "Cosmos (ATOM)", True),
+    "uniswap": ("UNI-USD", "uniswap", "Uniswap (UNI)", False),
+    "uni": ("UNI-USD", "uniswap", "Uniswap (UNI)", True),
+    "aptos": ("APT-USD", "aptos", "Aptos (APT)", False),
+    "sui": ("SUI-USD", "sui", "Sui (SUI)", True),
+    "pepe": (None, "pepe", "Pepe (PEPE)", True),
+    "near protocol": ("NEAR-USD", "near", "Near Protocol (NEAR)", False),
+}
+_CRYPTO_CTX_RE = re.compile(
+    r"\b(price|worth|crypto|coin|trading|market|doing|cost|much)\b",
+    re.IGNORECASE)
+
+
+def _tool_crypto(query: str):
+    """Live crypto quote. (label, text, source) or None."""
+    low = str(query).lower()
+    if "stock" in low or "shares" in low:
+        return None  # "Coinbase stock" belongs to the stock tool
+    found = None
+    for alias, info in sorted(_CRYPTO_MAP.items(),
+                              key=lambda kv: -len(kv[0])):
+        if not re.search(rf"\b{re.escape(alias)}\b", low):
+            continue
+        if not info[3]:
+            found = info
+            break
+        if (len(str(query).split()) <= 4 or _CRYPTO_CTX_RE.search(low)
+                or " at " in f" {low} "):
+            found = info
+            break
+    if not found:
+        return None
+    product, gecko, name = found[0], found[1], found[2]
+    key = "crypto:" + gecko
+    hit = _data_cached(key)
+    if hit:
+        return hit
+    text = None
+    source = "https://www.coinbase.com/"
+    if product:
+        data = _fetch_json("https://api.exchange.coinbase.com/products/"
+                           f"{product}/stats")
+        try:
+            last = float(data["last"])
+            opn = float(data.get("open") or last)
+            high = float(data["high"])
+            low24 = float(data["low"])
+            vol = float(data.get("volume") or 0)
+            chg = ((last - opn) / opn * 100) if opn else 0.0
+            text = (f"{name} — ${last:,.2f} (Coinbase Exchange, live). "
+                    f"Last 24h: high ${high:,.2f} / low ${low24:,.2f}, "
+                    f"{chg:+.2f}% vs the 24h open, volume {vol:,.2f}.")
+        except Exception:
+            text = None
+    if not text:
+        import urllib.parse
+        data = _fetch_json(
+            "https://api.coingecko.com/api/v3/simple/price?"
+            + urllib.parse.urlencode(
+                {"ids": gecko, "vs_currencies": "usd",
+                 "include_24hr_change": "true",
+                 "include_market_cap": "true"}))
+        d = (data or {}).get(gecko) or {}
+        if d.get("usd"):
+            text = (f"{name} — ${d['usd']:,.2f} (CoinGecko, live). "
+                    f"24h change {d.get('usd_24h_change') or 0:+.2f}%, "
+                    f"market cap ${d.get('usd_market_cap') or 0:,.0f}.")
+            source = "https://www.coingecko.com/"
+    if not text:
+        return None
+    return _data_store(key, ("Live crypto quote", text, source),
+                       _DATA_TTL["crypto"])
+
+
+# --- Round 4: news (Google News RSS) ------------------------------------------
+def _clean_topic(topic: str):
+    t = " ".join(str(topic).split()).strip(" ?.!,")
+    low = t.lower()
+    for stop in (" today", " right now", " please", " headlines", " news"):
+        idx = low.find(stop)
+        if idx > 2:
+            t = t[:idx]
+            low = t.lower()
+    t = t.strip(" ?.!,")
+    if len(t) < 3 or low in ("top", "top stories", "the", "latest"):
+        return None
+    return t[:80]
+
+
+def _tool_news(query: str):
+    """Top or topical headlines via Google News RSS. Tuple or None."""
+    import urllib.parse
+    import xml.etree.ElementTree as ET
+    low = str(query).lower()
+    if "news" not in low and "headline" not in low \
+            and "happening" not in low:
+        return None
+    topic = None
+    m = re.search(r"\b(?:news|headlines?)\s+(?:about|on|regarding|for)\s+(.+)",
+                  str(query), re.IGNORECASE)
+    if not m:
+        m = re.search(r"\b(?:happening|going on)\s+with\s+(.+)",
+                      str(query), re.IGNORECASE)
+    if not m:
+        m = re.search(r"^(.+?)\s+(?:news|headlines)\b", str(query),
+                      re.IGNORECASE)
+    if m:
+        topic = _clean_topic(m.group(1))
+    key = "news:" + (topic.lower() if topic else "top")
+    hit = _data_cached(key)
+    if hit:
+        return hit
+    if topic:
+        url = ("https://news.google.com/rss/search?q="
+               + urllib.parse.quote(topic)
+               + "&hl=en-US&gl=US&ceid=US:en")
+    else:
+        url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+    xml_text = _fetch_text(url)
+    if not xml_text:
+        return None
+    try:
+        root = ET.fromstring(xml_text)
+        items = root.findall("./channel/item")
+    except Exception as e:
+        logger.warning(f"News parse failed: {e}")
+        return None
+    lines = []
+    seen = set()
+    for item in items:
+        title = (item.findtext("title") or "").strip()
+        if not title or title.lower() in seen:
+            continue
+        seen.add(title.lower())
+        src = (item.findtext("source") or "").strip()
+        pub = (item.findtext("pubDate") or "").strip()
+        date = " ".join(pub.split()[:4]) if pub else ""
+        line = f"- {title}"
+        if src:
+            line += f" ({src}" + (f", {date})" if date else ")")
+        lines.append(line)
+        if len(lines) >= 5:
+            break
+    if not lines:
+        return None
+    head = ("Top headlines right now (Google News, live):" if not topic
+            else f"Latest news on {topic} (Google News, live):")
+    return _data_store(key, ("Live news headlines",
+                             head + "\n" + "\n".join(lines),
+                             "https://news.google.com/"),
+                       _DATA_TTL["news"])
+
+
+# --- Round 4: router + detect heuristic ---------------------------------------
+def _og_data_tools(query: str):
+    """Round 4 router: try the live data pack for this query. On a hit,
+    return results in the web_search shape; on a miss return None and
+    the caller falls through to the Round 3 lookup chain."""
+    if not str(query or "").strip():
+        return None
+    for tool in (_tool_weather, _tool_sports, _tool_crypto,
+                 _tool_stocks, _tool_news):
+        try:
+            hit = tool(query)
+        except Exception as e:
+            logger.warning(f"Data tool {tool.__name__} failed: {e}")
+            hit = None
+        if hit:
+            label, text, source = hit
+            results = [{"title": label, "body": text[:1800],
+                        "href": source}]
+            if source:
+                results.append({"title": label + " — source",
+                                "body": source, "href": source})
+            return results
+    return None
+
+
+_DATA_TEAM_WORDS = (
+    "seahawks", "mariners", "cardinals", "falcons", "ravens", "bills",
+    "panthers", "bears", "bengals", "browns", "cowboys", "broncos",
+    "lions", "packers", "texans", "colts", "jaguars", "chiefs",
+    "raiders", "chargers", "rams", "dolphins", "vikings", "patriots",
+    "saints", "giants", "jets", "eagles", "steelers", "49ers",
+    "buccaneers", "titans", "commanders", "celtics", "nets", "hornets",
+    "bulls", "cavaliers", "mavericks", "nuggets", "pistons",
+    "warriors", "rockets", "pacers", "clippers", "lakers", "grizzlies",
+    "heat", "bucks", "timberwolves", "pelicans", "knicks", "thunder",
+    "magic", "76ers", "suns", "blazers", "kings", "spurs", "raptors",
+    "jazz", "wizards", "diamondbacks", "braves", "orioles", "red sox",
+    "cubs", "white sox", "reds", "guardians", "rockies", "tigers",
+    "astros", "royals", "angels", "dodgers", "marlins", "brewers",
+    "twins", "mets", "yankees", "athletics", "phillies", "pirates",
+    "padres", "rays", "rangers", "blue jays", "nationals", "ducks",
+    "bruins", "sabres", "flames", "hurricanes", "blackhawks",
+    "avalanche", "blue jackets", "stars", "red wings", "oilers",
+    "canadiens", "predators", "devils", "islanders", "senators",
+    "flyers", "penguins", "sharks", "kraken", "blues", "lightning",
+    "maple leafs", "canucks", "golden knights", "capitals", "mammoth",
+    "coyotes",
+)
+
+
+def _message_needs_data(message: str) -> bool:
+    """App-layer heuristic for the Round 4 data pack (weather, sports,
+    quotes, headlines) — complements _message_needs_lookup."""
+    if not message:
+        return False
+    low = message.lower()
+    if "news" in low:
+        return True
+    if any(w in low for w in ("weather", "forecast", "temperature in",
+                              "headlines")):
+        return True
+    if re.search(r"\b(nfl|nba|mlb|nhl)\b", low):
+        return True
+    if any(w in low for w in ("score", "scores", "standings", "who won")):
+        return True
+    if any(t in low for t in _DATA_TEAM_WORDS):
+        return True
+    if re.search(r"\$[A-Za-z]{1,5}\b", str(message)):
+        return True
+    if "crypto" in low:
+        return True
+    for alias in _CRYPTO_MAP:
+        if re.search(rf"\b{re.escape(alias)}\b", low):
+            return True
+    if any(p in low for p in _STOCK_INDEX_MAP):
+        return True
+    ctx = (any(w in low for w in _STOCK_CTX) or "price" in low
+           or "doing" in low or "worth" in low)
+    if ctx:
+        for name in _STOCK_NAME_MAP:
+            if re.search(rf"\b{re.escape(name)}\b", low):
+                return True
+        if re.search(r"\b[A-Z]{2,5}\b", str(message)):
+            return True
+    return False
 
 
 # --- Google account connect (Round 3, ships dark) ---------------------------
