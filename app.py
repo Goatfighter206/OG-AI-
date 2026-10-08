@@ -318,18 +318,15 @@ SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
 LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
 LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
-# Tokens spent by lookups during the exchange currently being processed,
-# drained into that exchange's metered total by the chat paths. All chat
-# processing is serialized under _memory_lock, so a single slot is safe.
+# Tokens spent by lookups in the exchange being processed, drained
+# into its metered total; single slot safe (chat is serialized
+# under _memory_lock). Same reasoning for the uid/tier slots below.
 _lookup_tokens_stash = {"tokens": 0}
-# The visitor whose message is being processed right now (same reasoning).
 _current_uid = {"uid": ""}
-# Tier of the visitor being processed (slot like _current_uid).
 _current_tier = {"tier": "free"}
 # The raw message being processed right now (set by the wrapped
-# detect_intent). The agent's own intent detection sometimes hands the
-# search hook a fragment ("in seattle today?"), so the Round 4 data
-# router tries the raw message first and the search query second.
+# detect_intent); the Round 4 data router tries it before the
+# search query, which is sometimes only a fragment.
 _current_message = {"text": ""}
 
 _LOOKUP_TRIGGER_PHRASES = (
@@ -1794,6 +1791,8 @@ class ChatRequest(BaseModel):
     # When true, /chat answers as Server-Sent Events (reply text streamed in
     # chunks, then a final done event). Omit/false = the classic JSON reply.
     stream: bool = False
+    # Round 11: one-answer "near me" coords (see og_maps; never stored/logged).
+    coords: Optional[Dict[str, float]] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -2098,7 +2097,7 @@ def _generate_reply_streaming(agent_instance, message: str,
 
 def _stream_chat_worker(agent_instance, uid: str, message: str,
                         speak_response: bool, sink, meter: bool = True,
-                        tier: str = "free"):
+                        tier: str = "free", coords=None):
     """
     Worker-thread body for a streaming /chat request. Mirrors the classic
     /chat bookkeeping exactly: this visitor's own thread is swapped into the
@@ -2111,6 +2110,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
+    _og_maps.note_request_coords(coords, uid)
     try:
         has_learning = hasattr(agent_instance, 'learning_system') \
             and agent_instance.learning_system is not None
@@ -2157,6 +2157,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
     finally:
         _current_uid["uid"] = ""
         _current_tier["tier"] = "free"
+        _og_maps.note_request_coords(None, None)
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -2196,7 +2197,7 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
         target=_stream_chat_worker,
         args=(agent_instance, uid, request.message.strip(),
               request.speak_response, sink),
-        kwargs={"meter": meter, "tier": tier},
+        kwargs={"meter": meter, "tier": tier, "coords": request.coords},
         daemon=True,
     )
     worker.start()
@@ -2299,6 +2300,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
+    _og_maps.note_request_coords(request.coords, uid)
     try:
         # Check if agent has voice/learning capabilities
         has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
@@ -2346,6 +2348,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         # is remembered), then hand the shared agent back.
         _current_uid["uid"] = ""
         _current_tier["tier"] = "free"
+        _og_maps.note_request_coords(None, None)
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
