@@ -21,20 +21,33 @@
     <!-- Fire and Smoke Effects Container -->
     <div id="effects-container"></div>
 
-    <!-- Epic Header -->
-    <header class="epic-header">
-        <div class="logo-container">
-            <img class="og-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI">
-            <div>
-                <h1>OG-AI AGENT</h1>
-                <p class="tagline">The Realest AI in the Game 🔥</p>
-            </div>
-            <img class="og-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI">
-        </div>
-        <div style="text-align: center; padding-bottom: 14px;">
-            <a href="/pro" style="display: inline-block; padding: 8px 20px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold;">🔥 Go Pro — unlimited messages</a>
-        </div>
+    <!-- Top bar (ChatGPT-style): menu · Go Pro pill · new chat -->
+    <header class="og-topbar">
+        <button id="menuBtn" class="og-circle-btn" type="button" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
+        <a id="proPill" class="og-pro-pill" href="/pro">✦ Go Pro</a>
+        <button id="newChatBtn" class="og-circle-btn" type="button" aria-label="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
     </header>
+
+    <!-- Slide-over menu: token balance, Share, Clear, 18+ label -->
+    <div id="menuScrim" class="og-scrim" hidden></div>
+    <aside id="sideMenu" class="og-menu" aria-hidden="true">
+        <div class="og-menu-head">
+            <span class="og-menu-ava"><img class="og-avatar-sm" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"></span>
+            <div class="og-menu-title">
+                <div>OG-AI <span class="age-badge">18+</span></div>
+                <div class="og-menu-status"><span class="status-indicator"></span> <span id="status-text">Online &amp; Ready</span></div>
+            </div>
+            <button id="menuClose" class="og-circle-btn og-circle-sm" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+        </div>
+        <p id="tokenStatusMenu" class="og-menu-token"></p>
+        <nav class="og-menu-list">
+            <a class="og-menu-item" href="/pro"><span class="og-mi">✦</span> Go Pro — unlimited</a>
+            <button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi">💬</span> New chat</button>
+            <button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi">📤</span> Share conversation</button>
+            <button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi">🗑️</span> Clear chat</button>
+        </nav>
+        <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.</div>
+    </aside>
 
     <!-- 18+ Age Gate: first-visit confirmation overlay -->
     <div id="ageGate" class="age-gate" hidden>
@@ -56,86 +69,119 @@
     <!-- Main Chat Container -->
     <div class="chat-wrapper">
         <div class="chat-container">
-            <!-- Avatar Section -->
-            <div class="avatar-section">
-                <div class="avatar user-avatar">
-                    <span>👤</span>
-                </div>
-
-                <div class="ai-status">
-                    <h2>OG-AI <span class="age-badge">18+</span></h2>
-                    <p>
-                        <span class="status-indicator"></span>
-                        <span id="status-text">Online & Ready</span>
-                    </p>
-                    <p style="font-size: 0.9em; opacity: 0.8; margin-top: 5px;">
-                        Sassy AI • Web Access • Code Execution • Voice Enabled
-                    </p>
-                    <p id="tokenStatus" style="font-size: 0.85em; color: #ffc107; margin-top: 4px; min-height: 1em;"></p>
-                </div>
-
-                <div class="avatar ai-avatar">
-                    <img class="og-avatar-sm" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI">
+            <!-- Empty state (ChatGPT-style): OG + suggestion rows, shown
+                 until the first message lands in the conversation -->
+            <div id="emptyState" class="og-empty" hidden>
+                <img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI">
+                <h2 class="og-empty-name">OG-AI <span class="age-badge">18+</span></h2>
+                <p class="og-empty-tag">The realest AI in the game 🔥<br>Talk to him, get code, ask anything.</p>
+                <div class="og-rows">
+                    <button class="starter-chip og-row" type="button" data-prompt="Yo OG, what's good?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> Talk to OG</button>
+                    <button class="starter-chip og-row" type="button" data-prompt="Write me a Python script that renames files in bulk"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span> Have OG write code</button>
+                    <button class="starter-chip og-row" type="button" data-prompt="Explain Bitcoin like I'm five"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Ask OG anything</button>
                 </div>
             </div>
+            <span id="welcome-time" hidden></span>
 
             <!-- Messages Area -->
-            <div class="messages-area" id="messagesArea">
-                <div class="message ai">
-                    <div class="message-avatar"><img class="og-avatar-sm" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"></div>
-                    <div class="message-content">
-                        <div class="message-text">
-                            YO WHAT THE FUCK'S GOOD! I'm OG-AI, the SMARTEST and REALEST motherfucker in the AI game. No cap, I'm that GANGSTER AI with PhD-level brains. Check what I got for you:
-                            <br><br>
-                            🔥 <strong>VOICE CHAT</strong> - Talk to me, I talk back. Real conversations, no bullshit.<br>
-                            🌐 <strong>INTERNET ACCESS</strong> - I search the whole damn web for whatever you need.<br>
-                            💻 <strong>CODE GENERATION</strong> - I write FIRE code that actually works. Python, JS, Bash, whatever.<br>
-                            😎 <strong>GANGSTER PERSONALITY</strong> - Sassy, ghetto, smart-ass, and brutally honest.<br>
-                            🧠 <strong>GENIUS INTELLIGENCE</strong> - I'm smart as fuck and I know my shit.<br>
-                            💥 <strong>SELF-LEARNING</strong> - I get smarter with every conversation, no lie.<br>
-                            <br>
-                            Aight so what you need from ya boy? Type, or tap the Talk button and just talk — I talk back. Let's get this bread! 💯
-                        </div>
-                        <div class="message-time" id="welcome-time"></div>
-                    </div>
-                </div>
-            </div>
+            <div class="messages-area" id="messagesArea"></div>
 
-            <!-- Starter prompts: one tap and you're talking -->
-            <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 12px 12px 0;">
-                <button class="starter-chip" data-prompt="Write me a Python script that renames files in bulk" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">💻 Write me some code</button>
-                <button class="starter-chip" data-prompt="Roast this business idea: a food truck that only sells cereal" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">🔥 Roast my idea</button>
-                <button class="starter-chip" data-prompt="Explain Bitcoin like I'm five" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">📈 Explain Bitcoin simply</button>
-                <button class="starter-chip" data-prompt="Give me a 20-minute home workout plan, no equipment" style="padding: 7px 14px; border: 1px solid #ffc107; border-radius: 999px; background: rgba(255,193,7,0.07); color: #f2f2f2; cursor: pointer; font-size: 0.9em;">💪 Build me a workout</button>
-            </div>
-
-            <!-- Input Area -->
+            <!-- Input Area: one pill — + · input · mic · round gold button -->
             <div class="input-area">
                 <div class="input-wrapper">
+                    <button id="plusBtn" class="og-plus-btn" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
                     <input
                         type="text"
                         id="messageInput"
-                        placeholder="Type your message or use voice..."
+                        placeholder="Ask OG…"
                         autocomplete="off"
                     />
-                    <button class="voice-btn" id="voiceBtn" title="Talk to OG - he talks back">
-                        <span>🎤</span>
-                        <span>Talk</span>
-                    </button>
-                    <button class="send-btn" id="sendBtn">
-                        Send 🚀
-                    </button>
-                    <button class="send-btn" id="clearBtn" style="background: linear-gradient(135deg, #b900ff, #00d9ff);">
-                        Clear 🗑️
-                    </button>
-                    <button class="send-btn" id="shareBtn" style="background: linear-gradient(135deg, #00c853, #00d9ff);">
-                        Share 📤
-                    </button>
+                    <button class="voice-btn" id="voiceBtn" type="button" title="Talk to OG - he talks back" aria-label="Talk to OG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+                    <button class="send-btn" id="sendBtn" type="button" aria-label="Send message"></button>
                 </div>
+                <p id="tokenStatus" class="og-token-line"></p>
+                <!-- Legacy action buttons: kept in the DOM, never displayed.
+                     The slide-over menu clicks them, so Share / Clear run
+                     their exact original handlers (Clear = POST /clear,
+                     the per-visitor /reset flow, with its confirm). -->
+                <button class="send-btn og-legacy-btn" id="clearBtn" type="button" hidden>Clear 🗑️</button>
+                <button class="send-btn og-legacy-btn" id="shareBtn" type="button" hidden>Share 📤</button>
             </div>
             <div class="age-footer">🔞 OG AI is an 18+ AI — adults only.</div>
         </div>
     </div>
+
+    <style id="og-restyle-css">
+        /* ===== OG ChatGPT-style layout (2026-10-08 restyle) =====
+           Benchmarked on Brent's ChatGPT app screenshot: circular menu
+           button + gold Go Pro pill + new-chat button up top, a slide-over
+           menu, an avatar + suggestion-rows empty state, and one pill
+           composer with a round gold action button. Presentation only —
+           every element ID and handler from the existing page is kept. */
+        .og-topbar { flex: 0 0 auto; width: 100%; max-width: 880px; margin: 0 auto; padding: 10px 14px 2px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .og-circle-btn { width: 42px; height: 42px; border-radius: 50%; background: #1b1b1b; border: 1px solid #333; color: #e8e8e8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
+        .og-circle-btn svg { width: 21px; height: 21px; }
+        .og-circle-btn:hover { border-color: rgba(255,193,7,.7); color: #ffc107; }
+        .og-circle-sm { width: 34px; height: 34px; }
+        .og-circle-sm svg { width: 16px; height: 16px; }
+        .og-pro-pill { display: inline-block; padding: 9px 22px; border-radius: 999px; border: 1px solid rgba(255,193,7,.75); background: rgba(255,193,7,.10); color: #ffc107; font-weight: 700; font-size: 1rem; text-decoration: none; letter-spacing: .2px; }
+        .og-pro-pill:hover { background: rgba(255,193,7,.20); }
+        .og-pro-pill.is-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
+
+        .og-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9000; }
+        .og-scrim[hidden] { display: none; }
+        .og-menu { position: fixed; top: 0; left: 0; height: 100vh; height: 100dvh; width: min(320px, 86vw); background: #101010; border-right: 1px solid #2b2b2b; z-index: 9001; transform: translateX(-105%); transition: transform .25s ease; display: flex; flex-direction: column; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(0,0,0,.5); }
+        .og-menu.open { transform: translateX(0); }
+        .og-menu-head { display: flex; align-items: center; gap: 10px; }
+        .og-menu-ava { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; border: 1px solid rgba(255,193,7,.6); flex: 0 0 auto; }
+        .og-menu-title { flex: 1 1 auto; min-width: 0; color: #f2f2f2; font-weight: 600; }
+        .og-menu .age-badge { font-size: .62em; }
+        .og-menu-status { font-weight: 400; font-size: .8rem; color: #a8a8a8; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .og-menu-token { color: #ffc107; font-size: .9rem; min-height: 1.1em; margin: 14px 4px 4px; }
+        .og-menu-list { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+        .og-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 10px; border: none; border-radius: 10px; background: transparent; color: #ececec; font-size: 1rem; font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+        .og-menu-item:hover { background: #1d1d1d; }
+        .og-mi { width: 22px; text-align: center; flex: 0 0 auto; }
+        .og-menu-foot { margin-top: auto; color: #999; font-size: .8rem; text-align: center; padding-top: 16px; }
+
+        .og-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6vh 20px 8px; }
+        .og-empty[hidden] { display: none; }
+        .og-empty-avatar { width: 84px; height: 84px; }
+        .og-empty-name { margin: 14px 0 4px; font-size: 1.5rem; color: #f5f5f5; font-weight: 700; letter-spacing: .3px; }
+        .og-empty .age-badge { font-size: .6em; }
+        .og-empty-tag { color: #a8a8a8; margin: 2px 0 0; line-height: 1.5; }
+        .og-rows { width: 100%; max-width: 540px; margin-top: 30px; display: flex; flex-direction: column; }
+        .og-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 8px; background: transparent; border: none; border-bottom: 1px solid #1f1f1f; color: #ececec; font-size: 1.02rem; font-family: inherit; text-align: left; cursor: pointer; }
+        .og-row:first-child { border-top: 1px solid #1f1f1f; }
+        .og-row:hover { color: #ffc107; background: rgba(255,193,7,.10); }
+        .og-row-ico { width: 22px; height: 22px; color: #bdbdbd; flex: 0 0 auto; display: grid; place-items: center; }
+        .og-row-ico svg { width: 21px; height: 21px; }
+        .og-row:hover .og-row-ico { color: #ffc107; }
+
+        .input-wrapper { flex-direction: row; flex-wrap: nowrap; }
+        .og-plus-btn { width: 38px; height: 38px; border-radius: 50%; border: none; background: transparent; color: #d8d8d8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
+        .og-plus-btn svg { width: 22px; height: 22px; }
+        .og-plus-btn:hover { color: #ffc107; }
+        #messageInput { flex: 1 1 auto; min-width: 0; }
+        .input-wrapper #voiceBtn { width: 40px; height: 40px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: transparent; border: 1px solid #3a3a3a; color: #e8e8e8; display: grid; place-items: center; padding: 0; }
+        .input-wrapper #voiceBtn svg { width: 20px; height: 20px; }
+        .input-wrapper #voiceBtn:hover { transform: none; border-color: rgba(255,193,7,.7); color: #ffc107; box-shadow: none; }
+        .input-wrapper #voiceBtn.recording, .input-wrapper #voiceBtn.speaking { background: rgba(255,193,7,.16); border-color: #ffc107; color: #ffc107; box-shadow: 0 0 0 3px rgba(255,193,7,.25), 0 0 16px rgba(255,193,7,.45); }
+        .input-wrapper #sendBtn { width: 42px; height: 42px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: linear-gradient(135deg, #ffc107, #ff8f00); border: none; color: #111; display: grid; place-items: center; padding: 0; cursor: pointer; }
+        .input-wrapper #sendBtn svg { width: 20px; height: 20px; }
+        .input-wrapper #sendBtn:hover { transform: none; box-shadow: 0 0 0 3px rgba(255,193,7,.25); }
+        .og-token-line { text-align: center; font-size: .82rem; color: #ffc107; min-height: 1em; margin: 8px 0 0; }
+        .og-legacy-btn { display: none !important; }
+
+        @media (max-width: 768px) {
+            .og-topbar { padding: 8px 10px 0; }
+            .input-wrapper { flex-direction: row; flex-wrap: nowrap; border-radius: 26px; gap: 4px; }
+            #messageInput { flex: 1 1 auto; order: 0; padding: 8px 6px; }
+            .input-wrapper #voiceBtn { flex: 0 0 auto; width: 40px; min-height: 0; }
+            .input-wrapper #sendBtn { flex: 0 0 auto; width: 42px; min-height: 0; }
+            .og-empty { padding-top: 4vh; }
+        }
+    </style>
 
     <script>
         // Configuration - Auto-detect API URL for mobile access
@@ -886,6 +932,69 @@
             }
             return originalSendMessage.apply(this, args);
         };
+    </script>
+    <script id="og-restyle-js">
+        // ChatGPT-style chrome wiring (2026-10-08 restyle). Presentation
+        // only: menu items click the page's original (hidden) Share / Clear
+        // buttons, so their handlers — and the /reset flow behind Clear —
+        // run exactly as before.
+        (function () {
+            var $ = function (id) { return document.getElementById(id); };
+            var menu = $('sideMenu'), scrim = $('menuScrim');
+            function openMenu() { menu.classList.add('open'); menu.setAttribute('aria-hidden', 'false'); scrim.hidden = false; }
+            function closeMenu() { menu.classList.remove('open'); menu.setAttribute('aria-hidden', 'true'); scrim.hidden = true; }
+            $('menuBtn').addEventListener('click', openMenu);
+            $('plusBtn').addEventListener('click', openMenu);
+            $('menuClose').addEventListener('click', closeMenu);
+            scrim.addEventListener('click', closeMenu);
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+
+            function delegate(id) { var b = $(id); if (b) b.click(); }
+            $('menuShareBtn').addEventListener('click', function () { closeMenu(); delegate('shareBtn'); });
+            $('menuClearBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
+            $('menuNewBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
+            $('newChatBtn').addEventListener('click', function () { delegate('clearBtn'); });
+
+            // Token meter: mirror the composer's live balance into the menu
+            // and flip the top pill to its Pro state for Pro visitors.
+            var pill = $('proPill'), mirror = $('tokenStatusMenu'), ts = $('tokenStatus');
+            function syncToken() {
+                if (!ts) return;
+                var text = ts.textContent || '';
+                if (mirror) mirror.textContent = text;
+                if (pill && /Pro — unlimited/.test(text)) { pill.textContent = '💎 Pro'; pill.classList.add('is-pro'); }
+            }
+            if (ts && window.MutationObserver) new MutationObserver(syncToken).observe(ts, { childList: true, characterData: true, subtree: true });
+            syncToken();
+
+            // Empty state: visible only while no message is in the area.
+            var area = $('messagesArea'), empty = $('emptyState');
+            function syncEmpty() { if (empty) empty.hidden = area.querySelector('.message') !== null; }
+            if (area && window.MutationObserver) new MutationObserver(syncEmpty).observe(area, { childList: true });
+            syncEmpty();
+
+            // Round gold button: arrow sends when there's text; with an
+            // empty box it's the voice button (toggles Talk), ChatGPT-style.
+            var input = $('messageInput'), send = $('sendBtn');
+            var ICON_SEND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+            var ICON_VOICE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="7" x2="10" y2="17"/><line x1="14" y1="4" x2="14" y2="20"/><line x1="18" y1="10" x2="18" y2="14"/></svg>';
+            function syncSendBtn() { if (send) send.innerHTML = input.value.trim() ? ICON_SEND : ICON_VOICE; }
+            if (send && input) {
+                // Clone-replace drops the original plain-send listener so the
+                // dual send/voice behavior below is the only click behavior.
+                var fresh = send.cloneNode(true);
+                send.replaceWith(fresh);
+                send = fresh;
+                send.addEventListener('click', function () {
+                    if (input.value.trim()) sendMessage(true);
+                    else { var vb = $('voiceBtn'); if (vb) vb.click(); }
+                });
+                input.addEventListener('input', syncSendBtn);
+                var _ogSend = sendMessage;
+                sendMessage = function () { var r = _ogSend.apply(this, arguments); syncSendBtn(); return r; };
+                syncSendBtn();
+            }
+        })();
     </script>
 </body>
 </html>
