@@ -45,6 +45,9 @@
             <button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi">💬</span> New chat</button>
             <button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi">📤</span> Share conversation</button>
             <button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi">🗑️</span> Clear chat</button>
+            <a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi">🔗</span> Connect Google</a>
+            <div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi">✅</span> <span id="menuGoogleEmail"></span></div>
+            <button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Google</button>
         </nav>
         <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.</div>
     </aside>
@@ -79,6 +82,7 @@
                     <button class="starter-chip og-row" type="button" data-prompt="Yo OG, what's good?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> Talk to OG</button>
                     <button class="starter-chip og-row" type="button" data-prompt="Write me a Python script that renames files in bulk"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span> Have OG write code</button>
                     <button class="starter-chip og-row" type="button" data-prompt="Explain Bitcoin like I'm five"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Ask OG anything</button>
+                    <button class="starter-chip og-row" type="button" data-prompt="Search the web: what are the top news headlines today?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span> Search the web</button>
                 </div>
             </div>
             <span id="welcome-time" hidden></span>
@@ -994,6 +998,32 @@
                 sendMessage = function () { var r = _ogSend.apply(this, arguments); syncSendBtn(); return r; };
                 syncSendBtn();
             }
+        })();
+    </script>
+    <script>
+        // Round 3: Google connect wiring. The button only appears when the
+        // server says the feature is enabled (it ships dark — Brent still
+        // has to create the Google OAuth client and set the env vars).
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var btn = $('menuGoogleBtn'), info = $('menuGoogleInfo'),
+                emailEl = $('menuGoogleEmail'), disc = $('menuGoogleDisconnect');
+            if (!btn) return;
+            function refresh() {
+                fetch('/auth/google/status').then(function (r) { return r.json(); }).then(function (s) {
+                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+                    if (s.connected) {
+                        btn.hidden = true; info.hidden = false; disc.hidden = false;
+                        emailEl.textContent = s.email ? ('Google: ' + s.email) : 'Google connected';
+                    } else {
+                        btn.hidden = false; info.hidden = true; disc.hidden = true;
+                    }
+                }).catch(function () { /* feature dark or offline — stay hidden */ });
+            }
+            if (disc) disc.addEventListener('click', function () {
+                fetch('/auth/google/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+            });
+            refresh();
         })();
     </script>
 </body>
