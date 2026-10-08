@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
@@ -186,6 +186,51 @@ def _consume_tts_call(uid: str) -> bool:
         store[key] = entry
         _save_usage_store(store)
         return True
+
+
+# --- OG image generation (Round 5) -------------------------------------------
+# POST /image generates ONE image per ask (API call + prompt cleanup
+# in og_image_gen.py). Images cost real cents, so a per-visitor daily
+# cap guards the key: free OG_IMAGE_FREE_DAILY (default 2), Pro
+# OG_IMAGE_PRO_DAILY (default 25). Page-side intent detection keeps
+# image asks out of /chat entirely. Failures answer 200 in persona.
+from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
+    IMAGE_DOWN_LINE as _IMAGE_DOWN_LINE,
+    clean_image_prompt as _clean_image_prompt,
+    openai_generate_image as _openai_generate_image)
+
+IMAGE_FREE_DAILY = int(os.getenv("OG_IMAGE_FREE_DAILY", "2"))
+IMAGE_PRO_DAILY = int(os.getenv("OG_IMAGE_PRO_DAILY", "25"))
+
+
+def _images_used_today(uid: str) -> int:
+    """Images this visitor has generated today (UTC)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with _usage_lock:
+        store = _load_usage_store()
+    entry = store.get(f"image:{uid}")
+    if not isinstance(entry, dict) or entry.get("date") != today:
+        return 0
+    return int(entry.get("count", 0))
+
+
+def _images_left(uid: str, is_pro: bool) -> int:
+    limit = IMAGE_PRO_DAILY if is_pro else IMAGE_FREE_DAILY
+    return max(0, limit - _images_used_today(uid))
+
+
+def _consume_image(uid: str):
+    """Record one generated image today (UTC); success-only."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"image:{uid}"
+    with _usage_lock:
+        store = _load_usage_store()
+        entry = store.get(key)
+        if not isinstance(entry, dict) or entry.get("date") != today:
+            entry = {"date": today, "count": 0}
+        entry["count"] = int(entry.get("count", 0)) + 1
+        store[key] = entry
+        _save_usage_store(store)
 
 
 # --- OG Pro entitlement v2 (Stripe webhook, ships dark) ----------------------
@@ -2422,6 +2467,98 @@ async def text_to_speech(raw_request: Request):
         logger.warning(f"TTS upstream status: {r.status_code}")
         raise HTTPException(status_code=502, detail="Voice service error")
     return Response(content=r.content, media_type="audio/mpeg")
+
+
+@app.post("/image")
+async def generate_image(raw_request: Request):
+    """
+    Generate ONE image for a visitor (Round 5).
+
+    Body: {"prompt": "<chat message or bare picture prompt>"}.
+    Every expected outcome answers 200 JSON (success / cap upsell /
+    lab-down) so the page can render an in-persona bubble.
+    """
+    get_agent()  # instantiate first: its creation resets the file store
+    uid = raw_request.cookies.get("ogai_uid")
+    fresh_uid = False
+    if not uid:
+        uid = uuid.uuid4().hex
+        fresh_uid = True
+
+    def _reply(payload, status=200):
+        resp = JSONResponse(content=payload, status_code=status)
+        if fresh_uid:
+            resp.set_cookie(
+                "ogai_uid", uid,
+                max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
+            )
+        return resp
+
+    try:
+        body = await raw_request.json()
+    except Exception:
+        return _reply({"ok": False, "response":
+                       "Yo, that came through garbled — tell me what to draw."}, 400)
+    raw_prompt = str(body.get("prompt", "")).strip()
+    if not raw_prompt:
+        return _reply({"ok": False, "response":
+                       "Tell me what to draw, fam."}, 400)
+    prompt = _clean_image_prompt(raw_prompt)
+
+    is_pro = raw_request.cookies.get("ogai_pro") == PRO_TOKEN \
+        or _uid_is_entitled(uid)
+    left = _images_left(uid, is_pro)
+    if left <= 0:
+        if is_pro:
+            return _reply({
+                "ok": False, "capped": True, "images_left": 0,
+                "response": (
+                    f"Yo, you burned through all {IMAGE_PRO_DAILY} pics for "
+                    "today — even Pro gotta let the lab cool down. "
+                    "Slide back tomorrow."
+                ),
+            })
+        return _reply({
+            "ok": False, "capped": True, "images_left": 0,
+            "upgrade_url": PRO_UPGRADE_URL,
+            "response": (
+                f"Yo, that's your {IMAGE_FREE_DAILY} free pics for today — the OG "
+                f"ain't runnin' a free art studio. Go Pro for {IMAGE_PRO_DAILY} "
+                f"a day: {PRO_UPGRADE_URL} — or slide back tomorrow."
+            ),
+        })
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return _reply({"ok": False, "response": _IMAGE_DOWN_LINE,
+                       "images_left": left})
+
+    try:
+        image_src, model_used = await _openai_generate_image(api_key, prompt)
+    except Exception as e:
+        logger.warning(f"Image generation failed: {e}")
+        return _reply({"ok": False, "response": _IMAGE_DOWN_LINE,
+                       "images_left": left})
+
+    _consume_image(uid)
+    left = _images_left(uid, is_pro)
+    caption = _IMAGE_CAPTIONS[len(prompt) % len(_IMAGE_CAPTIONS)]
+    # Note the drawing in the visitor's thread (too big to store).
+    try:
+        now = datetime.now().isoformat()
+        with _memory_lock:
+            history = _load_visitor_history_locked(uid)
+            history.append({"role": "user", "content": raw_prompt,
+                            "timestamp": now})
+            history.append({"role": "assistant",
+                            "content": f"{caption}\n[🎨 OG drew an image: {prompt}]",
+                            "timestamp": now})
+            _save_visitor_history_locked(uid, history)
+    except Exception as e:
+        logger.warning(f"Could not note image in history: {e}")
+    return _reply({"ok": True, "image": image_src, "model": model_used,
+                   "prompt": prompt, "response": caption,
+                   "images_left": left})
 
 
 @app.get("/pro")
