@@ -53,6 +53,8 @@
             <div class="og-menu-item" id="menuSpotifyInfo" hidden><span class="og-mi">✅</span> <span id="menuSpotifyName"></span></div>
             <button class="og-menu-item" id="menuSpotifyDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Spotify</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
+            <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
+            <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
         </nav>
         <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.</div>
     </aside>
@@ -416,7 +418,9 @@
 
         // Send a message: token streaming first (OG's words appear the moment
         // he produces them), the classic one-shot request as the fallback.
-        async function sendMessage(speakResponse = false) {
+        // coords (Round 11) is an optional {lat, lon} the "near me" flow
+        // attaches for this one request only — never part of the text.
+        async function sendMessage(speakResponse = false, coords = null) {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
 
@@ -429,8 +433,8 @@
             updateStatus('AI is thinking...');
 
             try {
-                const streamed = await streamReply(message);
-                if (!streamed) await classicReply(message);
+                const streamed = await streamReply(message, coords);
+                if (!streamed) await classicReply(message, coords);
             } catch (error) {
                 console.error('Error:', error);
                 addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
@@ -442,11 +446,13 @@
 
         // The original one-shot flow — also the fallback when streaming
         // never gets going (old browser, a proxy in the way, stream refused).
-        async function classicReply(message) {
+        async function classicReply(message, coords = null) {
+            const payload = { message: message };
+            if (coords) payload.coords = coords;
             const response = await fetch(`${API_URL}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: message })
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -468,13 +474,15 @@
         // done, swap in the fully rendered message (code blocks, Copy button,
         // typing reveal) exactly like a classic reply. Returns false when
         // streaming never got going, so the caller falls back to classicReply.
-        async function streamReply(message) {
+        async function streamReply(message, coords = null) {
             let response;
             try {
+                const payload = { message: message, stream: true };
+                if (coords) payload.coords = coords;
                 response = await fetch(`${API_URL}/chat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message, stream: true })
+                    body: JSON.stringify(payload)
                 });
             } catch (e) {
                 return false;
@@ -1427,6 +1435,171 @@
                     isProcessing = false;
                 }
             }
+        })();
+    </script>
+
+    <style id="og-nearme-css">
+        /* Round 11: GPS "near me" — the one-time in-thread opt-in
+           prompt, the thread notice line, and the menu note under
+           the 📍 toggle. Gold trim like the rest of OG's chrome. */
+        .og-loc-prompt { margin: 10px auto; max-width: 92%; background: rgba(255, 193, 7, .07); border: 1px solid rgba(255, 193, 7, .45); border-radius: 14px; padding: 12px 14px; }
+        .og-loc-text { line-height: 1.45; }
+        .og-loc-btns { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .og-loc-yes { background: #ffc107; color: #111; border: none; border-radius: 999px; padding: 8px 18px; font-weight: 700; font-family: inherit; cursor: pointer; }
+        .og-loc-yes:disabled { opacity: .55; cursor: default; }
+        .og-loc-no { background: transparent; color: #ffc107; border: 1px solid rgba(255, 193, 7, .5); border-radius: 999px; padding: 8px 18px; font-family: inherit; cursor: pointer; }
+        .og-loc-no:disabled { opacity: .55; cursor: default; }
+        .og-loc-note { text-align: center; opacity: .85; font-size: .92em; padding: 6px 12px; }
+        .og-loc-menunote { font-size: .8em; color: #999; line-height: 1.45; margin: 0; padding: 2px 12px 8px 44px; }
+    </style>
+    <script id="og-nearme-js">
+        // Round 11: GPS "near me". A place/route question with no
+        // named place ("coffee near me", "directions from here to
+        // Sea-Tac") first rides to the server WITHOUT coordinates —
+        // OG asks his clarifying question like always. Then this
+        // block offers a one-time in-thread opt-in; on "Use my
+        // location" it takes ONE browser geolocation fix and resends
+        // the same message with {lat, lon} attached as a separate
+        // /chat field, so the server can center the answer on the
+        // visitor. Coordinates are never written into the message
+        // text, never kept by this page between answers, and the
+        // server uses them for that one answer only (never stored,
+        // never logged). The slide-over menu toggle (localStorage)
+        // remembers only the PREFERENCE: with it on, a near-me ask
+        // grabs a fresh fix up front and skips the prompt.
+        (function () {
+            var PREF_KEY = 'ogai_loc_nearme';
+            var NEARME = /\b(near\s+(me|here)|around\s+(me|here)|from\s+here|my\s+location|closest\s+to\s+me|nearest\s+to\s+me)\b/i;
+
+            function prefOn() {
+                try { return localStorage.getItem(PREF_KEY) === 'on'; }
+                catch (e) { return false; }
+            }
+            function refreshLocMenu() {
+                var el = document.getElementById('menuLocState');
+                if (el) el.textContent = prefOn() ? 'On' : 'Off';
+            }
+            var locBtn = document.getElementById('menuLocBtn');
+            if (locBtn) locBtn.addEventListener('click', function () {
+                try { localStorage.setItem(PREF_KEY, prefOn() ? 'off' : 'on'); } catch (e) { /* private mode — toggle just won't stick */ }
+                refreshLocMenu();
+            });
+            refreshLocMenu();
+
+            // One fresh fix. Resolves {coords:{lat,lon}} or
+            // {error:'denied'|'unsupported'|'unavailable'} — never rejects.
+            function getPositionOnce() {
+                return new Promise(function (resolve) {
+                    if (!('geolocation' in navigator) || !navigator.geolocation) {
+                        resolve({ error: 'unsupported' });
+                        return;
+                    }
+                    var settled = false;
+                    var timer = setTimeout(function () {
+                        if (!settled) { settled = true; resolve({ error: 'unavailable' }); }
+                    }, 12000);
+                    function finish(val) {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        resolve(val);
+                    }
+                    try {
+                        navigator.geolocation.getCurrentPosition(
+                            function (pos) { finish({ coords: { lat: pos.coords.latitude, lon: pos.coords.longitude } }); },
+                            function (err) { finish({ error: (err && err.code === 1) ? 'denied' : 'unavailable' }); },
+                            { timeout: 10000, maximumAge: 0, enableHighAccuracy: false });
+                    } catch (e) { finish({ error: 'unavailable' }); }
+                });
+            }
+
+            function locErrorLine(kind) {
+                if (kind === 'denied') return '📍 Location\'s blocked in your browser — no sweat. Name a city or neighborhood and I\'ll run it from there.';
+                if (kind === 'unsupported') return '📍 This browser don\'t do location sharing — name a city or neighborhood and I got you.';
+                return '📍 Couldn\'t grab your location just now — name a city or neighborhood and I got you.';
+            }
+
+            function threadNote(text) {
+                var area = document.getElementById('messagesArea');
+                if (!area) return;
+                var div = document.createElement('div');
+                div.className = 'og-loc-note';
+                div.textContent = text;
+                area.appendChild(div);
+                area.scrollTop = area.scrollHeight;
+            }
+
+            // The one-time prompt, rendered in the thread right
+            // after OG's clarifying reply to a near-me ask.
+            function offerLocationPrompt(message) {
+                var area = document.getElementById('messagesArea');
+                if (!area) return;
+                var old = document.getElementById('ogLocPrompt');
+                if (old) old.remove();
+                var wrap = document.createElement('div');
+                wrap.className = 'og-loc-prompt';
+                wrap.id = 'ogLocPrompt';
+                wrap.innerHTML =
+                    '<div class="og-loc-text">📍 Want me to use your location for that? It only rides this one answer — I don\'t save it, don\'t track you, none of that.</div>' +
+                    '<div class="og-loc-btns"><button type="button" class="og-loc-yes">Use my location</button>' +
+                    '<button type="button" class="og-loc-no">No thanks</button></div>';
+                area.appendChild(wrap);
+                area.scrollTop = area.scrollHeight;
+                wrap.querySelector('.og-loc-no').addEventListener('click', function () { wrap.remove(); });
+                wrap.querySelector('.og-loc-yes').addEventListener('click', async function () {
+                    var yes = wrap.querySelector('.og-loc-yes');
+                    var no = wrap.querySelector('.og-loc-no');
+                    yes.disabled = true;
+                    no.disabled = true;
+                    yes.textContent = 'Getting your location…';
+                    var pos = await getPositionOnce();
+                    wrap.remove();
+                    if (!pos.coords) { threadNote(locErrorLine(pos.error)); return; }
+                    if (isProcessing) return;
+                    // Resend the SAME message with the fix attached —
+                    // OG's reply renders fresh; the visitor's bubble
+                    // is not duplicated.
+                    isProcessing = true;
+                    updateStatus('AI is thinking...');
+                    try {
+                        var streamed = await streamReply(message, pos.coords);
+                        if (!streamed) await classicReply(message, pos.coords);
+                    } catch (error) {
+                        addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
+                        updateStatus('Error - Check connection');
+                    } finally {
+                        isProcessing = false;
+                    }
+                });
+            }
+
+            var prevSend = sendMessage;
+            sendMessage = async function () {
+                var input = document.getElementById('messageInput');
+                var msg = input ? input.value.trim() : '';
+                if (!msg || isProcessing || !NEARME.test(msg)) {
+                    return prevSend.apply(this, arguments);
+                }
+                if (prefOn()) {
+                    // Preference on: fresh fix up front, ride it on
+                    // this one request, skip the prompt entirely.
+                    updateStatus('📍 Getting your location…');
+                    var pos = await getPositionOnce();
+                    if (pos.coords) {
+                        var args = Array.prototype.slice.call(arguments);
+                        args[1] = pos.coords;
+                        return prevSend.apply(this, args);
+                    }
+                    var r = await prevSend.apply(this, arguments);
+                    threadNote(locErrorLine(pos.error));
+                    return r;
+                }
+                // Preference off: plain send first (the server asks
+                // its clarifying question), then the one-time offer.
+                var r2 = await prevSend.apply(this, arguments);
+                offerLocationPrompt(msg);
+                return r2;
+            };
         })();
     </script>
 </body>
