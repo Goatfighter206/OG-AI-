@@ -24,8 +24,14 @@ import logging
 import os
 import re
 import time
+import uuid
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _today():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 MAX_UPLOAD_BYTES = int(os.getenv("OG_UPLOAD_MAX_BYTES", str(8 * 1024 * 1024)))
 TEXT_STORE_CHARS = 60000      # extracted text kept per file
@@ -314,6 +320,161 @@ def message_references_file(message: str) -> bool:
 # --------------------------------------------------------------------------
 
 _inject = {"uid": "", "forced": False}
+
+
+# --- App binding: caps, routes, history notes --------------------------------
+# The endpoints live here too (app.py sits at the push tool's size
+# limit). app.py binds its stores/helpers once via bind_app() and calls
+# register_file_routes(app); everything below then behaves exactly
+# like the in-app routes did in earlier rounds.
+
+UPLOAD_FREE_DAILY = int(os.environ.get("OG_UPLOAD_FREE_DAILY", "3"))
+UPLOAD_PRO_DAILY = int(os.environ.get("OG_UPLOAD_PRO_DAILY", "30"))
+
+_deps = {}
+
+
+def bind_app(deps):
+    _deps.update(deps)
+
+
+def _uploads_used_today(uid):
+    d = _deps
+    with d["usage_lock"]:
+        store = d["load_usage"]()
+        rec = store.get("upload:" + uid) or {}
+        if rec.get("day") != _today():
+            return 0
+        return int(rec.get("count", 0))
+
+
+def uploads_left(uid, entitled):
+    cap = UPLOAD_PRO_DAILY if entitled else UPLOAD_FREE_DAILY
+    return max(0, cap - _uploads_used_today(uid))
+
+
+def _consume_upload(uid):
+    d = _deps
+    with d["usage_lock"]:
+        store = d["load_usage"]()
+        key = "upload:" + uid
+        rec = store.get(key) or {}
+        if rec.get("day") != _today():
+            rec = {"day": _today(), "count": 0}
+        rec["count"] = int(rec.get("count", 0)) + 1
+        store[key] = rec
+        d["save_usage"](store)
+
+
+def _note_history(uid, user_line, assistant_line):
+    """Record an upload/remove as a visible pair in the visitor's
+    thread, so the page's history restore shows it and OG's own
+    memory knows a file was attached (never the contents)."""
+    d = _deps
+    try:
+        with d["memory_lock"]:
+            hist = d["load_history"](uid)
+            ts = datetime.now().isoformat()
+            hist.append({"role": "user", "content": user_line, "timestamp": ts})
+            hist.append({"role": "assistant", "content": assistant_line,
+                         "timestamp": ts})
+            d["save_history"](uid, hist)
+    except Exception:
+        logger.warning("file history note failed", exc_info=True)
+
+
+def register_file_routes(app):
+    from fastapi import Request as _Req  # noqa: F401  (annotation only)
+    from fastapi.responses import JSONResponse
+    d = _deps
+
+    @app.post("/upload")
+    async def upload_file(raw_request: _Req):
+        """Store one file for THIS visitor (PDF/TXT text extracted,
+        images kept raw for on-ask vision reads) — POST /upload."""
+        d["get_agent"]()
+        cookie_uid = raw_request.cookies.get("ogai_uid")
+        uid = cookie_uid or uuid.uuid4().hex
+
+        def _respond(payload, status_code=200):
+            resp = JSONResponse(content=payload, status_code=status_code)
+            if not cookie_uid:
+                resp.set_cookie(
+                    "ogai_uid", uid, max_age=d["cookie_max_age"],
+                    httponly=True, samesite="lax", path="/")
+            return resp
+
+        entitled = d["is_entitled"](uid, raw_request)
+        left = uploads_left(uid, entitled)
+        if left <= 0:
+            cap = UPLOAD_PRO_DAILY if entitled else UPLOAD_FREE_DAILY
+            if entitled:
+                line = (f"Yo, you already burned through your {cap} uploads "
+                        f"for today. Even Pro OG gotta pace it — slide back "
+                        f"tomorrow.")
+                return _respond({"ok": False, "capped": True,
+                                 "uploads_left": 0, "response": line})
+            line = (f"Yo, that's your {UPLOAD_FREE_DAILY} free uploads for "
+                    f"today. Go Pro for {UPLOAD_PRO_DAILY} a day: "
+                    f"{d['pro_url']} — or slide back tomorrow.")
+            return _respond({"ok": False, "capped": True, "uploads_left": 0,
+                             "upgrade_url": d["pro_url"], "response": line})
+        try:
+            form = await raw_request.form()
+        except Exception:
+            form = {}
+        upload = form.get("file")
+        if upload is None or not hasattr(upload, "read"):
+            return _respond({"ok": False, "response": BAD_TYPE_LINE})
+        raw = await upload.read(MAX_UPLOAD_BYTES + 1)
+        try:
+            meta = save_upload(uid, getattr(upload, "filename", "") or "file",
+                               raw)
+        except UploadRejected as exc:
+            return _respond({"ok": False, "response": str(exc)})
+        except Exception:
+            logger.warning("upload failed", exc_info=True)
+            return _respond({"ok": False, "response": GARBLED_LINE})
+        _consume_upload(uid)
+        line = ok_line(meta)
+        _note_history(uid, f"[📎 Uploaded a file: {meta['name']}]", line)
+        return _respond({"ok": True, "file": public_meta(meta),
+                         "uploads_left": uploads_left(uid, entitled),
+                         "response": line})
+
+    @app.get("/file/status")
+    async def file_status(raw_request: _Req):
+        """What's attached for this visitor + uploads left today."""
+        uid = _current_uid_of(raw_request)
+        entitled = d["is_entitled"](uid, raw_request)
+        meta = get_meta(uid) if uid else None
+        payload = {"attached": bool(meta),
+                   "uploads_left": (uploads_left(uid, entitled)
+                                    if uid else UPLOAD_FREE_DAILY)}
+        if meta:
+            payload["file"] = public_meta(meta)
+        return JSONResponse(content=payload)
+
+    @app.post("/file/remove")
+    async def file_remove(raw_request: _Req):
+        """Clear this visitor's attached file server-side."""
+        uid = _current_uid_of(raw_request)
+        meta = get_meta(uid) if uid else None
+        if not meta:
+            return JSONResponse(content={
+                "ok": True,
+                "response": "Ain't nothin' attached right now, fam."})
+        clear_upload(uid)
+        line = f"Done — '{meta['name']}' is outta here. 📎✌️"
+        _note_history(uid, "[📎 Removed the attached file]", line)
+        return JSONResponse(content={"ok": True, "response": line})
+
+
+def _current_uid_of(raw_request):
+    try:
+        return raw_request.cookies.get("ogai_uid")
+    except Exception:
+        return None
 
 
 def install_file_tools(agent_instance, get_uid, get_api_key):
