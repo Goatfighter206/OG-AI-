@@ -52,6 +52,9 @@
             <a class="og-menu-item" id="menuSpotifyBtn" href="/auth/spotify" hidden><span class="og-mi">🎧</span> Connect Spotify</a>
             <div class="og-menu-item" id="menuSpotifyInfo" hidden><span class="og-mi">✅</span> <span id="menuSpotifyName"></span></div>
             <button class="og-menu-item" id="menuSpotifyDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Spotify</button>
+            <a class="og-menu-item" id="menuGithubBtn" href="/auth/github" hidden><span class="og-mi">🐙</span> Connect GitHub</a>
+            <div class="og-menu-item" id="menuGithubInfo" hidden><span class="og-mi">✅</span> <span id="menuGithubName"></span></div>
+            <button class="og-menu-item" id="menuGithubDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect GitHub</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
             <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
             <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
@@ -1065,6 +1068,34 @@
             }
             if (disc) disc.addEventListener('click', function () {
                 fetch('/auth/spotify/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+            });
+            refresh();
+        })();
+    </script>
+    <script>
+        // Round 14: GitHub connect wiring. The items only appear when
+        // the server says the feature is enabled (it ships dark — Brent
+        // still has to register the GitHub OAuth App and set the env
+        // vars). Connected visitors see their GitHub login.
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var btn = $('menuGithubBtn'), info = $('menuGithubInfo'),
+                nameEl = $('menuGithubName'), disc = $('menuGithubDisconnect');
+            if (!btn) return;
+            function refresh() {
+                fetch('/auth/github/status').then(function (r) { return r.json(); }).then(function (s) {
+                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+                    if (s.connected) {
+                        btn.hidden = true; info.hidden = false; disc.hidden = false;
+                        var who = s.login || s.name || s.email;
+                        nameEl.textContent = who ? ('GitHub: ' + who) : 'GitHub connected';
+                    } else {
+                        btn.hidden = false; info.hidden = true; disc.hidden = true;
+                    }
+                }).catch(function () { /* feature dark or offline — stay hidden */ });
+            }
+            if (disc) disc.addEventListener('click', function () {
+                fetch('/auth/github/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
             });
             refresh();
         })();
