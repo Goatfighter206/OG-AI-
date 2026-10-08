@@ -2495,6 +2495,17 @@ _og_tiers.bind({"pro_token": PRO_TOKEN, "pro_link": PRO_UPGRADE_URL,
                 "cookie_max_age": COOKIE_MAX_AGE})
 _og_tiers.register_tier_routes(app)
 
+# Voice-note transcription (Round 8): POST /transcribe lives in og_voice.py.
+import og_voice as _og_voice
+_og_voice.bind_app({
+    "get_agent": get_agent, "pro_url": _og_tiers.public_pro_url(),
+    "cookie_max_age": COOKIE_MAX_AGE,
+    "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
+    "get_api_key": lambda: os.getenv("OPENAI_API_KEY"),
+    "load_usage": _load_usage_store, "save_usage": _save_usage_store,
+    "usage_lock": _usage_lock})
+_og_voice.register_voice_routes(app)
+
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
     """
