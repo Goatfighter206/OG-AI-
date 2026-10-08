@@ -34,6 +34,19 @@ def _today():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 MAX_UPLOAD_BYTES = int(os.getenv("OG_UPLOAD_MAX_BYTES", str(8 * 1024 * 1024)))
+# Round 7 tiers: the size ceiling is per-tier (og_tiers.cap(tier,
+# "upload_mb") — free/standard 8 MB, pro+ 25 MB). The legacy
+# OG_UPLOAD_MAX_BYTES env, when set, still pins free/standard.
+import og_tiers as _og_tiers
+
+_READ_CAP = (max(_og_tiers.cap(t, "upload_mb") for t in _og_tiers.TIER_ORDER)
+             * 1024 * 1024 + 1)
+
+
+def _max_bytes(tier):
+    if tier in ("free", "standard") and os.getenv("OG_UPLOAD_MAX_BYTES"):
+        return MAX_UPLOAD_BYTES
+    return _og_tiers.cap(tier, "upload_mb") * 1024 * 1024
 TEXT_STORE_CHARS = 60000      # extracted text kept per file
 TEXT_CONTEXT_CHARS = 12000    # excerpt handed to the model per question
 RETENTION_SECONDS = 24 * 60 * 60
@@ -176,13 +189,18 @@ def _decode_text(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def save_upload(uid: str, filename: str, data: bytes) -> dict:
+def save_upload(uid: str, filename: str, data: bytes,
+                max_bytes: int = None) -> dict:
     """Validate, extract and store the visitor's one active file
     (replacing any previous one). Returns the stored metadata.
     Raises UploadRejected with the in-persona line for every expected
     failure — never a bare exception for bad input."""
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise UploadRejected(TOO_BIG_LINE)
+    _limit = MAX_UPLOAD_BYTES if max_bytes is None else max_bytes
+    if len(data) > _limit:
+        raise UploadRejected(
+            f"Yo, that file's too heavy — I max out at "
+            f"{max(1, _limit // (1024 * 1024))} MB on your plan. "
+            f"Shrink it down and slide it again.")
     if not data:
         raise UploadRejected(GARBLED_LINE)
     kind = _sniff_kind(filename, data)
@@ -331,6 +349,27 @@ _inject = {"uid": "", "forced": False}
 UPLOAD_FREE_DAILY = int(os.environ.get("OG_UPLOAD_FREE_DAILY", "3"))
 UPLOAD_PRO_DAILY = int(os.environ.get("OG_UPLOAD_PRO_DAILY", "30"))
 
+
+def _visitor_tier(uid, req):
+    """Tier via the app's resolver (bound as deps["tier_of"]); falls
+    back to the old entitled boolean when unbound."""
+    fn = _deps.get("tier_of")
+    if fn is not None:
+        return fn(uid, req)
+    return "standard" if _deps["is_entitled"](uid, req) else "free"
+
+
+def _upload_cap(tier):
+    """Daily upload cap for a tier (Round 7 table in og_tiers). The
+    legacy env knobs still pin the tiers they used to describe:
+    OG_UPLOAD_FREE_DAILY -> free, OG_UPLOAD_PRO_DAILY -> standard
+    (legacy Pro buyers ride as standard)."""
+    if tier == "free" and os.environ.get("OG_UPLOAD_FREE_DAILY"):
+        return UPLOAD_FREE_DAILY
+    if tier == "standard" and os.environ.get("OG_UPLOAD_PRO_DAILY"):
+        return UPLOAD_PRO_DAILY
+    return _og_tiers.cap(tier, "uploads")
+
 _deps = {}
 
 
@@ -348,9 +387,8 @@ def _uploads_used_today(uid):
         return int(rec.get("count", 0))
 
 
-def uploads_left(uid, entitled):
-    cap = UPLOAD_PRO_DAILY if entitled else UPLOAD_FREE_DAILY
-    return max(0, cap - _uploads_used_today(uid))
+def uploads_left(uid, tier):
+    return max(0, _upload_cap(tier) - _uploads_used_today(uid))
 
 
 def _consume_upload(uid):
@@ -404,19 +442,19 @@ def register_file_routes(app):
                     httponly=True, samesite="lax", path="/")
             return resp
 
-        entitled = d["is_entitled"](uid, raw_request)
-        left = uploads_left(uid, entitled)
+        tier = _visitor_tier(uid, raw_request)
+        left = uploads_left(uid, tier)
         if left <= 0:
-            cap = UPLOAD_PRO_DAILY if entitled else UPLOAD_FREE_DAILY
-            if entitled:
+            cap = _upload_cap(tier)
+            if tier != "free":
                 line = (f"Yo, you already burned through your {cap} uploads "
-                        f"for today. Even Pro OG gotta pace it — slide back "
-                        f"tomorrow.")
+                        f"for today. Even the top shelf gotta pace it — "
+                        f"slide back tomorrow.")
                 return _respond({"ok": False, "capped": True,
                                  "uploads_left": 0, "response": line})
-            line = (f"Yo, that's your {UPLOAD_FREE_DAILY} free uploads for "
-                    f"today. Go Pro for {UPLOAD_PRO_DAILY} a day: "
-                    f"{d['pro_url']} — or slide back tomorrow.")
+            line = (f"Yo, that's your {cap} free uploads for today. "
+                    f"Go premium for up to 300 a day: {d['pro_url']} — "
+                    f"or slide back tomorrow.")
             return _respond({"ok": False, "capped": True, "uploads_left": 0,
                              "upgrade_url": d["pro_url"], "response": line})
         try:
@@ -426,10 +464,10 @@ def register_file_routes(app):
         upload = form.get("file")
         if upload is None or not hasattr(upload, "read"):
             return _respond({"ok": False, "response": BAD_TYPE_LINE})
-        raw = await upload.read(MAX_UPLOAD_BYTES + 1)
+        raw = await upload.read(_READ_CAP)
         try:
             meta = save_upload(uid, getattr(upload, "filename", "") or "file",
-                               raw)
+                               raw, max_bytes=_max_bytes(tier))
         except UploadRejected as exc:
             return _respond({"ok": False, "response": str(exc)})
         except Exception:
@@ -439,18 +477,18 @@ def register_file_routes(app):
         line = ok_line(meta)
         _note_history(uid, f"[📎 Uploaded a file: {meta['name']}]", line)
         return _respond({"ok": True, "file": public_meta(meta),
-                         "uploads_left": uploads_left(uid, entitled),
+                         "uploads_left": uploads_left(uid, tier),
                          "response": line})
 
     @app.get("/file/status")
     async def file_status(raw_request: _Req):
         """What's attached for this visitor + uploads left today."""
         uid = _current_uid_of(raw_request)
-        entitled = d["is_entitled"](uid, raw_request)
+        tier = _visitor_tier(uid, raw_request)
         meta = get_meta(uid) if uid else None
-        payload = {"attached": bool(meta),
-                   "uploads_left": (uploads_left(uid, entitled)
-                                    if uid else UPLOAD_FREE_DAILY)}
+        payload = {"attached": bool(meta), "tier": tier,
+                   "uploads_left": (uploads_left(uid, tier)
+                                    if uid else _upload_cap("free"))}
         if meta:
             payload["file"] = public_meta(meta)
         return JSONResponse(content=payload)
