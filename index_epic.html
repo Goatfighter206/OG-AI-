@@ -21,14 +21,14 @@
     <!-- Fire and Smoke Effects Container -->
     <div id="effects-container"></div>
 
-    <!-- Top bar (ChatGPT-style): menu · Go Pro pill · new chat -->
+    <!-- Top bar (ChatGPT-style): menu · Go Pro pill -->
     <header class="og-topbar">
         <button id="menuBtn" class="og-circle-btn" type="button" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
         <a id="proPill" class="og-pro-pill" href="/pro">✦ Upgrade</a>
         <button id="newChatBtn" class="og-circle-btn" type="button" aria-label="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
     </header>
 
-    <!-- Slide-over menu: token balance, Share, Clear, 18+ label -->
+    <!-- Slide-over menu: token balance, Share, -->
     <div id="menuScrim" class="og-scrim" hidden></div>
     <aside id="sideMenu" class="og-menu" aria-hidden="true">
         <div class="og-menu-head">
@@ -82,7 +82,7 @@
         <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
     </aside>
 
-    <!-- 18+ Age Gate: first-visit confirmation overlay -->
+    <!-- 18+ Age Gate: first-visit confirmation -->
     <div id="ageGate" class="age-gate" hidden>
         <div class="age-gate-card">
             <div class="age-badge-big">18+</div>
@@ -102,8 +102,7 @@
     <!-- Main Chat Container -->
     <div class="chat-wrapper">
         <div class="chat-container">
-            <!-- Empty state (ChatGPT-style): OG + suggestion rows, shown
-                 until the first message lands in the conversation -->
+            <!-- Empty state (ChatGPT-style): OG + -->
             <div id="emptyState" class="og-empty" hidden>
                 <img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI">
                 <h2 class="og-empty-name">OG-AI <span class="age-badge">18+</span></h2>
@@ -114,6 +113,7 @@
                     <button class="starter-chip og-row" type="button" data-prompt="Explain Bitcoin like I'm five"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Ask OG anything</button>
                     <button class="starter-chip og-row" type="button" data-prompt="Search the web: what are the top news headlines today?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span> Search the web</button>
                     <button class="starter-chip og-row" type="button" data-prompt="Make me a Unity game"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.62 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.62-6.58-.685-7.258A4 4 0 0 0 17.32 5z"/></svg></span> 🎮 Make me a Unity game</button>
+                    <button class="starter-chip og-row" type="button" data-prompt="Make me a story video about a haunted lighthouse keeper"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20M7 4v5M17 4v5M10 12.5l5 2.5-5 2.5z"/></svg></span> 🎬 Make a story video</button>
                 </div>
             </div>
             <span id="welcome-time" hidden></span>
@@ -121,10 +121,7 @@
             <!-- Messages Area -->
             <div class="messages-area" id="messagesArea"></div>
 
-            <!-- OG browser live view: only while a session is
-                 live; viewer URL fetched fresh per poll, never
-                 stored. Round 27: sized view wrap + Full/Still
-                 fallbacks so the panel can never render blank. -->
+            <!-- OG browser live view: only while a session -->
             <div id="browserPanel" class="og-browser-panel" hidden>
                 <div class="og-browser-bar">
                     <span id="browserPanelTitle">🌐 OG is browsing</span>
@@ -144,10 +141,7 @@
                 <p id="browserShotNote" class="og-browser-note" hidden></p>
             </div>
 
-            <!-- Approval card (Round 27): a parked commit action
-                 surfaces here as its own card — never inside a chat
-                 message — exact action + payload, Approve / Decline.
-                 Same gate as chat YES/NO; first resolution wins. -->
+            <!-- Approval card (Round 27): a parked commit -->
             <div id="approveCard" class="og-approve-card" hidden>
                 <div class="og-approve-head">⚠️ <span id="approveTitle">OG is waiting on you</span></div>
                 <p id="approveDesc" class="og-approve-desc"></p>
@@ -160,7 +154,19 @@
                 <p id="approveOutcome" class="og-approve-outcome" hidden></p>
             </div>
 
-            <!-- Input Area: one pill — + · input · mic · round gold button -->
+            <!-- Story-video card (Round 28): the pending -->
+            <div id="videoCard" class="og-approve-card" hidden>
+                <div class="og-approve-head">🎬 <span id="videoCardTitle">Story video — ready when you are</span></div>
+                <p id="videoDesc" class="og-approve-desc"></p>
+                <p id="videoExp" class="og-approve-exp"></p>
+                <div class="og-approve-btns">
+                    <button id="videoYesBtn" type="button">✓ Make the video</button>
+                    <button id="videoNoBtn" type="button">✕ Scrap it</button>
+                </div>
+                <p id="videoOutcome" class="og-approve-outcome" hidden></p>
+            </div>
+
+            <!-- Input Area: one pill — + · input · mic · -->
             <div class="input-area">
                 <div id="fileChip" class="og-file-chip" hidden><span class="og-file-chip-icon">📎</span><span id="fileChipName" class="og-file-chip-name"></span><button id="fileChipRemove" class="og-file-chip-x" type="button" aria-label="Remove attached file">✕</button></div>
                 <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" hidden>
@@ -177,10 +183,7 @@
                 </div>
                 <p id="ogStatusLine" class="og-status-line" aria-live="polite">Online &amp; Ready</p>
                 <p id="tokenStatus" class="og-token-line"></p>
-                <!-- Legacy action buttons: kept in the DOM, never displayed.
-                     The slide-over menu clicks them, so Share / Clear run
-                     their exact original handlers (Clear = POST /clear,
-                     the per-visitor /reset flow, with its confirm). -->
+                <!-- Legacy action buttons: kept in the DOM, -->
                 <button class="send-btn og-legacy-btn" id="clearBtn" type="button" hidden>Clear 🗑️</button>
                 <button class="send-btn og-legacy-btn" id="shareBtn" type="button" hidden>Share 📤</button>
             </div>
@@ -189,12 +192,7 @@
     </div>
 
     <style id="og-restyle-css">
-        /* ===== OG ChatGPT-style layout (2026-10-08 restyle) =====
-           Benchmarked on Brent's ChatGPT app screenshot: circular menu
-           button + gold Go Pro pill + new-chat button up top, a slide-over
-           menu, an avatar + suggestion-rows empty state, and one pill
-           composer with a round gold action button. Presentation only —
-           every element ID and handler from the existing page is kept. */
+        /* ===== OG ChatGPT-style layout (2026-10-08 restyle) */
         .og-topbar { flex: 0 0 auto; width: 100%; max-width: 880px; margin: 0 auto; padding: 10px 14px 2px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .og-circle-btn { width: 42px; height: 42px; border-radius: 50%; background: #1b1b1b; border: 1px solid #333; color: #e8e8e8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
         .og-circle-btn svg { width: 21px; height: 21px; }
@@ -266,7 +264,7 @@
         const OG_AVATAR = 'data:image/webp;base64,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';
         document.querySelectorAll('img.og-avatar, img.og-avatar-sm').forEach(img => { img.src = OG_AVATAR; });
 
-        // OG's mood: idle sway, talking bounce, listening glow, reply nod.
+        // OG's mood: idle sway, talking bounce, listening glow,
         function setMood(state) {
             document.querySelectorAll('img.og-avatar').forEach(img => {
                 img.classList.remove('talking', 'listening', 'nod', 'thinking', 'win');
@@ -283,13 +281,13 @@
         let isProcessing = false;
         let recognition = null;
         let synthesis = window.speechSynthesis;
-        let voiceMode = 'text'; // 'text', 'voice-to-text', 'text-to-voice', 'voice-to-voice'
+        let voiceMode = 'text'; // 'text', 'voice-to-text', 'text-to-voice',
         let currentVoice = null;
         let voiceChatOn = false;   // Talk toggle: continuous conversation mode
         let speakingNow = false;   // OG is mid-reply (don't listen over him)
         let speechGen = 0;         // bumped to cancel queued speech
         let currentAudio = null;   // AI-voice <audio> element in flight
-        let aiVoiceOk = null;      // null=untried, true=AI voice works, false=use device voice
+        let aiVoiceOk = null;      // null=untried, true=AI voice works,
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -303,13 +301,11 @@
             // Set welcome message time
             document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
 
-            // Bring back this visitor's earlier conversation, if any —
-            // but only after the 18+ age gate (returning adults skip it).
+            // Bring back this visitor's earlier conversation, if any
             initAgeGate();
         });
 
-        // iOS Safari only allows speech that traces back to a tap.
-        // Speaking one silent utterance inside the tap unlocks it.
+        // iOS Safari only allows speech that traces back to a
         function primeSpeech() {
             if (!synthesis) return;
             try {
@@ -319,7 +315,7 @@
             } catch (e) { /* priming is best-effort */ }
         }
 
-        // Load the voices OG speaks with (device voices, loaded async)
+        // Load the voices OG speaks with (device voices, loaded
         function initSpeech() {
             if (!synthesis) return;
             const pick = () => {
@@ -365,12 +361,10 @@
                             updateStatus('Mic blocked — allow microphone access to talk');
                         }
                         // 'no-speech'/'aborted' fall through: onend restarts
-                        // listening while voice chat is on.
                     };
 
                     recognition.onend = () => {
-                        // Continuous conversation: when OG isn't talking
-                        // or thinking, open the mic again on its own.
+                        // Continuous conversation: when OG isn't talking or
                         if (voiceChatOn && !speakingNow && !isProcessing) {
                             setTimeout(startListening, 300);
                         }
@@ -417,8 +411,7 @@
             setMood('');
         }
 
-        // Talk button = conversation switch. One tap: OG keeps listening
-        // and talking back until the next tap turns it off.
+        // Talk button = conversation switch. One tap: OG keeps
         document.getElementById('voiceBtn').addEventListener('click', () => {
             const btn = document.getElementById('voiceBtn');
             if (!voiceChatOn) {
@@ -426,8 +419,6 @@
                 unlockAudio();
                 if (!recognition) {
                     // No speech recognition in this browser (iOS Safari):
-                    // Talk still turns ON — as voice-replies mode. OG reads
-                    // every reply out loud; you type your messages.
                     btn.classList.add('recording');
                     primeSpeech();
                     updateStatus('Voice replies ON — OG talks back out loud. (This browser can\'t hear you — type your messages.)');
@@ -446,10 +437,7 @@
             }
         });
 
-        // Send Message
-        // --- 18+ age gate: first-visit confirmation overlay; the
-        // chat does not load until confirmed (cookie, 1 year).
-        // Declining leaves the chat unloaded.
+        // Send Message --- 18+ age gate: first-visit confirmation
         function ageConfirmed() {
             return document.cookie.split('; ').some(c => c === 'ogai_age_ok=1');
         }
@@ -473,7 +461,7 @@
             });
         }
 
-        // --- Token balance (free tier) -------------------------------------
+        // --- Token balance (free tier)
         function updateTokenStatus(left) {
             const el = document.getElementById('tokenStatus');
             if (!el) return;
@@ -492,10 +480,7 @@
             ogFollowBottom(false);
         }
 
-        // Send a message: token streaming first (OG's words appear the moment
-        // he produces them), the classic one-shot request as the fallback.
-        // coords (Round 11) is an optional {lat, lon} the "near me" flow
-        // attaches for this one request only — never part of the text.
+        // Send a message: token streaming first (OG's words
         async function sendMessage(speakResponse = false, coords = null) {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -522,8 +507,7 @@
             }
         }
 
-        // The original one-shot flow — also the fallback when streaming
-        // never gets going (old browser, a proxy in the way, stream refused).
+        // The original one-shot flow — also the fallback when
         async function classicReply(message, coords = null) {
             const payload = { message: message };
             if (coords) payload.coords = coords;
@@ -538,7 +522,7 @@
             const data = await response.json();
             addMessage('ai', data.response, data.timestamp);
 
-            // Free cap hit: give them a real button, not just a raw link
+            // Free cap hit: give them a real button, not just a raw
             if (data.upgrade_url) showUpgradeCta();
             if ('free_tokens_left' in data) updateTokenStatus(data.free_tokens_left);
 
@@ -547,11 +531,7 @@
             updateStatus('Online & Ready');
         }
 
-        // Streaming flow: POST with stream:true and render OG's reply into a
-        // live bubble token-by-token as the chunks land; when the server says
-        // done, swap in the fully rendered message (code blocks, Copy button,
-        // typing reveal) exactly like a classic reply. Returns false when
-        // streaming never got going, so the caller falls back to classicReply.
+        // Streaming flow: POST with stream:true and render OG's
         async function streamReply(message, coords = null) {
             let response;
             try {
@@ -623,9 +603,7 @@
                     }
                 }
             } catch (e) {
-                // Dropped mid-stream: the server still finishes the reply and
-                // saves it to memory; finalize with whatever arrived. (No
-                // re-POST — the message was already processed server-side.)
+                // Dropped mid-stream: the server still finishes the reply
                 if (!full) { bubble.remove(); setMood(''); throw new Error('Stream dropped'); }
                 streamError = true;
             }
@@ -646,8 +624,7 @@
             return true;
         }
 
-        // Text to Speech
-        // --- Speaking: realistic AI voice when available, device voice otherwise ---
+        // Text to Speech --- Speaking: realistic AI voice when
         function cleanForSpeech(text) {
             let codeNote = false;
             let t = String(text).replace(/```[\s\S]*?```/g, () => {
@@ -661,8 +638,7 @@
                 .trim();
         }
 
-        // Merge sentences into ~420-char passages: fewer voice calls,
-        // no mid-reply dropouts, room to prefetch the next passage.
+        // Merge sentences into ~420-char passages: fewer voice
         function speechPassages(text) {
             const sentences = text.match(/[^.!?\n]+[.!?]*\s*/g) || [text];
             const out = [];
@@ -684,8 +660,6 @@
         }
 
         // OG's voice rides ONE persistent audio element, primed
-        // inside a real user tap (iOS autoplay rules); resolves
-        // true only if the sound ACTUALLY played.
         let ogAudioEl = null;
         function ogAudio() {
             if (!ogAudioEl) { ogAudioEl = new Audio(); ogAudioEl.preload = 'auto'; }
@@ -766,7 +740,7 @@
             maybeResumeListening();
         }
 
-        // Add Message to Chat (code blocks get a Copy button + typing reveal)
+        // Add Message to Chat (code blocks get a Copy button +
         function escapeCodeText(text) {
             const div = document.createElement('div');
             div.textContent = text;
@@ -791,7 +765,7 @@
             return { html: htmlOut, blockIds };
         }
 
-        // Watch-him-code: reveal the code like OG is typing it live.
+        // Watch-him-code: reveal the code like OG is typing it
         function typeCode(pre) {
             const full = decodeURIComponent(pre.dataset.code);
             const codeEl = pre.querySelector('code');
@@ -811,9 +785,6 @@
         }
 
         // --- Round 26 P0: auto-follow the newest message. Follow
-        // only while the visitor is near the bottom (~140px) or on
-        // their own send — never yank a reader who scrolled up.
-        // Every render path routes through ogFollowBottom/Soon.
         var ogFollowWanted = true;
         var ogFollowQueued = false;
         function ogNearBottom(area) {
@@ -825,7 +796,7 @@
             if (force || ogFollowWanted) area.scrollTop = area.scrollHeight;
         }
         function ogFollowSoon(force) {
-            // Streaming chunks: at most one follow per animation frame.
+            // Streaming chunks: at most one follow per animation
             if (!(force || ogFollowWanted) || ogFollowQueued) return;
             ogFollowQueued = true;
             requestAnimationFrame(function () {
@@ -906,8 +877,7 @@
             done();
         }
 
-        // Restore this visitor's own conversation — OG remembers you now,
-        // so a refresh or a return visit picks up right where you left off.
+        // Restore this visitor's own conversation — OG remembers
         async function restoreConversation() {
             try {
                 const r = await fetch(`${API_URL}/history`);
@@ -958,7 +928,7 @@
             });
         });
 
-        // Share the conversation (falls back to sharing the site itself)
+        // Share the conversation (falls back to sharing the site
         document.getElementById('shareBtn').addEventListener('click', async () => {
             let text = 'Talk to OG-AI — the realest AI in the game 🔥';
             try {
@@ -1091,10 +1061,7 @@
         };
     </script>
     <script id="og-restyle-js">
-        // ChatGPT-style chrome wiring (2026-10-08 restyle). Presentation
-        // only: menu items click the page's original (hidden) Share / Clear
-        // buttons, so their handlers — and the /reset flow behind Clear —
-        // run exactly as before.
+        // ChatGPT-style chrome wiring (2026-10-08 restyle).
         (function () {
             var $ = function (id) { return document.getElementById(id); };
             var menu = $('sideMenu'), scrim = $('menuScrim');
@@ -1112,8 +1079,7 @@
             $('menuNewBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
             $('newChatBtn').addEventListener('click', function () { delegate('clearBtn'); });
 
-            // Token meter: mirror the composer's live balance into the menu
-            // and flip the top pill to its Pro state for Pro visitors.
+            // Token meter: mirror the composer's live balance into
             var pill = $('proPill'), mirror = $('tokenStatusMenu'), ts = $('tokenStatus');
             function syncToken() {
                 if (!ts) return;
@@ -1124,21 +1090,19 @@
             if (ts && window.MutationObserver) new MutationObserver(syncToken).observe(ts, { childList: true, characterData: true, subtree: true });
             syncToken();
 
-            // Empty state: visible only while no message is in the area.
+            // Empty state: visible only while no message is in the
             var area = $('messagesArea'), empty = $('emptyState');
             function syncEmpty() { if (empty) empty.hidden = area.querySelector('.message') !== null; }
             if (area && window.MutationObserver) new MutationObserver(syncEmpty).observe(area, { childList: true });
             syncEmpty();
 
-            // Round gold button: arrow sends when there's text; with an
-            // empty box it's the voice button (toggles Talk), ChatGPT-style.
+            // Round gold button: arrow sends when there's text; with
             var input = $('messageInput'), send = $('sendBtn');
             var ICON_SEND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
             var ICON_VOICE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="7" x2="10" y2="17"/><line x1="14" y1="4" x2="14" y2="20"/><line x1="18" y1="10" x2="18" y2="14"/></svg>';
             function syncSendBtn() { if (send) send.innerHTML = input.value.trim() ? ICON_SEND : ICON_VOICE; }
             if (send && input) {
-                // Clone-replace drops the original plain-send listener so the
-                // dual send/voice behavior below is the only click behavior.
+                // Clone-replace drops the original plain-send listener so
                 var fresh = send.cloneNode(true);
                 send.replaceWith(fresh);
                 send = fresh;
@@ -1154,9 +1118,7 @@
         })();
     </script>
     <script>
-        // Round 3: Google connect wiring. The button only appears when the
-        // server says the feature is enabled (it ships dark — Brent still
-        // has to create the Google OAuth client and set the env vars).
+        // Round 3: Google connect wiring. The button only appears
         (function () {
             function $(id) { return document.getElementById(id); }
             var btn = $('menuGoogleBtn'), info = $('menuGoogleInfo'),
@@ -1180,9 +1142,7 @@
         })();
     </script>
     <script>
-        // Round 10: Spotify connect wiring. The items only appear when
-        // the server says the feature is enabled (it ships dark — Brent
-        // still has to create the Spotify app and set the env vars).
+        // Round 10: Spotify connect wiring. The items only appear
         (function () {
             function $(id) { return document.getElementById(id); }
             var btn = $('menuSpotifyBtn'), info = $('menuSpotifyInfo'),
@@ -1207,10 +1167,7 @@
         })();
     </script>
     <script>
-        // Round 20: Coinbase trading connect wiring. The items only
-        // appear when the server says the feature is enabled (it
-        // ships dark — Brent still has to register the Coinbase app
-        // and set the env vars). Connected visitors see their name.
+        // Round 20: Coinbase trading connect wiring. The items
         (function () {
             function $(id) { return document.getElementById(id); }
             var btn = $('menuCoinbaseBtn'), info = $('menuCoinbaseInfo'),
@@ -1235,10 +1192,7 @@
         })();
     </script>
     <script>
-        // Round 14: GitHub connect wiring. The items only appear when
-        // the server says the feature is enabled (it ships dark — Brent
-        // still has to register the GitHub OAuth App and set the env
-        // vars). Connected visitors see their GitHub login.
+        // Round 14: GitHub connect wiring. The items only appear
         (function () {
             function $(id) { return document.getElementById(id); }
             var btn = $('menuGithubBtn'), info = $('menuGithubInfo'),
@@ -1263,11 +1217,7 @@
         })();
     </script>
     <script>
-        // Round 15: connect pack 2 wiring (YouTube / Discord / Twitch /
-        // Reddit). Same shape as the Spotify/GitHub wiring above, one
-        // block per service: the items only appear when the server says
-        // that service is enabled (each ships dark — Brent still has to
-        // register each app and set its env vars).
+        // Round 15: connect pack 2 wiring (YouTube / Discord
         [['Youtube', 'youtube', function (s) { return s.name || s.email; }, 'YouTube'],
          ['Discord', 'discord', function (s) { return s.username || s.name; }, 'Discord'],
          ['Twitch', 'twitch', function (s) { return s.login || s.name || s.email; }, 'Twitch'],
@@ -1301,11 +1251,6 @@
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script>
         // Round 18: Plaid bank connect wiring (monitoring pack).
-        // Read-only by construction — Link runs in Plaid's own hosted
-        // flow; the page only carries the public token back to OG.
-        // The items appear only when the server says Plaid is
-        // enabled (it ships dark — Brent still has to register with
-        // Plaid and set the env vars).
         (function () {
             function $(id) { return document.getElementById(id); }
             var btn = $('menuPlaidBtn'), info = $('menuPlaidInfo'),
@@ -1355,8 +1300,6 @@
     </style>
     <script id="og-image-js">
         // Round 5: image generation — intent detection wraps
-        // sendMessage so drawing asks never reach /chat or the
-        // token meter; POST /image enforces the tier caps.
         (function () {
             var DENY = /\b(draw\s+(an?\s+)?(conclusion|attention|breath|blood)|draw\s+(near|closer)|draw\s+the\s+(curtains?|blinds?))\b/i;
             var VERB_ART = /\b(draw|paint|sketch|illustrate|render)\b/i;
@@ -1438,7 +1381,6 @@
                 img.alt = 'OG generated image: ' + (data.prompt || '');
                 img.src = data.image;
                 // The image's height lands after it loads — re-follow
-                // then, or the newest content sits below the fold.
                 img.addEventListener('load', function () { ogFollowBottom(false); });
                 textEl.appendChild(img);
                 var a = document.createElement('a');
@@ -1464,9 +1406,7 @@
         .og-file-chip-x:hover { background: rgba(255, 255, 255, .25); }
     </style>
     <script id="og-file-js">
-        // Round 6: file reading — the menu's Upload sends the pick
-        // to POST /upload (stored per-visitor); the composer chip
-        // shows the attachment, ✕ clears it via POST /file/remove.
+        // Round 6: file reading — the menu's Upload sends the
         (function () {
             function $(id) { return document.getElementById(id); }
             var chip = $('fileChip'), chipName = $('fileChipName'),
@@ -1522,7 +1462,7 @@
                 }
             });
 
-            // Restore the chip on reload — the file survives server-side.
+            // Restore the chip on reload — the file survives
             fetch(API_URL + '/file/status').then(function (r) { return r.json(); })
                 .then(function (s) { if (s && s.attached && s.file) showChip(s.file); })
                 .catch(function () { /* nothing attached or offline */ });
@@ -1530,12 +1470,7 @@
     </script>
 
     <script id="og-storage-js">
-        // Round 21: file locker (ships dark). The menu item and the
-        // chip's "Save to my locker" button only appear when
-        // /storage/status says the locker is on AND this visitor's
-        // plan has one. Saving copies the temp upload into the
-        // locker server-side (POST /storage/save-temp) and clears
-        // the temp chip — Round 6 temp behavior is untouched.
+        // Round 21: file locker (ships dark). The menu item and
         (function () {
             function $(id) { return document.getElementById(id); }
             var menuBtn = $('menuStorageBtn'), chip = $('fileChip');
@@ -1582,18 +1517,14 @@
     </script>
 
     <style id="og-tiers-css">
-        /* Round 7 tier badges: the higher the plan, the richer the pill. */
+        /* Round 7 tier badges: the higher the plan, the richer */
         .og-pro-pill.tier-standard { border-color: rgba(255,193,7,.75); background: rgba(255,193,7,.12); color: #ffc107; }
         .og-pro-pill.tier-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
         .og-pro-pill.tier-blue { border-color: #2f7bff; background: rgba(47,123,255,.14); color: #8dbcff; box-shadow: 0 0 12px rgba(47,123,255,.35); }
         .og-pro-pill.tier-blackout { border-color: #ffc107; background: linear-gradient(160deg,#000,#241a02); color: #ffc107; box-shadow: 0 0 16px rgba(255,193,7,.5); font-weight: 800; letter-spacing: .3px; }
     </style>
     <script id="og-tiers-js">
-        // Round 7: tier badge wiring. The server reports the visitor's
-        // tier on /history; this script dresses the header pill + menu
-        // to match (free = "✦ Upgrade", paid = tier badge) and relabels
-        // the generic "💎 Pro — unlimited" meter text with the real
-        // tier. Presentation only — all caps are enforced server-side.
+        // Round 7: tier badge wiring. The server reports the
         (function () {
             var BADGE = { standard: '⭐ Standard', pro: '💎 Pro', blue: '💙 Blue', blackout: '🖤 Blackout' };
             var tier = null;
@@ -1629,9 +1560,7 @@
 
 
     <style id="og-nearme-css">
-        /* Round 11: GPS "near me" — the one-time in-thread opt-in
-           prompt, the thread notice line, and the menu note under
-           the 📍 toggle. Gold trim like the rest of OG's chrome. */
+        /* Round 11: GPS "near me" — the one-time in-thread */
         .og-loc-prompt { margin: 10px auto; max-width: 92%; background: rgba(255, 193, 7, .07); border: 1px solid rgba(255, 193, 7, .45); border-radius: 14px; padding: 12px 14px; }
         .og-loc-text { line-height: 1.45; }
         .og-loc-btns { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -1643,12 +1572,7 @@
         .og-loc-menunote { font-size: .8em; color: #999; line-height: 1.45; margin: 0; padding: 2px 12px 8px 44px; }
     </style>
     <script id="og-nearme-js">
-        // Round 11: GPS "near me". A place ask with no named place
-        // goes to the server without coordinates first; this block
-        // then offers a one-time opt-in and resends with ONE
-        // geolocation fix as a separate /chat field (never in the
-        // message text, never stored/logged; the menu toggle
-        // remembers only the preference).
+        // Round 11: GPS "near me". A place ask with no named
         (function () {
             var PREF_KEY = 'ogai_loc_nearme';
             var NEARME = /\b(near\s+(me|here)|around\s+(me|here)|from\s+here|my\s+location|closest\s+to\s+me|nearest\s+to\s+me)\b/i;
@@ -1669,7 +1593,6 @@
             refreshLocMenu();
 
             // One fresh fix. Resolves {coords:{lat,lon}} or
-            // {error:'denied'|'unsupported'|'unavailable'} — never rejects.
             function getPositionOnce() {
                 return new Promise(function (resolve) {
                     if (!('geolocation' in navigator) || !navigator.geolocation) {
@@ -1711,8 +1634,7 @@
                 ogFollowBottom(false);
             }
 
-            // The one-time prompt, rendered in the thread right
-            // after OG's clarifying reply to a near-me ask.
+            // The one-time prompt, rendered in the thread right after
             function offerLocationPrompt(message) {
                 var area = document.getElementById('messagesArea');
                 if (!area) return;
@@ -1738,9 +1660,7 @@
                     wrap.remove();
                     if (!pos.coords) { threadNote(locErrorLine(pos.error)); return; }
                     if (isProcessing) return;
-                    // Resend the SAME message with the fix attached —
-                    // OG's reply renders fresh; the visitor's bubble
-                    // is not duplicated.
+                    // Resend the SAME message with the fix attached — OG's
                     isProcessing = true;
                     updateStatus('AI is thinking...');
                     try {
@@ -1763,8 +1683,7 @@
                     return prevSend.apply(this, arguments);
                 }
                 if (prefOn()) {
-                    // Preference on: fresh fix up front, ride it on
-                    // this one request, skip the prompt entirely.
+                    // Preference on: fresh fix up front, ride it on this one
                     updateStatus('📍 Getting your location…');
                     var pos = await getPositionOnce();
                     if (pos.coords) {
@@ -1776,8 +1695,7 @@
                     threadNote(locErrorLine(pos.error));
                     return r;
                 }
-                // Preference off: plain send first (the server asks
-                // its clarifying question), then the one-time offer.
+                // Preference off: plain send first (the server asks its
                 var r2 = await prevSend.apply(this, arguments);
                 offerLocationPrompt(msg);
                 return r2;
@@ -1785,14 +1703,7 @@
         })();
     </script>
     <style id="og-browser-css">
-    /* OG browser panel. Round 27 CRUSH FIX: as a flex item
-       with overflow:hidden and no flex sizing, the panel's
-       automatic minimum size was 0 and the viewport-pinned
-       column crushed it on phones (buttons clipped, iframe
-       squeezed away). flex:0 0 auto = unshrinkable; the view
-       wrap's aspect-ratio (session surface is 16/10) + a
-       min-height floor give the iframe a box that cannot
-       collapse. */
+    /* OG browser panel. Round 27 CRUSH FIX: as a flex item */
     .og-browser-panel { flex: 0 0 auto; margin: 0 12px 8px; border: 1px solid rgba(255,193,7,.45); border-radius: 14px; overflow: hidden; background: #101010; }
     .og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
     .og-browser-meta { color: #bbb; font-size: .8rem; }
@@ -1818,6 +1729,11 @@
     .og-approve-btns button { border-radius: 999px; padding: 8px 18px; font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit; }
     #approveYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
     #approveNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+    #videoYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+    #videoNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+    .og-video-done video { width: 100%; border-radius: 12px; background: #000; display: block; margin-top: 8px; }
+    .og-video-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .og-video-actions a, .og-video-actions button { border-radius: 999px; padding: 7px 14px; font-size: .85rem; font-weight: 700; cursor: pointer; font-family: inherit; text-decoration: none; border: 1px solid #ffc107; background: rgba(255,193,7,.12); color: #ffc107; }
     .og-approve-btns button:disabled { opacity: .5; cursor: default; }
     .og-approve-outcome { margin: 10px 0 0; font-size: .85rem; color: #d8d8d8; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
     @media (max-width: 768px) {
@@ -1825,23 +1741,13 @@
     }
 </style>
     <style id="og-autoscroll-css">
-        /* Round 26 P0: pin the shell to the viewport height so
-           #messagesArea's overflow-y:auto actually engages (with
-           only min-height:100dvh the column grew and the document
-           scrolled instead, and every scrollTop follow was a
-           no-op). */
+        /* Round 26 P0: pin the shell to the viewport height so */
         html, body { height: 100%; }
         body { height: 100dvh; overflow: hidden; }
         #messagesArea { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
     </style>
     <script id="og-browser-js">
     // OG browser panel (ships dark): menu item + panel follow
-    // /browser/status; viewer URL fresh per poll, never stored.
-    // Round 27: ⛶ Full view (new tab), 🖼 Still view (server
-    // stills, 5s refresh, auto-engages if the player document
-    // hasn't loaded ~9s after src set); the approval card
-    // renders this visitor's parked commit action from the
-    // same poll — first resolution (card or chat) wins.
     (function () {
         function $(id) { return document.getElementById(id); }
         var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
@@ -1940,9 +1846,7 @@
                 renderPending(st.pending_action || null);
                 if (!active) { panel.hidden = true; wasActive = false; if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
                 panel.hidden = false;
-                // Round 26: a session that starts from chat must be
-                // SEEN — scroll the panel into view once, on the
-                // inactive->active edge only (not every poll).
+                // Round 26: a session that starts from chat must be SEEN
                 if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
                 wasActive = true;
                 var driving = st.control === 'visitor';
@@ -1970,5 +1874,90 @@
         setInterval(refresh, 8000);
     })();
 </script>
+    <script id="og-video-js">
+    // OG story videos (Round 28): /video/status drives the
+    (function () {
+        function $(id) { return document.getElementById(id); }
+        var card = $('videoCard'), desc = $('videoDesc'), exp = $('videoExp'),
+            yesBtn = $('videoYesBtn'), noBtn = $('videoNoBtn'), out = $('videoOutcome');
+        var lastStageKey = '', doneShown = {}, outcomeUntil = 0;
+        function sayAi(t) { if (t && typeof addMessage === 'function') addMessage('ai', t); }
+        function fmtDur(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+        function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB'; }
+        function decide(path) {
+            if (yesBtn) yesBtn.disabled = true;
+            if (noBtn) noBtn.disabled = true;
+            fetch(API_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!out) return;
+                    out.hidden = false;
+                    out.textContent = res && res.ok ? '🎬 Locked in — it\'s cooking. It lands right here in the thread when it\'s done.' : '⚠️ ' + ((res && res.error) || 'That didn\'t go through.');
+                    outcomeUntil = Date.now() + 20000;
+                    refresh();
+                })
+                .catch(function () { if (out) { out.hidden = false; out.textContent = '⚠️ Connection hiccup — if the card comes back, the story is still parked.'; } });
+        }
+        if (yesBtn) yesBtn.addEventListener('click', function () { decide('/video/approve'); });
+        if (noBtn) noBtn.addEventListener('click', function () { decide('/video/decline'); });
+        function renderPending(p) {
+            if (!card) return;
+            if (Date.now() < outcomeUntil) return;
+            if (!p) { card.hidden = true; return; }
+            card.hidden = false;
+            if (yesBtn) yesBtn.disabled = false;
+            if (noBtn) noBtn.disabled = false;
+            if (out) out.hidden = true;
+            if (p.stage === 'await_approval') {
+                desc.textContent = '"' + (p.title || 'Untitled') + '" — ' + p.scenes + ' scenes, about ' + p.est_min + ' min of video: a picture per scene, OG narrating, download right here. Nothing renders unless you approve.';
+                exp.textContent = '⏳ Parked for ~' + Math.max(1, Math.ceil((p.expires_in_s || 0) / 60)) + ' min. You can also just say YES or NO in chat — first answer counts.';
+            } else {
+                desc.textContent = 'The story is being written — this card fills in with the title and scene count the moment it lands.';
+                exp.textContent = '';
+            }
+        }
+        function showDone(job, lockerOk) {
+            var area = document.getElementById('messagesArea');
+            if (!area) { sayAi('🎬 "' + job.title + '" is done — grab it here: ' + API_URL + job.video_url); return; }
+            var div = document.createElement('div');
+            div.className = 'message ai';
+            var url = API_URL + job.video_url;
+            div.innerHTML = '<div class="message-content og-video-done"><div class="message-text">🎬 <b></b> is done — ' + fmtDur(job.duration) + ' · ' + fmtSize(job.size) + '</div><video controls preload="metadata" src="' + url + '"></video><div class="og-video-actions"><a href="' + url + '" download>⬇ Download</a>' + (lockerOk && !job.saved ? '<button type="button" class="og-video-save">🗄 Save to my locker</button>' : '') + '<span class="og-video-save-note"></span></div></div>';
+            div.querySelector('b').textContent = '"' + (job.title || 'Your story') + '"';
+            area.appendChild(div);
+            if (typeof ogFollowBottom === 'function') ogFollowBottom(false);
+            var btn = div.querySelector('.og-video-save'), note = div.querySelector('.og-video-save-note');
+            if (btn) btn.addEventListener('click', function () {
+                btn.disabled = true;
+                fetch(API_URL + '/video/save/' + job.id, { method: 'POST' }).then(function (r) { return r.json(); })
+                    .then(function (res) { note.textContent = res && res.ok ? ' ✓ Locked in your locker for good.' : ' ' + ((res && res.error) || 'Locker said no.'); if (!(res && res.ok)) btn.disabled = false; })
+                    .catch(function () { note.textContent = ' Locker hiccup — try again.'; btn.disabled = false; });
+            });
+        }
+        function renderJob(job, lockerOk) {
+            if (!job) return;
+            if (job.state === 'done') {
+                if (!doneShown[job.id]) { doneShown[job.id] = true; showDone(job, lockerOk); }
+                return;
+            }
+            var key = job.id + '|' + job.state;
+            if (key === lastStageKey) return;
+            lastStageKey = key;
+            if (job.state === 'failed') sayAi('🎬 ' + (job.detail || 'That render didn\'t make it — nothing was charged. Ask again and I\'ll recook it.'));
+            else if (job.state === 'stitching') sayAi('🎬 Stitching "' + (job.title || 'your story') + '" together…');
+            else if (job.state === 'drawing') sayAi('🎬 Drawing the pictures for "' + (job.title || 'your story') + '" — one per scene…');
+            else if (job.state === 'voicing') sayAi('🎬 Pictures done — now voicing it, scene by scene…');
+        }
+        function refresh() {
+            fetch(API_URL + '/video/status').then(function (r) { return r.json(); }).then(function (st) {
+                if (!st || !st.enabled) { if (card) card.hidden = true; return; }
+                renderPending(st.pending || null);
+                renderJob(st.job || null, !!st.locker_ok);
+            }).catch(function () {});
+        }
+        refresh();
+        setInterval(refresh, 6000);
+    })();
+    </script>
 </body>
 </html>
