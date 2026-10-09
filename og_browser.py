@@ -25,12 +25,22 @@ SAFETY RULES THIS MODULE IS BUILT AROUND (plan section 6.2):
    goes into the narration as data. Nothing on a page can steer the
    driver; the action vocabulary is fixed (navigate / read / click /
    type / enter / scroll / back) and comes only from the visitor.
-3. SESSION-ONLY. A session's cookies, logins, and history die when
-   the session is released. Nothing about a session is persisted:
-   the live-view URL is fetched fresh from Steel per status call
-   and never stored; input VALUES are never read into a snapshot
-   (labels/placeholders only; password fields are invisible to the
-   driver). Phase B4 (persistent logins) is OUT of scope here.
+3. PERSISTENT LOGINS BY DEFAULT (Round 29, phase B4 -- Brent's
+   rule). Every session runs on the visitor's own Steel PROFILE
+   (persistProfile): when the visitor logs into a site themselves
+   (Take control -- OG never sees, types, or stores a password),
+   Steel keeps that log-in in the profile and later sessions open
+   already logged in. OG's server stores only the Steel profile
+   id (held by og_watch's vault) -- never a password, never the
+   profile contents. A saved log-in ends when the visitor says
+   forget/log out, the site expires it, or it sits unused ~30
+   days. Closing the browser is NOT logging out: sessions are
+   still released in full when they end; the profile is what
+   survives, by the visitor's standing rule. The live-view URL is
+   fetched fresh from Steel per status call and never stored;
+   input VALUES are never read into a snapshot
+   (labels/placeholders only; password fields are invisible to
+   the driver).
 4. ALLOWLIST + HARD BLOCKLIST. Only http(s) pages on the starter
    allowlist (mainstream public sites — search, news, social,
    video, shopping, sports; env OG_BROWSER_ALLOWLIST extends it)
@@ -465,11 +475,19 @@ def _steel_api(method: str, path: str, body: Optional[Dict] = None,
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _steel_create_session(budget_minutes: int) -> Dict:
+def _steel_create_session(budget_minutes: int,
+                          profile_id: Optional[str] = None,
+                          persist: bool = False) -> Dict:
     """Create a Steel session hard-capped at the budget: Steel's
     timeout (ms) is set at creation and cannot be extended live.
-    Proxy OFF and captcha-solving OFF per the plan; OG itself stores
-    nothing about the session (the viewer URL is fetched fresh)."""
+    Proxy OFF and captcha-solving OFF per the plan.
+
+    Round 29 (B4 vault): with persist=True the session runs on the
+    visitor's Steel profile — created fresh (Steel returns its
+    profileId on the session) or loaded from profile_id — and
+    Steel snapshots the profile's user-data directory when the
+    session is released, so log-ins the visitor typed themselves
+    survive into later sessions. OG stores only the profile id."""
     body = {
         "timeout": int(budget_minutes) * 60 * 1000,
         "useProxy": False,
@@ -477,10 +495,55 @@ def _steel_create_session(budget_minutes: int) -> Dict:
         "blockAds": True,
         "dimensions": {"width": 1280, "height": 800},
     }
+    if profile_id:
+        body["profileId"] = profile_id
+    if persist or profile_id:
+        body["persistProfile"] = True
     sess = _steel_api("POST", "/sessions", body)
     if not sess.get("id") or not sess.get("websocketUrl"):
         raise _SteelError("Steel did not return a usable session")
     return sess
+
+
+# --- Round 29: vault profile hooks (registered by og_watch) ------------------
+# og_browser owns the Steel seams; og_watch owns the vault store.
+# The hooks keep the dependency one-way: this module never imports
+# og_watch. get(uid) -> profile_id|None; note(uid, profile_id) --
+# a session created with persist reported its profile id;
+# gone(uid) -- Steel refused the stored profile id (expired /
+# auto-deleted), the vault drops it and tells the visitor once;
+# site(uid, host) -- a log-in wall cleared for host during a
+# session: the vault records the kept log-in; summary(uid) -> the
+# plain-words vault line for the session-end narration.
+
+_profile_hooks: Dict = {}
+
+
+def register_profile_hooks(get=None, note=None, gone=None,
+                           site=None, summary=None) -> None:
+    if get is not None:
+        _profile_hooks["get"] = get
+    if note is not None:
+        _profile_hooks["note"] = note
+    if gone is not None:
+        _profile_hooks["gone"] = gone
+    if site is not None:
+        _profile_hooks["site"] = site
+    if summary is not None:
+        _profile_hooks["summary"] = summary
+
+
+def _hook(name: str):
+    return _profile_hooks.get(name)
+
+
+def _norm_host(host: str) -> str:
+    h = str(host or "").strip().lower()
+    for pre in ("www.", "m.", "mobile."):
+        if h.startswith(pre):
+            h = h[len(pre):]
+            break
+    return h
 
 
 def _steel_get_session(steel_id: str) -> Optional[Dict]:
@@ -1024,9 +1087,13 @@ def _narrate_snapshot(uid: str, snap: Dict, lead: str) -> List[Dict]:
             "in the panel under the chat and log in THEMSELVES — "
             "OG never sees, types, or stores your password, not "
             "once, ever. Then they say 'hand back' and OG works "
-            "inside the account. The log-in lasts only while this "
-            "session lives — it dies the second the session ends "
-            "and nothing is saved. The visitor HAS an account: "
+            "inside the account. Once they're in, the log-in is "
+            "KEPT — saved in their browser profile — so they do "
+            "NOT have to sign in again next time: it stays until "
+            "they say 'forget my logins' or log out of that site, "
+            "the site itself expires it, or it sits unused about "
+            "30 days. Closing the browser does NOT log them out. "
+            "The visitor HAS an account: "
             "NEVER suggest signing up or creating a new account, "
             "and never click a create-account or sign-up link for "
             "them. Say exactly that; never claim the browser "
@@ -1066,6 +1133,31 @@ def _update_rec_from_snap(uid: str, rec: Dict, snap: Dict) -> None:
     rec["last_action"] = time.time()
     rec["last_url"] = snap.get("url", "")
     rec["last_title"] = snap.get("title", "")
+    # Round 29: track log-in walls per host; when a wall that was
+    # up for a host is gone on a later read, the visitor got in —
+    # the vault records the kept log-in (og_watch's hook), which is
+    # also what lists it under "what am I logged into?".
+    try:
+        walls = list(rec.get("walls") or [])
+        wall = _login_wall(snap)
+        if wall:
+            h = _norm_host(wall)
+            if h and h not in walls:
+                walls.append(h)
+        else:
+            host = _norm_host(urllib.parse.urlparse(
+                snap.get("url") or "").hostname or "")
+            if host and host in walls:
+                walls.remove(host)
+                site_hook = _hook("site")
+                if site_hook is not None:
+                    try:
+                        site_hook(uid, host)
+                    except Exception:
+                        pass
+        rec["walls"] = walls[-8:]
+    except Exception:
+        pass
     if rec.get("mode") == "taste" and not rec.get("taste_counted"):
         landed = str(snap.get("url") or "")
         if landed and not landed.startswith(
@@ -1586,21 +1678,60 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
                        "deciding: no browser minutes left and the free "
                        "taste is spent. Nothing started, nothing used.")
     budget = int(plan["budget"])
+    # Round 29: run on the visitor's vault profile (Brent's rule —
+    # log-ins persist by default). Persistence engages only when
+    # og_watch has registered its vault hooks; with no vault
+    # module loaded, sessions behave exactly as before. If Steel
+    # refuses the stored profile id (expired / auto-deleted after
+    # ~30 days unused), the vault drops it, tells the visitor
+    # once, and this session starts a fresh profile instead of
+    # failing.
+    pid = None
+    get_hook = _hook("get")
+    if get_hook is not None:
+        try:
+            pid = get_hook(uid) or None
+        except Exception:
+            pid = None
+    sess = None
     try:
-        sess = _steel_create_session(budget)
+        sess = _steel_create_session(
+            budget, profile_id=pid, persist=get_hook is not None)
     except _SteelError as e:
-        logger.warning(f"Steel session create failed: {e}")
+        if pid:
+            logger.warning(f"Steel refused stored profile: {e}")
+            gone_hook = _hook("gone")
+            if gone_hook is not None:
+                try:
+                    gone_hook(uid)
+                except Exception:
+                    pass
+            try:
+                sess = _steel_create_session(budget, persist=True)
+            except _SteelError:
+                sess = None
+    if sess is None:
         return _result("OG BROWSER", "OG browser — could not start",
                        "The browser service didn't hand me a session "
                        "just now — nothing started and nothing was "
                        "used (your minutes/taste are untouched). Try "
                        "again in a bit.")
+    new_pid = str(sess.get("profileId") or "")
+    if new_pid:
+        note_hook = _hook("note")
+        if note_hook is not None:
+            try:
+                note_hook(uid, new_pid)
+            except Exception:
+                pass
     rec = {"steel_id": sess["id"], "ws": sess["websocketUrl"],
            "started": time.time(), "last_action": time.time(),
            "budget": budget, "mode": plan["mode"], "control": "og",
            "goal": pend.get("goal", ""), "focus": None,
            "last_url": "", "last_title": "", "taste_counted": False,
-           "post_intent": None}
+           "post_intent": None,
+           "profile_id": new_pid or pid or "",
+           "walls": []}
     post = pend.get("post") or {}
     if post:
         host = ""
@@ -1750,10 +1881,18 @@ def _do_end(uid: str) -> List[Dict]:
                  "one-time thing." if rec.get("mode") == "taste"
                  else f"That run metered {used} minute(s) against "
                       "today's plan minutes.")
+    vault_line = ("Your log-ins are NOT saved — the browser keeps "
+                  "nothing between sessions.")
+    sum_hook = _hook("summary")
+    if sum_hook is not None:
+        try:
+            vault_line = str(sum_hook(uid) or vault_line)
+        except Exception:
+            pass
     return _result("OG BROWSER", "OG browser — session ended",
-                   f"Session ended. {mode_line} Everything about that "
-                   "session — cookies, logins, history — died with "
-                   "it; nothing was saved.")
+                   f"Session ended. {mode_line} The browser itself "
+                   f"is fully closed — nothing is left running. "
+                   f"{vault_line}")
 
 
 def _do_control(uid: str, mode: str) -> List[Dict]:
