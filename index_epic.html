@@ -1540,7 +1540,8 @@ return r2;
 .og-browser-btns { margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap; flex: 0 0 auto; }
 .og-browser-btns button, .og-browser-btns a { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; font-family: inherit; white-space: nowrap; flex: 0 0 auto; }
 #browserCloseBtn { font-weight: 700; }
-@media (max-width: 560px) { #browserFullBtn .og-btn-label, #browserStillBtn .og-btn-label { display: none; } .og-browser-bar { gap: 6px; padding: 8px; } .og-browser-btns { gap: 4px; } .og-browser-btns button, .og-browser-btns a { padding: 5px 9px; } }
+.og-browser-btns [hidden] { display: none !important; }
+@media (max-width: 560px) { #browserFullBtn .og-btn-label, #browserStillBtn .og-btn-label { display: none; } .og-browser-bar { gap: 6px; padding: 6px 8px; flex-wrap: wrap; } .og-browser-btns { gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; } .og-browser-btns button, .og-browser-btns a { padding: 4px 8px; font-size: .75rem; } }
 .og-browser-btns button:hover, .og-browser-btns a:hover { background: rgba(255,193,7,.18); }
 .og-browser-btns button:disabled { opacity: .45; cursor: default; }
 .og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 260px; background: #000; }
@@ -1549,7 +1550,10 @@ return r2;
 .og-browser-note { margin: 0; padding: 6px 12px; color: #e8c95a; font-size: .8rem; background: rgba(255,193,7,.06); }
 @media (max-width: 768px) {
 .og-browser-panel { margin: 0 8px 8px; }
-.og-browser-view { min-height: 230px; }
+.og-browser-view { aspect-ratio: 16 / 8; min-height: 150px; max-height: 40vh; }
+}
+@media (max-width: 560px) {
+.og-browser-panel { margin: 0 14px 8px; }
 }
 .og-approve-card { flex: 0 0 auto; margin: 0 12px 8px; border: 2px solid #ffc107; border-radius: 14px; background: linear-gradient(180deg, #1d1703, #121212); padding: 12px 14px; color: #f2f2f2; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
 .og-approve-head { font-weight: 700; color: #ffc107; font-size: .95rem; }
