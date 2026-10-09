@@ -103,6 +103,9 @@
     <div class="chat-wrapper">
         <div class="chat-container">
             
+            <div id="ogTopAvatarBar" class="og-top-avatar-bar">
+                <span class="og-top-ava"><img class="og-avatar og-top-avatar-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogTopAvatarVideo" muted loop playsinline preload="none" hidden></video></span>
+            </div>
             <div id="emptyState" class="og-empty" hidden>
                 <span class="og-ava-wrap"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
                 <h2 class="og-empty-name">OG-AI <span class="age-badge">18+</span></h2>
@@ -1573,7 +1576,13 @@ return r2;
 .og-approve-outcome { margin: 10px 0 0; font-size: .85rem; color: #d8d8d8; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
 @media (max-width: 768px) {
 .og-approve-card { margin: 0 8px 8px; }
-}</style>
+}
+.og-browser-panel.og-panel-full { position: fixed; inset: 0; width: 100dvw; height: 100dvh; min-width: 0; max-width: none; margin: 0; border: 0; border-radius: 0; z-index: 9000; display: flex; flex-direction: column; background: #0b0b0b; }
+.og-browser-panel.og-panel-full .og-browser-actions { order: -1; flex: 0 0 auto; padding: 6px 8px; background: #101010; border-bottom: 1px solid rgba(255,193,7,.35); }
+.og-browser-panel.og-panel-full .og-browser-view { flex: 1 1 auto; min-height: 0; aspect-ratio: auto; max-height: none; }
+.og-browser-panel.og-panel-full .og-browser-note { flex: 0 0 auto; }
+.og-browser-panel.og-panel-full .og-browser-x { display: none; }
+.og-browser-panel.og-panel-full #browserTakeBtn { display: none !important; }</style>
     <style id="og-autoscroll-css">html, body { height: 100%; }
 body { height: 100dvh; overflow: hidden; }
 #messagesArea { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }</style>
@@ -1595,6 +1604,7 @@ var driving = false, viewerUrl = '';
 var expanded = false, dismissedFor = null, lastKey = '', sessionKey = '';
 var viewMode = 'live', frameLoaded = false, srcSetAt = 0,
 shotTimer = null, outcomeUntil = 0;
+var fullScreen = false, fsConfirmed = false;
 function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
 function post(path, mode) {
 var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode: mode } : {}) };
@@ -1606,6 +1616,7 @@ if (frame.src && frame.src !== 'about:blank') { frameLoaded = true; viewLive(tru
 function viewLive(on) { if (viewEl) viewEl.classList.toggle('og-view-live', !!on); }
 function renderPanel() {
 panel.classList.toggle('og-panel-open', expanded);
+panel.classList.toggle('og-panel-full', fullScreen);
 if (openBtn) openBtn.hidden = expanded;
 if (actions) actions.hidden = !expanded;
 if (takeBtn) takeBtn.hidden = driving;
@@ -1678,12 +1689,14 @@ cardExp.textContent = '⏳ Expires in ~' + pa.minutes_left + ' min. You can also
 }
 function refresh() {
 fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
-if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; dismissedFor = null; renderPanel(); if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
 menuBtn.hidden = false;
 active = !!st.active;
 renderPending(st.pending_action || null);
-if (!active) { panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; dismissedFor = null; renderPanel(); if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
+if (!active) { panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
 driving = st.control === 'visitor';
+if (driving) fsConfirmed = true;
+else if (fullScreen && fsConfirmed) { fullScreen = false; fsConfirmed = false; }
 sessionKey = st.viewer_url || '';
 if (sessionKey && sessionKey !== lastKey) { lastKey = sessionKey; if (sessionKey !== dismissedFor) expanded = false; }
 renderPanel();
@@ -1703,9 +1716,9 @@ else if (viewMode === 'live' && !frameLoaded && srcSetAt && Date.now() - srcSetA
 }).catch(function () {});
 }
 if (openBtn) openBtn.addEventListener('click', function () { expanded = true; renderPanel(); });
-if (takeBtn) takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
-if (handBtn) handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
-function endSession() { post('/browser/end'); panel.hidden = true; expanded = false; dismissedFor = null; sayAi('⏹ Browser session ended from the panel.'); }
+if (takeBtn) takeBtn.addEventListener('click', function () { fullScreen = true; fsConfirmed = false; renderPanel(); post('/browser/control', 'visitor'); });
+if (handBtn) handBtn.addEventListener('click', function () { fullScreen = false; fsConfirmed = false; renderPanel(); post('/browser/control', 'og'); });
+function endSession() { post('/browser/end'); panel.hidden = true; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; sayAi('⏹ Browser session ended from the panel.'); }
 if (endTaskBtn) endTaskBtn.addEventListener('click', endSession);
 if (closeBtn) closeBtn.addEventListener('click', function () {
 if (expanded) { expanded = false; renderPanel(); }
@@ -1988,13 +2001,20 @@ obs.observe(area, { childList: true, subtree: true });
 setTimeout(function () { obs.disconnect(); }, 20000);
 }).catch(function () {});
 })();</script>
+    <style id="og-topavatar-css">.og-top-avatar-bar { flex: 0 0 auto; display: flex; align-items: center; padding: 8px 12px 4px; }
+.og-top-ava { position: relative; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; border: 2px solid #ffc107; box-shadow: 0 0 10px rgba(255,193,7,.35); flex: 0 0 auto; line-height: 0; background: #111; }
+.og-top-ava img.og-avatar { width: 100%; height: 100%; border: 0; box-shadow: none; border-radius: 50%; object-fit: cover; display: block; }
+.og-top-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) { .og-top-ava video { display: none !important; } }</style>
     <script id="og-avatar-js">(function () {
 var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 var vids = [];
 var big = document.getElementById('ogAvatarVideo');
 var small = document.querySelector('.og-menu-ava video');
+var topVid = document.getElementById('ogTopAvatarVideo');
 if (big) vids.push(big);
 if (small) vids.push(small);
+if (topVid) vids.push(topVid);
 var SRC = { idle: '/avatar/idle.mp4', working: '/avatar/working.mp4', making: '/avatar/hood.mp4', milestone: '/avatar/drinking.mp4', connecting: '/avatar/idle.mp4' };
 var dead = false, cur = '', holdTimer = null;
 function showStills(show) {
