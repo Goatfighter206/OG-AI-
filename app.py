@@ -313,6 +313,7 @@ import og_browser as _og_browser
 import og_register as _og_register
 # Story videos (Round 28): og_video.py
 import og_video as _og_video
+import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
 
@@ -530,7 +531,7 @@ def _og_web_search(agent_instance, query: str, num_results: int = 5):
     if uid and not _consume_lookup(uid):
         logger.info("Web lookup skipped: visitor at daily lookup cap")
         return []
-    # Round 4: structured live data (weather, scores, quotes, headlines) gets first crack; a miss falls through to the web lookup routes below.
+    # Round 4: structured live data gets first crack.
     data_results = _og_data_tools(query)
     if data_results:
         return data_results[: max(1, num_results)]
@@ -952,9 +953,7 @@ def _tool_sports(query: str):
                      f"{sport}/{league}/teams/{team['id']}/schedule")
         events = _espn_events(sched_url, f"sched:{lk}:{team['id']}")
         if not events:
-            # The default schedule only covers the current phase (e.g.
-            # MLB's postseason) — a team that's done for the year shows
-            # zero games there, so retry the regular-season phase.
+            # Default schedule = current phase only; retry regular season.
             events = _espn_events(sched_url + "?seasontype=2",
                                   f"sched:{lk}:{team['id']}:reg")
         if not events:
@@ -1710,7 +1709,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware. Production: set ALLOWED_ORIGINS to specific origins, e.g. '["https://yourdomain.com"]'
+# CORS middleware. Production: set ALLOWED_ORIGINS to specific origins.
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
 if allowed_origins_env:
     try:
@@ -1739,7 +1738,7 @@ if not os.path.exists("static"):
     os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Global agent instance — object shared, history per-visitor: /chat swaps in each visitor's persisted thread under _memory_lock per request.
+# Global agent instance — history swapped in per-visitor under _memory_lock.
 agent = None
 
 def get_agent() -> AIAgent:
@@ -1817,6 +1816,8 @@ class ChatRequest(BaseModel):
     stream: bool = False
     # Round 11: "near me" coords for one answer (og_maps; unstored).
     coords: Optional[Dict[str, float]] = None
+    # Composer patch: sent WITH a fresh picture attached ("+" flow).
+    image: Optional[bool] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -1937,7 +1938,7 @@ async def health_check():
         "message": "Service is running"
     }
 
-# --- Streaming chat: /chat {"stream": true} = SSE: one `event: chunk` per token, final `event: done` (= classic JSON), `event: error` on failure.
+# --- Streaming chat: /chat {"stream": true} = SSE chunks + done.
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
@@ -2093,13 +2094,14 @@ def _generate_reply_streaming(agent_instance, message: str,
 
 def _stream_chat_worker(agent_instance, uid: str, message: str,
                         speak_response: bool, sink, meter: bool = True,
-                        tier: str = "free", coords=None):
+                        tier: str = "free", coords=None, image=None):
     """Streaming /chat worker: mirrors classic /chat bookkeeping — the visitor's thread is swapped into the shared agent under the memory lock and saved back in a finally block."""
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
     _og_maps.note_request_coords(coords, uid)
+    _og_files.note_attach_image(uid if image else None)
     try:
         has_learning = hasattr(agent_instance, 'learning_system') \
             and agent_instance.learning_system is not None
@@ -2160,6 +2162,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         _current_uid["uid"] = ""
         _current_tier["tier"] = "free"
         _og_maps.note_request_coords(None, None)
+        _og_files.note_attach_image(None)
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -2199,7 +2202,8 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
         target=_stream_chat_worker,
         args=(agent_instance, uid, request.message.strip(),
               request.speak_response, sink),
-        kwargs={"meter": meter, "tier": tier, "coords": request.coords},
+        kwargs={"meter": meter, "tier": tier, "coords": request.coords,
+                "image": request.image},
         daemon=True,
     )
     worker.start()
@@ -2235,7 +2239,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
-    # Freemium gate (Round 7): paid tiers skip the token cap; a webhook-confirmed buyer counts before their cookie lands and gets the tier cookie on this response.
+    # Freemium gate (Round 7): paid tiers skip the token cap.
     tier = _tier_of(raw_request.cookies, uid)
     is_pro = tier != "free"
     entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
@@ -2281,6 +2285,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
     _og_maps.note_request_coords(request.coords, uid)
+    _og_files.note_attach_image(uid if request.image else None)
     try:
         # Check if agent has voice/learning capabilities
         has_voice = hasattr(agent_instance, 'voice') and agent_instance.voice is not None
@@ -2337,6 +2342,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         _current_uid["uid"] = ""
         _current_tier["tier"] = "free"
         _og_maps.note_request_coords(None, None)
+        _og_files.note_attach_image(None)
         try:
             _save_visitor_history_locked(
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -2561,6 +2567,7 @@ _og_video.bind_app({"load_usage": _load_usage_store,
     "get_api_key": lambda: os.getenv("OPENAI_API_KEY"),
     "load_history": _load_visitor_history_locked})
 _og_video.register_video_routes(app)
+_og_avatar.register_avatar_routes(app)
 _og_legal.register_legal_routes(app)
 
 @app.post("/stripe/webhook")
