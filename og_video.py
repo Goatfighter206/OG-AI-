@@ -92,6 +92,7 @@ _WPM = 150.0                    # narration pace for estimates
 _TTS_MODEL = "tts-1"
 _TTS_VOICE = "onyx"             # the same voice as /tts
 _FPS = 24
+_SEG_FPS = 12   # segment render rate (28.2 — see _render_segment)
 
 # Bound by app.py via bind_app (usage store, tier resolution,
 # the OpenAI key, and the visitor-history reader).
@@ -1115,7 +1116,13 @@ def _render_segment(img: str, wav: str, dur: float, out: str,
     the live instance throttles hard under sustained CPU (a
     veryfast render of a ~3-min video stitched for over an
     hour in the first live proof) — for a narrated slideshow
-    the speed matters more than the last compression gains."""
+    the speed matters more than the last compression gains.
+    Segments render at 12 fps (28.2): a slow zoom moves a
+    fiftieth of a percent per frame at 24 fps, so halving the
+    frame rate is invisible in the product and halves the
+    per-frame filter + encode work — the zoompan source is
+    also sized 1152 (just over the 1080 window) instead of
+    1296. The delivered file stays 1920x1080."""
     job_dir = os.path.dirname(out)
     bg = os.path.join(job_dir, "bg-" + os.path.basename(out) + ".png")
     _run_ffmpeg(["-i", img, "-vf",
@@ -1123,11 +1130,11 @@ def _render_segment(img: str, wav: str, dur: float, out: str,
                  "increase,crop=1920:1080,gblur=sigma=26,"
                  "eq=brightness=-0.18",
                  "-frames:v", "1", bg], timeout=300)
-    frames = max(2, int(round(dur * _FPS)))
+    frames = max(2, int(round(dur * _SEG_FPS)))
     graph = (
-        f"[1:v]scale=1296:1296,"
+        f"[1:v]scale=1152:1152,"
         f"zoompan=z='1+0.08*on/{frames}':x='iw/2-(iw/zoom/2)':"
-        f"y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1080:fps={_FPS}[fg];"
+        f"y='ih/2-(ih/zoom/2)':d={frames}:s=1080x1080:fps={_SEG_FPS}[fg];"
         f"[0:v][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]")
     maps = ["[v]"]
     if title and _ffmpeg_has_drawtext() and _find_font():
@@ -1141,7 +1148,7 @@ def _render_segment(img: str, wav: str, dur: float, out: str,
     _run_ffmpeg(["-loop", "1", "-i", bg, "-loop", "1", "-i", img,
                  "-i", wav, "-filter_complex", graph,
                  "-map", maps[0], "-map", "2:a",
-                 "-t", f"{dur:.3f}", "-r", str(_FPS),
+                 "-t", f"{dur:.3f}", "-r", str(_SEG_FPS),
                  "-c:v", "libx264", "-preset", "ultrafast",
                  "-crf", "22", "-c:a", "aac", "-b:a", "128k",
                  "-ar", "44100", "-ac", "2", out],
