@@ -1909,3 +1909,135 @@ h1 { font-size: 1.6em; }
     letter-spacing: 0.5px;
 }
 .age-footer { text-align: center; color: #999; font-size: 0.8em; padding: 8px 12px 12px; }
+
+/* ================================================================
+   ROUND 24 REPAIRS (2026-10-08) — appended to static/styles.css.
+   Composer flex-squeeze, voice feedback, avatar life. Selectors use
+   element+class+id specificity (1,1,1) so they outrank both this
+   sheet's older composer rules and the page's inline restyle block.
+   ================================================================ */
+
+/* The three action buttons: fixed-size round, at EVERY width.
+   flex:none + explicit width/height — they can never grow, stretch,
+   or balloon again. */
+.input-wrapper button#voiceNoteBtn,
+.input-wrapper button#voiceBtn,
+.input-wrapper button#sendBtn {
+    flex: 0 0 auto;
+    width: 42px; height: 42px;
+    min-width: 42px; max-width: 42px;
+    min-height: 42px; max-height: 42px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.input-wrapper button#voiceNoteBtn svg,
+.input-wrapper button#voiceBtn svg,
+.input-wrapper button#sendBtn svg { width: 20px; height: 20px; flex: 0 0 auto; }
+.input-wrapper input#messageInput::placeholder { color: #9d9d9d; opacity: 1; }
+
+/* Visible status line right over the composer. The original
+   #status-text lives inside the slide-over menu, so every voice
+   message (recording, mic blocked, voice on) was invisible. */
+.og-status-line {
+    margin: 6px 2px 0;
+    min-height: 1em;
+    font-size: 12.5px;
+    color: #bdbdbd;
+    text-align: left;
+}
+.input-wrapper.og-recording {
+    box-shadow: 0 0 0 2px rgba(229, 9, 20, .8), 0 0 18px rgba(229, 9, 20, .45);
+}
+
+/* Speaker button on every OG reply — a real tap, so mobile browsers
+   let the /tts audio actually play. */
+.og-speak-btn {
+    margin-top: 6px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 193, 7, .55);
+    background: rgba(255, 193, 7, .10);
+    color: #ffc107;
+    font-size: 14px; line-height: 1;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.og-speak-btn:active { transform: scale(.92); }
+
+/* Avatar, alive: breathing + simulated blinks at idle, a hard glare
+   while thinking, a bounce locked to actual speech, a gold listening
+   glow, a nod, and a win flare. The big avatar hides once the chat
+   starts, so the reply avatars (img.og-avatar-sm) run the same states
+   off body mood classes. */
+@keyframes ogIdle2 {
+    0%, 100% { transform: translateY(0) rotate(0deg) scale(1); filter: brightness(1); }
+    8% { transform: translateY(-1px) rotate(-.6deg) scale(1.004); filter: brightness(.66); }
+    10% { transform: translateY(-1px) rotate(-.6deg) scale(1.004); filter: brightness(1); }
+    46% { transform: translateY(-3px) rotate(1.1deg) scale(1.012); filter: brightness(1); }
+    54% { transform: translateY(-3px) rotate(1.1deg) scale(1.012); filter: brightness(.68); }
+    56% { transform: translateY(-3px) rotate(1.1deg) scale(1.012); filter: brightness(1); }
+    78% { transform: translateY(-1px) rotate(-1deg); }
+}
+@keyframes ogThink2 {
+    0%, 100% { transform: rotate(-2.4deg) scale(1.03); filter: brightness(1.14) contrast(1.12); }
+    50% { transform: rotate(2.4deg) scale(1.05); filter: brightness(1.22) contrast(1.18); }
+}
+@keyframes ogTalk2 {
+    0%, 100% { transform: translateY(0) scale(1); }
+    30% { transform: translateY(-3.5px) scale(1.045); }
+    60% { transform: translateY(.5px) scale(.995); }
+    80% { transform: translateY(-2px) scale(1.03); }
+}
+@keyframes ogNod2 {
+    0% { transform: translateY(0) rotate(0deg); }
+    35% { transform: translateY(4px) rotate(2.2deg) scale(1.03); }
+    70% { transform: translateY(-1px) rotate(-1deg); }
+    100% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes ogWin2 {
+    0% { transform: scale(1) rotate(0deg); filter: brightness(1); }
+    30% { transform: scale(1.13) rotate(-3deg); filter: brightness(1.3); }
+    55% { transform: scale(1.08) rotate(2.6deg); filter: brightness(1.22); }
+    100% { transform: scale(1) rotate(0deg); filter: brightness(1); }
+}
+img.og-avatar { animation: ogIdle2 4.8s ease-in-out infinite; will-change: transform, filter; }
+img.og-avatar.thinking { animation: ogThink2 1.1s ease-in-out infinite; }
+img.og-avatar.talking { animation: ogTalk2 .38s ease-in-out infinite; }
+img.og-avatar.listening { animation: ogIdle2 2.4s ease-in-out infinite; box-shadow: 0 0 0 3px rgba(255, 193, 7, .85), 0 0 26px rgba(255, 193, 7, .55); }
+img.og-avatar.nod { animation: ogNod2 .6s ease-in-out 1; }
+img.og-avatar.win { animation: ogWin2 .9s ease-in-out 1; }
+img.og-avatar-sm { animation: ogIdle2 5.6s ease-in-out infinite; }
+body.og-mood-thinking img.og-avatar-sm { animation: ogThink2 1.1s ease-in-out infinite; }
+body.og-mood-talking img.og-avatar-sm { animation: ogTalk2 .38s ease-in-out infinite; }
+body.og-mood-listening img.og-avatar-sm { box-shadow: 0 0 0 2px rgba(255, 193, 7, .8), 0 0 14px rgba(255, 193, 7, .5); }
+body.og-mood-win img.og-avatar-sm { animation: ogWin2 .9s ease-in-out 1; }
+@media (prefers-reduced-motion: reduce) {
+    img.og-avatar, img.og-avatar-sm,
+    img.og-avatar.thinking, img.og-avatar.talking, img.og-avatar.listening,
+    img.og-avatar.nod, img.og-avatar.win,
+    body.og-mood-thinking img.og-avatar-sm, body.og-mood-talking img.og-avatar-sm,
+    body.og-mood-win img.og-avatar-sm { animation: none !important; }
+}
+
+/* Phone composer (<=768px), built against the reproduced failure
+   (input crushed to ~55-70px, voice-note button ballooned to ~135px,
+   Talk stretched ~130x35): one nowrap row, the field keeps flex
+   priority with a hard min-width and a real visible field treatment;
+   buttons stay 42px circles. */
+@media (max-width: 768px) {
+    .input-wrapper { flex-wrap: nowrap; gap: 6px; align-items: center; }
+    .input-wrapper input#messageInput {
+        flex: 1 1 auto;
+        min-width: 120px;
+        background: #232323;
+        border: 1px solid #4d4d4d;
+        border-radius: 14px;
+        padding: 10px 12px;
+        font-size: 16px;
+        color: #fff;
+    }
+    .input-wrapper input#messageInput:focus { border-color: #ffc107; outline: none; }
+    .input-wrapper input#messageInput::placeholder { color: #b5b5b5; opacity: 1; }
+    .input-wrapper button#plusBtn { flex: 0 0 auto; width: 38px; height: 38px; min-height: 0; }
+}
