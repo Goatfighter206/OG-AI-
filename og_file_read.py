@@ -339,6 +339,38 @@ def message_references_file(message: str) -> bool:
 
 _inject = {"uid": "", "forced": False}
 
+# Composer patch: the page flags a chat message that was sent WITH a
+# freshly attached picture (the "+" Camera/Picture flow or a paste).
+# app.py notes it per exchange (mirrors og_maps.note_request_coords);
+# the detect wrapper below consumes it once and forces the file seam
+# for that message — the visitor explicitly handed OG a picture to
+# look at, so no reference heuristic is needed.
+_attach_note = {"uid": "", "at": 0.0}
+_ATTACH_FRESH_S = 180
+
+
+def note_attach_image(uid):
+    """Record (or clear, with a falsy uid) the attach flag for the
+    exchange app.py is about to run."""
+    if uid:
+        _attach_note["uid"] = uid
+        _attach_note["at"] = time.time()
+    else:
+        _attach_note["uid"] = ""
+        _attach_note["at"] = 0.0
+
+
+_FIX_RE = re.compile(
+    r"\b(fix|repair|error|wrong|broken|not working|won't work|"
+    r"wont work|troubleshoot|issue|problem|help me with this)\b",
+    re.IGNORECASE)
+
+
+def message_is_fix_ask(message: str) -> bool:
+    """The message reads as 'something's wrong — fix it' (the
+    screenshot-troubleshooting shape of the composer patch)."""
+    return bool(message and _FIX_RE.search(str(message)))
+
 
 # --- App binding: caps, routes, history notes --------------------------------
 # The endpoints live here too (app.py sits at the push tool's size
@@ -493,6 +525,29 @@ def register_file_routes(app):
             payload["file"] = public_meta(meta)
         return JSONResponse(content=payload)
 
+    @app.get("/file/image")
+    async def file_image(raw_request: _Req):
+        """The visitor's OWN attached image bytes — the inline
+        thumbnail the composer shows in their message bubble. Owner-
+        only by construction: the path is derived from the caller's
+        own ogai_uid cookie, so another visitor can never reach it.
+        404 when nothing (or no image) is attached."""
+        from fastapi.responses import Response
+        uid = _current_uid_of(raw_request)
+        meta = get_meta(uid) if uid else None
+        if not meta or meta.get("kind") != "image":
+            return JSONResponse(content={"detail": "no image"},
+                                status_code=404)
+        path = _paths(uid)[2]
+        if not os.path.exists(path):
+            return JSONResponse(content={"detail": "no image"},
+                                status_code=404)
+        with open(path, "rb") as f:
+            data = f.read()
+        return Response(content=data,
+                        media_type=meta.get("mime") or "image/png",
+                        headers={"Cache-Control": "private, no-store"})
+
     @app.post("/file/remove")
     async def file_remove(raw_request: _Req):
         """Clear this visitor's attached file server-side."""
@@ -544,8 +599,17 @@ def install_file_tools(agent_instance, get_uid, get_api_key):
         _inject["forced"] = False
         try:
             uid = get_uid()
-            if (uid and get_meta(uid)
-                    and message_references_file(str(message))):
+            meta = get_meta(uid) if uid else None
+            attached_send = bool(
+                meta and meta.get("kind") == "image"
+                and _attach_note.get("uid") == uid
+                and time.time() - float(_attach_note.get("at", 0))
+                < _ATTACH_FRESH_S)
+            if attached_send:
+                note_attach_image(None)  # one-shot: consume the flag
+            if (uid and meta
+                    and (attached_send
+                         or message_references_file(str(message)))):
                 already = isinstance(intent, dict) \
                     and bool(intent.get("needs_web_search"))
                 _inject["uid"] = uid
@@ -601,7 +665,7 @@ def _text_result(meta: dict, text: str) -> dict:
 
 
 def vision_read(api_key: str, data_uri: str, question: str,
-                name: str):
+                name: str, troubleshoot: bool = False):
     """One multimodal read of the visitor's photo via the OpenAI chat
     API (sync, like the other app-layer tool calls). Returns a detailed
     description text, or None when the route is unavailable/fails."""
@@ -617,6 +681,13 @@ def vision_read(api_key: str, data_uri: str, question: str,
     if question:
         prompt += (f"\nThe visitor's current question is: \"{question}\" "
                    "— make sure anything relevant to it is covered.")
+    if troubleshoot:
+        prompt += (
+            " This image is a screenshot of a PROBLEM the visitor "
+            "wants fixed: transcribe every error message, warning, "
+            "code, and dialog text EXACTLY as shown, name the app, "
+            "site, or screen, and state precisely what looks wrong "
+            "and where.")
     try:
         with httpx.Client(timeout=60) as client:
             r = client.post(
@@ -660,10 +731,12 @@ def file_search_results(uid: str, question: str, api_key: str) -> list:
             return []
         return [_text_result(meta, text)]
     # image
+    fix = message_is_fix_ask(question)
     desc = meta.get("vision") or ""
     if not desc:
         desc = vision_read(api_key, _image_data_uri(uid, meta),
-                           question, meta["name"]) or ""
+                           question, meta["name"],
+                           troubleshoot=fix) or ""
         if desc:
             meta["vision"] = desc
             try:
@@ -679,4 +752,15 @@ def file_search_results(uid: str, question: str, api_key: str) -> list:
     body = ("The visitor uploaded this photo and is asking about it. "
             "A vision model described it as follows — answer from "
             "THIS description:\n\n" + desc)
+    if fix:
+        body += (
+            "\n\nThe visitor wants this problem FIXED, not just "
+            "explained. Diagnose the cause from the error text "
+            "above. If the fix lives somewhere you can act yourself "
+            "(your browser, a connected account, your tools), do it "
+            "through the normal approval gates, verify the fix "
+            "actually landed, and confirm it in chat. Only when the "
+            "problem is on the visitor's own device — something you "
+            "cannot reach — give exact numbered steps instead, then "
+            "ask whether it worked.")
     return [{"title": title, "body": body, "href": ""}]
