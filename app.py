@@ -308,6 +308,8 @@ import og_ordering as _og_ordering
 import og_trading as _og_trading
 # File locker (Round 21, dark): og_storage.py
 import og_storage as _og_storage
+# OG browser (Round 23, dark).
+import og_browser as _og_browser
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -1831,6 +1833,7 @@ def get_agent() -> AIAgent:
             agent, lambda: _current_uid.get("uid", ""))
         _og_storage.install_storage_tools(
             agent, lambda: _current_uid.get("uid", ""))
+        _og_browser.install_browser_tools(agent, lambda: _current_uid.get("uid", ""))
         _reset_memory_store()
 
     return agent
@@ -1999,8 +2002,8 @@ def _generate_reply_streaming(agent_instance, message: str,
                 speech_text if speech_text is not None else response))
         return response
 
-    # Handle CODE GENERATION first (same priority as process_message). The
-    # code generator is a tool call with an atomic result — delivered whole.
+    # Handle CODE GENERATION first (same priority as process_message):
+    # a tool call with an atomic result — delivered whole.
     if intent['needs_code_generation'] and getattr(agent, 'code_generator', None):
         code, explanation = agent.code_generator.generate_code_from_request(message)
         if code:
@@ -2033,9 +2036,8 @@ def _generate_reply_streaming(agent_instance, message: str,
 
     provider = getattr(agent, 'ai_provider', None)
 
-    # --- OpenAI: true token streaming, the request built exactly like the
-    # agent's own _openai_response (same prompt, history window, context,
-    # model, temperature and token cap) — only stream=True is added.
+    # --- OpenAI: true token streaming — the agent's own _openai_response
+    # request (same prompt/history/model/temp/cap), only stream=True added.
     if provider == "openai" and getattr(agent, 'openai_client', None):
         parts = []
         try:
@@ -2080,8 +2082,7 @@ def _generate_reply_streaming(agent_instance, message: str,
                 return finished, _estimate_call_tokens(agent, finished)
             logger.warning(f"Token streaming failed, using full-text: {e}")
 
-    # --- Anthropic: true token streaming, the request built exactly like
-    # the agent's own _anthropic_response — only streamed.
+    # --- Anthropic: true token streaming via _anthropic_response.
     elif provider == "anthropic" and getattr(agent, 'anthropic_client', None):
         parts = []
         try:
@@ -2121,9 +2122,8 @@ def _generate_reply_streaming(agent_instance, message: str,
                 return finished, _estimate_call_tokens(agent, finished)
             logger.warning(f"Token streaming failed, using full-text: {e}")
 
-    # Every remaining path (Ollama, the local pattern fallback, a provider
-    # whose stream failed above) produces its reply inside the agent, whole.
-    # It is delivered as ONE chunk — never sliced to imitate streaming.
+    # Every remaining path (Ollama, local fallback, failed stream) replies
+    # whole from inside the agent — ONE chunk, never sliced to fake streaming.
     response = agent._generate_ai_response(message, context)
     sink("chunk", response)
     finished = _finish(response)
@@ -2313,9 +2313,8 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
-    # Per-visitor memory: swap this visitor's own thread into the shared
-    # agent and hold the memory lock until it is saved back below, so two
-    # visitors chatting at once can never interleave each other's history.
+    # Per-visitor memory: swap this visitor's thread into the shared agent
+    # under the memory lock, so concurrent visitors never interleave history.
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
@@ -2572,26 +2571,31 @@ _og_plaid.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
 _og_plaid.register_plaid_routes(app)
 _og_monitor.register_monitor_routes(app)
 
-# Online ordering (Round 19): the module keeps its own handoff
-# counters on app.py's usage store (bound here).
+# Online ordering (Round 19): counters on the usage store.
 _og_ordering.bind_app({
     "load_usage": _load_usage_store, "save_usage": _save_usage_store,
     "usage_lock": _usage_lock,
     "get_tier": lambda: _current_tier.get("tier", "free")})
 
-# Trading (Round 20): counters + /auth/coinbase* routes (dark).
+# Trading (Round 20, dark).
 _og_trading.bind_app({"cookie_max_age": COOKIE_MAX_AGE,
     "load_usage": _load_usage_store, "save_usage": _save_usage_store,
     "usage_lock": _usage_lock,
     "get_tier": lambda: _current_tier.get("tier", "free")})
 _og_trading.register_trading_routes(app)
 
-# File locker (Round 21, dark): /storage/* routes in og_storage.py.
+# File locker (Round 21, dark).
 _og_storage.bind_app({
     "get_tier": lambda: _current_tier.get("tier", "free"),
     "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
     "get_api_key": lambda: os.getenv("OPENAI_API_KEY")})
 _og_storage.register_storage_routes(app)
+
+_og_browser.bind_app({"load_usage": _load_usage_store,
+    "save_usage": _save_usage_store, "usage_lock": _usage_lock,
+    "get_tier": lambda: _current_tier.get("tier", "free"),
+    "tier_of": lambda uid, req: _tier_of(req.cookies, uid)})
+_og_browser.register_browser_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
