@@ -926,8 +926,8 @@ _URL_TOKEN_RE = re.compile(
     r"(?:https?://)?(?:www\.)?[a-z0-9][a-z0-9-]*\.[a-z]{2,}"
     r"(?:/[^\s<>\"']*)?", re.I)
 _START_VERB_RE = re.compile(
-    r"\b(browse|browser|open|check|visit|look at|pull up|go to|read|"
-    r"watch|surf)\b", re.I)
+    r"\b(browse|browser|open|visit|pull up|go to|navigate|load)\b",
+    re.I)
 _BROWSER_WORD_RE = re.compile(r"\bbrowser\b", re.I)
 _END_RE = re.compile(
     r"^(stop|end|close|kill|shut down)\b.*\b(browser|session|browsing)\b"
@@ -970,13 +970,18 @@ def _extract_url(message: str) -> str:
 
 
 def _is_start_request(message: str, low: str) -> bool:
+    """A browser session may only be proposed on an EXPLICIT browsing
+    ask (Round 25): the word "browser" plus a start verb, or a URL
+    plus a navigation verb. Lookup-flavored wording — "check the
+    headlines on bbc.com", "read this article <url>", "check the
+    listing" — is NOT a start request: those asks belong to the
+    text lookup. Claiming them here is what used to hijack a plain
+    lookup into a session proposal, and a casual YES then dropped
+    a live browser screen into the middle of the chat."""
     if _BROWSER_WORD_RE.search(low) and re.search(
             r"\b(use|open|start|fire up|launch|get on|hop on)\b", low):
         return True
     if _extract_url(message) and _START_VERB_RE.search(low):
-        return True
-    if re.search(r"\bcheck (this|that|the) (page|link|listing|site)\b",
-                 low):
         return True
     return False
 
