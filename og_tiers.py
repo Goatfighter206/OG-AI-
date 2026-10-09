@@ -22,7 +22,9 @@ enabled (see .env.example):
 Caps are per UTC day and env-overridable per tier/kind:
 OG_CAP_<TIER>_<KIND>, e.g. OG_CAP_PRO_IMAGES=50. Kinds: images,
 uploads, lookup, tts, upload_mb, transcribe (Round 8 voice notes),
-unity (Round 16 Unity-maker packages per day), shortlink (Round 17
+unity (Round 16 Unity-maker packages per day), song (Round 30
+sung tracks per day, charged only on a completed generation),
+shortlink (Round 17
 short-link creations per day), calorie (Round 18 food-log entries
 per day), watch (Round 18 ACTIVE price watches, a count not a
 daily meter), order (Round 19 approved order handoffs per day),
@@ -70,6 +72,10 @@ _DEFAULT_CAPS = {
     "transcribe": {"free": 3, "standard": 15,  "pro": 50,  "blue": 150,  "blackout": 500},
     "unity":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "video":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    # Round 30 (OG Songs): sung tracks per day. At the studio's
+    # $0.15/generated-minute and a ~2-3 min song (~$0.38), the
+    # ladder stays cheaper per unit than story videos above.
+    "song":    {"free": 1,    "standard": 2,   "pro": 5,   "blue": 15,   "blackout": 50},
     "shortlink": {"free": 5,  "standard": 25,  "pro": 50,  "blue": 100,  "blackout": 500},
     "calorie": {"free": 10,   "standard": 50,  "pro": 100, "blue": 200,  "blackout": 500},
     "watch":   {"free": 3,    "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
