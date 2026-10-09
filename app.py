@@ -318,6 +318,7 @@ import og_songs as _og_songs
 import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
+import og_customize as _og_customize
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -2570,6 +2571,8 @@ _og_songs.bind_app({"load_usage": _load_usage_store,
 _og_songs.register_song_routes(app)
 _og_avatar.register_avatar_routes(app)
 _og_legal.register_legal_routes(app)
+_og_customize.bind_app({"cookie_max_age": COOKIE_MAX_AGE})
+_og_customize.register_customize_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
