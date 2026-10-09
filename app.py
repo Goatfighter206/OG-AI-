@@ -160,7 +160,6 @@ def _consume_tts_call(uid: str, limit: int = None) -> bool:
         return True
 
 # --- Image generation (Round 5): POST /image, one image per ask
-# (logic in og_image_gen.py); per-visitor daily caps guard the key.
 from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
     IMAGE_DOWN_LINE as _IMAGE_DOWN_LINE,
     clean_image_prompt as _clean_image_prompt,
@@ -310,6 +309,7 @@ import og_trading as _og_trading
 import og_storage as _og_storage
 # OG browser (Round 23, dark).
 import og_browser as _og_browser
+import og_watch as _og_watch
 import og_register as _og_register
 # Story videos (Round 28): og_video.py
 import og_video as _og_video
@@ -1709,7 +1709,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware. Production: set ALLOWED_ORIGINS to specific origins.
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
 if allowed_origins_env:
     try:
@@ -1738,7 +1737,6 @@ if not os.path.exists("static"):
     os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Global agent instance — history swapped in per-visitor under _memory_lock.
 agent = None
 
 def get_agent() -> AIAgent:
@@ -1804,6 +1802,7 @@ def get_agent() -> AIAgent:
             agent, lambda: _current_uid.get("uid", ""))
         _og_browser.install_browser_tools(agent, lambda: _current_uid.get("uid", ""))
         _og_video.install_video_tools(agent, lambda: _current_uid.get("uid", ""))
+        _og_watch.install_watch_tools(agent, lambda: _current_uid.get("uid", ""), lambda: _current_tier.get("tier", "free"))
         _reset_memory_store()
 
     return agent
@@ -1832,9 +1831,7 @@ class ChatResponse(BaseModel):
     response: str
     agent_name: str
     timestamp: str
-    # Only set when a free visitor hits the daily cap; omitted otherwise.
     upgrade_url: Optional[str] = None
-    # Free tokens the visitor has left today (free tier only; omitted for Pro).
     free_tokens_left: Optional[int] = None
 
     model_config = ConfigDict(
@@ -1853,7 +1850,6 @@ class HistoryResponse(BaseModel):
     message_count: int
     # Free tokens the visitor has left today (omitted/null for Pro).
     free_tokens_left: Optional[int] = None
-    # The visitor's pricing tier (Round 7): free|standard|pro|blue|blackout.
     tier: Optional[str] = None
 
     model_config = ConfigDict(
@@ -2085,8 +2081,6 @@ def _generate_reply_streaming(agent_instance, message: str,
                 return finished, _estimate_call_tokens(agent, finished)
             logger.warning(f"Token streaming failed, using full-text: {e}")
 
-    # Every remaining path (Ollama, local fallback, failed stream) replies
-    # whole from inside the agent — ONE chunk, never sliced to fake streaming.
     response = agent._generate_ai_response(message, context)
     sink("chunk", response)
     finished = _finish(response)
@@ -2278,8 +2272,6 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
-    # Per-visitor memory: swap this visitor's thread into the shared agent
-    # under the memory lock, so concurrent visitors never interleave history.
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
@@ -2468,7 +2460,6 @@ async def generate_image(raw_request: Request):
                    "prompt": prompt, "response": caption,
                    "images_left": left})
 
-# File routes (/upload, /file/status, /file/remove) live in og_file_read.py.
 _og_files.bind_app({
     "get_agent": get_agent, "pro_url": _og_tiers.public_pro_url(),
     "cookie_max_age": COOKIE_MAX_AGE,
@@ -2489,7 +2480,6 @@ _og_tiers.bind({"pro_token": PRO_TOKEN, "pro_link": PRO_UPGRADE_URL,
                 "cookie_max_age": COOKIE_MAX_AGE})
 _og_tiers.register_tier_routes(app)
 
-# Voice-note transcription (Round 8): POST /transcribe lives in og_voice.py.
 import og_voice as _og_voice
 _og_voice.bind_app({
     "get_agent": get_agent, "pro_url": _og_tiers.public_pro_url(),
@@ -2567,6 +2557,8 @@ _og_video.bind_app({"load_usage": _load_usage_store,
     "get_api_key": lambda: os.getenv("OPENAI_API_KEY"),
     "load_history": _load_visitor_history_locked})
 _og_video.register_video_routes(app)
+_og_watch.bind_app({"tier_of": lambda uid, req: _tier_of(req.cookies, uid)})
+_og_watch.register_watch_routes(app)
 _og_avatar.register_avatar_routes(app)
 _og_legal.register_legal_routes(app)
 
