@@ -128,11 +128,11 @@
                     <span id="browserPanelTitle">🌐 OG is browsing</span>
                     <span id="browserPanelMeta" class="og-browser-meta"></span>
                     <span class="og-browser-btns">
-                        <a id="browserFullBtn" href="#" target="_blank" rel="noopener" hidden>⛶ <span class="og-btn-label">Full view</span></a>
-                        <button id="browserStillBtn" type="button">🖼 <span class="og-btn-label">Still view</span></button>
-                        <button id="browserTakeBtn" type="button">🕹️ <span class="og-btn-label">Take control</span></button>
-                        <button id="browserHandBtn" type="button" hidden>🤝 <span class="og-btn-label">Hand back</span></button>
-                        <button id="browserEndBtn" type="button">⏹ <span class="og-btn-label">End</span></button>
+                        <a id="browserFullBtn" href="#" target="_blank" rel="noopener" hidden title="Full view" aria-label="Full view">⛶ <span class="og-btn-label">Full view</span></a>
+                        <button id="browserStillBtn" type="button" title="Still / live view" aria-label="Still or live view">🖼 <span class="og-btn-label">Still view</span></button>
+                        <button id="browserTakeBtn" type="button" title="Take control" aria-label="Take control">🕹️ <span class="og-btn-label">Take control</span></button>
+                        <button id="browserHandBtn" type="button" hidden title="Hand back" aria-label="Hand back">🤝 <span class="og-btn-label">Hand back</span></button>
+                        <button id="browserEndBtn" type="button" title="End" aria-label="End">⏹ <span class="og-btn-label">End</span></button>
                         <button id="browserCloseBtn" type="button" aria-label="End session and close panel" title="End session and close panel">✕</button>
                     </span>
                 </div>
@@ -1534,29 +1534,27 @@ offerLocationPrompt(msg);
 return r2;
 };
 })();</script>
-    <style id="og-browser-css">.og-browser-panel { flex: 0 0 auto; width: 93%; max-width: 640px; margin: 6px auto 10px; border: 1px solid rgba(255,193,7,.5); border-radius: 16px; overflow: hidden; background: #101010; box-shadow: 0 12px 32px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.45); }
+    <style id="og-browser-css">.og-browser-panel { flex: 0 0 auto; width: 54%; min-width: 205px; max-width: 320px; margin: 6px auto 10px; border: 1px solid rgba(255,193,7,.5); border-radius: 16px; overflow: hidden; background: #101010; box-shadow: 0 12px 32px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.45); }
 .og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
 .og-browser-bar { border-bottom: 1px solid rgba(255,193,7,.28); }
 #browserPanelTitle { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .og-browser-meta { color: #bbb; font-size: .8rem; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .og-browser-btns { margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap; flex: 0 0 auto; }
-.og-browser-btns button, .og-browser-btns a { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; font-family: inherit; white-space: nowrap; flex: 0 0 auto; }
+.og-browser-btns button, .og-browser-btns a { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 4px 8px; font-size: .75rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; font-family: inherit; white-space: nowrap; flex: 0 0 auto; }
 #browserCloseBtn { font-weight: 700; }
+.og-browser-btns .og-btn-label { display: none; }
 .og-browser-btns [hidden] { display: none !important; }
-@media (max-width: 560px) { #browserFullBtn .og-btn-label, #browserStillBtn .og-btn-label { display: none; } .og-browser-bar { gap: 6px; padding: 6px 8px; flex-wrap: wrap; } .og-browser-btns { gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; } .og-browser-btns button, .og-browser-btns a { padding: 4px 8px; font-size: .75rem; } }
+@media (max-width: 560px) { #browserFullBtn .og-btn-label, #browserStillBtn .og-btn-label, #browserTakeBtn .og-btn-label, #browserHandBtn .og-btn-label, #browserEndBtn .og-btn-label { display: none; } .og-browser-bar { gap: 6px; padding: 6px 8px; flex-wrap: wrap; } .og-browser-btns { gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; } .og-browser-btns button, .og-browser-btns a { padding: 4px 8px; font-size: .75rem; } }
 .og-browser-btns button:hover, .og-browser-btns a:hover { background: rgba(255,193,7,.18); }
 .og-browser-btns button:disabled { opacity: .45; cursor: default; }
-.og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 260px; background: radial-gradient(120% 130% at 50% 0%, #1d1d1d 0%, #121212 55%, #0b0b0b 100%); }
+.og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; background: radial-gradient(120% 130% at 50% 0%, #1d1d1d 0%, #121212 55%, #0b0b0b 100%); }
 .og-browser-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 18px; color: #d9ba55; font-size: .88rem; letter-spacing: .02em; pointer-events: none; }
 .og-browser-view.og-view-live .og-browser-face { display: none; }
 #browserFrame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: transparent; }
 #browserShot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: transparent; }
 .og-browser-note { margin: 0; padding: 6px 12px; color: #e8c95a; font-size: .8rem; background: rgba(255,193,7,.06); }
 @media (max-width: 768px) {
-.og-browser-view { aspect-ratio: 16 / 9; min-height: 150px; max-height: 40vh; }
-}
-@media (max-width: 560px) {
-.og-browser-panel { width: 94%; }
+.og-browser-view { max-height: 40vh; }
 }
 .og-approve-card { flex: 0 0 auto; margin: 0 12px 8px; border: 2px solid #ffc107; border-radius: 14px; background: linear-gradient(180deg, #1d1703, #121212); padding: 12px 14px; color: #f2f2f2; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
 .og-approve-head { font-weight: 700; color: #ffc107; font-size: .95rem; }
