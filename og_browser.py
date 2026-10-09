@@ -476,11 +476,25 @@ def _steel_release(steel_id: str) -> None:
 
 
 def _viewer_url(steel_id: str) -> str:
-    """The live-view URL, fetched FRESH from Steel — never stored."""
+    """The embeddable live-view URL, fetched FRESH from Steel — never
+    stored. Steel's sessionViewerUrl is their account DASHBOARD
+    (app.steel.dev/sessions/<id>): framed for a visitor with no Steel
+    account it renders Steel's own sign-in page (Brent's live test,
+    2026-10-09 04:10). The end-user embed is debugUrl — Steel's
+    self-contained WebRTC player at <api base>/sessions/<id>/player,
+    served unauthenticated exactly so end users can watch (and, via
+    Take control, drive) with no Steel login. Fall back to
+    sessionViewerUrl, then to the constructed player URL, so a live
+    session never loses its view."""
     sess = _steel_get_session(steel_id)
-    if not sess:
-        return ""
-    return str(sess.get("sessionViewerUrl") or "")
+    if sess:
+        url = str(sess.get("debugUrl") or sess.get("sessionViewerUrl")
+                  or "")
+        if url:
+            return url
+    if steel_id:
+        return f"{_steel_base()}/sessions/{steel_id}/player"
+    return ""
 
 
 # --- Raw CDP driver (websockets ships with uvicorn[standard]) -----------------
@@ -888,6 +902,13 @@ def _update_rec_from_snap(uid: str, rec: Dict, snap: Dict) -> None:
     rec["last_action"] = time.time()
     rec["last_url"] = snap.get("url", "")
     rec["last_title"] = snap.get("title", "")
+    if rec.get("mode") == "taste" and not rec.get("taste_counted"):
+        landed = str(snap.get("url") or "")
+        if landed and not landed.startswith(
+                ("about:", "chrome:", "data:")):
+            # First REAL page view: only now is the taste spent.
+            _mark_taste_used(uid)
+            rec["taste_counted"] = True
     _set_session(uid, rec)
 
 
@@ -1272,9 +1293,12 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
            "started": time.time(), "last_action": time.time(),
            "budget": budget, "mode": plan["mode"], "control": "og",
            "goal": pend.get("goal", ""), "focus": None,
-           "last_url": "", "last_title": ""}
-    if plan["mode"] == "taste":
-        _mark_taste_used(uid)
+           "last_url": "", "last_title": "", "taste_counted": False}
+    # The taste is NOT spent here: it is spent by the first page the
+    # visitor actually sees (see _update_rec_from_snap). A session
+    # that starts but never lands on a page — Brent's 2026-10-09 live
+    # test, where the panel showed Steel's sign-in page — must not
+    # burn the visitor's one free taste.
     _set_session(uid, rec)
     url = pend.get("url") or ""
     if url:
