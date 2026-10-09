@@ -510,16 +510,23 @@ class _Cdp:
 
     def __init__(self, ws_url: str):
         from websockets.sync.client import connect as _ws_connect
-        self._ws = _ws_connect(ws_url, open_timeout=15, close_timeout=5,
-                               max_size=16 * 1024 * 1024)
+        try:
+            self._ws = _ws_connect(ws_url, open_timeout=15,
+                                   close_timeout=5,
+                                   max_size=16 * 1024 * 1024)
+        except Exception as e:
+            raise _DriveError(f"CDP connect failed ({e})")
         self._seq = 0
+        self.session_id = None  # set by _attach_page (flatten mode)
 
     def call(self, method: str, params: Optional[Dict] = None,
              timeout: float = 25.0) -> Dict:
         self._seq += 1
         mid = self._seq
-        self._ws.send(json.dumps(
-            {"id": mid, "method": method, "params": params or {}}))
+        msg = {"id": mid, "method": method, "params": params or {}}
+        if self.session_id:
+            msg["sessionId"] = self.session_id
+        self._ws.send(json.dumps(msg))
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
@@ -545,6 +552,34 @@ class _Cdp:
             self._ws.close()
         except Exception:
             pass
+
+
+def _attach_page(cdp: _Cdp) -> None:
+    """Steel's websocketUrl is a BROWSER-level CDP endpoint: page
+    commands (Page.navigate, Runtime.evaluate) have no target until
+    one is attached — live drives failed fast on exactly that
+    (2026-10-09: sessions created fine over REST and the panel went
+    live, but no drive ever landed a page). Attach to the first
+    page target in flatten mode; subsequent commands ride that
+    target session. Best-effort by design: if attach is refused
+    (endpoint already page-level), drive sessionless as before."""
+    try:
+        targets = cdp.call("Target.getTargets")
+        page = None
+        for t in targets.get("targetInfos") or []:
+            if t.get("type") == "page":
+                page = t
+                break
+        if not page:
+            return
+        res = cdp.call("Target.attachToTarget",
+                       {"targetId": page.get("targetId"),
+                        "flatten": True})
+        sid = res.get("sessionId")
+        if sid:
+            cdp.session_id = sid
+    except Exception:
+        pass
 
 
 def _cdp_connect(rec: Dict) -> _Cdp:
@@ -636,6 +671,7 @@ def _drive(rec: Dict, action: Dict) -> Dict:
     snapshot taken right after. Callers gate + budget-check first."""
     cdp = _cdp_connect(rec)
     try:
+        _attach_page(cdp)
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
         do = action.get("do")
