@@ -75,6 +75,7 @@
             <button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Coinbase</button>
             <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
             <button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi">🗄️</span> My file locker</button>
+            <button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi">🌐</span> OG's browser — live view</button>
             <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
             <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
         </nav>
@@ -119,6 +120,23 @@
 
             <!-- Messages Area -->
             <div class="messages-area" id="messagesArea"></div>
+
+            <!-- OG browser live view (Round 23, dark): appears only
+                 while a browser session is live; the iframe src is
+                 Steel's session viewer URL, fetched fresh from
+                 /browser/status on every poll — never stored. -->
+            <div id="browserPanel" class="og-browser-panel" hidden>
+                <div class="og-browser-bar">
+                    <span id="browserPanelTitle">🌐 OG is browsing</span>
+                    <span id="browserPanelMeta" class="og-browser-meta"></span>
+                    <span class="og-browser-btns">
+                        <button id="browserTakeBtn" type="button">🕹️ Take control</button>
+                        <button id="browserHandBtn" type="button" hidden>🤝 Hand back</button>
+                        <button id="browserEndBtn" type="button">⏹ End</button>
+                    </span>
+                </div>
+                <iframe id="browserFrame" title="OG browser — live view"></iframe>
+            </div>
 
             <!-- Input Area: one pill — + · input · mic · round gold button -->
             <div class="input-area">
@@ -1814,6 +1832,63 @@
                 offerLocationPrompt(msg);
                 return r2;
             };
+        })();
+    </script>
+    <style id="og-browser-css">
+        /* Round 23: OG browser live-view panel (ships dark). */
+        .og-browser-panel { margin: 0 12px 8px; border: 1px solid rgba(255,193,7,.45); border-radius: 14px; overflow: hidden; background: #101010; }
+        .og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
+        .og-browser-meta { color: #bbb; font-size: .8rem; }
+        .og-browser-btns { margin-left: auto; display: flex; gap: 6px; }
+        .og-browser-btns button { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; }
+        .og-browser-btns button:hover { background: rgba(255,193,7,.18); }
+        #browserFrame { width: 100%; height: 420px; border: 0; display: block; background: #000; }
+    </style>
+    <script id="og-browser-js">
+        // Round 23: OG's own browser (ships dark). The menu item and
+        // live-view panel only appear when /browser/status says the
+        // browser is on; the panel follows the visitor's live
+        // session. The viewer URL comes fresh from the server on
+        // every poll and is never stored client-side. Take control /
+        // Hand back flip who's driving (OG runs no actions at all
+        // while the visitor drives); End kills the session.
+        (function () {
+            function $(id) { return document.getElementById(id); }
+            var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
+                frame = $('browserFrame'), title = $('browserPanelTitle'),
+                meta = $('browserPanelMeta'), takeBtn = $('browserTakeBtn'),
+                handBtn = $('browserHandBtn'), endBtn = $('browserEndBtn');
+            if (!menuBtn || !panel || !frame) return;
+            var lastSrc = '', active = false;
+            function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
+            function post(path, mode) {
+                var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode: mode } : {}) };
+                return fetch(API_URL + path, opts).then(function () { refresh(); }).catch(function () {});
+            }
+            function refresh() {
+                fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
+                    if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+                    menuBtn.hidden = false;
+                    active = !!st.active;
+                    if (!active) { panel.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+                    panel.hidden = false;
+                    var driving = st.control === 'visitor';
+                    title.textContent = driving ? "🌐 You're driving" : '🌐 OG is browsing';
+                    meta.textContent = '⏱ ~' + st.minutes_left + ' min left' + (st.page_title ? ' · ' + st.page_title : '');
+                    takeBtn.hidden = driving; handBtn.hidden = !driving;
+                    if (st.viewer_url && st.viewer_url !== lastSrc) { frame.src = st.viewer_url; lastSrc = st.viewer_url; }
+                }).catch(function () {});
+            }
+            takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
+            handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
+            endBtn.addEventListener('click', function () { post('/browser/end'); sayAi('⏹ Browser session ended from the panel.'); });
+            menuBtn.addEventListener('click', function () {
+                var close = $('menuClose'); if (close) close.click();
+                if (active) { panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+                else sayAi("🌐 No browser session running — ask me in chat to open a page or run a web errand and I'll start one (Blue and Blackout plans carry browser minutes; everybody gets one free 10-minute taste).");
+            });
+            refresh();
+            setInterval(refresh, 8000);
         })();
     </script>
 </body>
