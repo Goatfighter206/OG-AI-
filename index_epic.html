@@ -124,13 +124,18 @@
 
             
             <div id="browserPanel" class="og-browser-panel" hidden>
-                <button id="browserCloseBtn" class="og-browser-x" type="button" aria-label="End session and close panel" title="End session and close panel">✕</button>
+                <button id="browserCloseBtn" class="og-browser-x" type="button" aria-label="Close window" title="Close window">✕</button>
                 <div class="og-browser-view" id="browserView">
                     <div class="og-browser-face" id="browserViewFace">🖼 Getting the picture…</div>
                     <iframe id="browserFrame" title="OG browser — live view"></iframe>
                     <img id="browserShot" alt="OG browser — still view" hidden>
                 </div>
                 <p id="browserShotNote" class="og-browser-note" hidden></p>
+                <div class="og-browser-actions" id="browserActions" hidden>
+                    <button id="browserTakeBtn" type="button" title="Take control" aria-label="Take control">🕹️ Take control</button>
+                    <button id="browserHandBtn" type="button" hidden title="Hand back" aria-label="Hand back">🤝 Hand back</button>
+                    <button id="browserEndTaskBtn" type="button" title="End task" aria-label="End task">⏹ End task</button>
+                </div>
                 <button id="browserOpenBtn" class="og-browser-open" type="button">Open browser</button>
             </div>
 
@@ -1529,7 +1534,14 @@ return r2;
 .og-browser-x:hover { background: rgba(255,193,7,.28); }
 .og-browser-open { display: block; width: calc(100% - 16px); margin: 8px; padding: 9px 12px; border-radius: 999px; border: 1px solid rgba(0,0,0,.15); background: #f4f1ea; color: #141414; font-size: .9rem; font-weight: 600; cursor: pointer; font-family: inherit; }
 .og-browser-open:hover { background: #ffffff; }
-.og-browser-open.og-open-driving { background: #ffc107; border-color: rgba(255,193,7,.8); }
+.og-browser-open[hidden] { display: none !important; }
+.og-browser-panel.og-panel-open { width: 100%; max-width: none; margin: 6px 0 10px; }
+.og-browser-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px; }
+.og-browser-actions[hidden] { display: none !important; }
+.og-browser-actions button { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 6px 12px; font-size: .8rem; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.og-browser-actions button:hover { background: rgba(255,193,7,.18); }
+.og-browser-actions [hidden] { display: none !important; }
+#browserEndTaskBtn { margin-left: auto; border-color: rgba(255,110,110,.55); color: #ff9d9d; }
 .og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; background: radial-gradient(120% 130% at 50% 0%, #1d1d1d 0%, #121212 55%, #0b0b0b 100%); }
 .og-browser-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 18px; color: #d9ba55; font-size: .88rem; letter-spacing: .02em; pointer-events: none; }
 .og-browser-view.og-view-live .og-browser-face { display: none; }
@@ -1569,6 +1581,8 @@ function $(id) { return document.getElementById(id); }
 var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
 frame = $('browserFrame'), viewEl = $('browserView'),
 closeBtn = $('browserCloseBtn'), openBtn = $('browserOpenBtn'),
+actions = $('browserActions'), takeBtn = $('browserTakeBtn'),
+handBtn = $('browserHandBtn'), endTaskBtn = $('browserEndTaskBtn'),
 shot = $('browserShot'), shotNote = $('browserShotNote'),
 card = $('approveCard'), cardDesc = $('approveDesc'),
 cardText = $('approveText'), cardExp = $('approveExp'),
@@ -1577,6 +1591,7 @@ cardOutcome = $('approveOutcome');
 if (!menuBtn || !panel || !frame) return;
 var lastSrc = '', active = false, wasActive = false;
 var driving = false, viewerUrl = '';
+var expanded = false, dismissedFor = null, lastKey = '', sessionKey = '';
 var viewMode = 'live', frameLoaded = false, srcSetAt = 0,
 shotTimer = null, outcomeUntil = 0;
 function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
@@ -1588,6 +1603,13 @@ frame.addEventListener('load', function () {
 if (frame.src && frame.src !== 'about:blank') { frameLoaded = true; viewLive(true); }
 });
 function viewLive(on) { if (viewEl) viewEl.classList.toggle('og-view-live', !!on); }
+function renderPanel() {
+panel.classList.toggle('og-panel-open', expanded);
+if (openBtn) openBtn.hidden = expanded;
+if (actions) actions.hidden = !expanded;
+if (takeBtn) takeBtn.hidden = driving;
+if (handBtn) handBtn.hidden = !driving;
+}
 function note(text) {
 if (!shotNote) return;
 shotNote.hidden = !text;
@@ -1655,17 +1677,22 @@ cardExp.textContent = '⏳ Expires in ~' + pa.minutes_left + ' min. You can also
 }
 function refresh() {
 fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
-if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; driving = false; viewerUrl = ''; if (openBtn) { openBtn.textContent = 'Open browser'; openBtn.classList.remove('og-open-driving'); } if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; dismissedFor = null; renderPanel(); if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
 menuBtn.hidden = false;
 active = !!st.active;
 renderPending(st.pending_action || null);
-if (!active) { panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; if (openBtn) { openBtn.textContent = 'Open browser'; openBtn.classList.remove('og-open-driving'); } if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
+if (!active) { panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; dismissedFor = null; renderPanel(); if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
+driving = st.control === 'visitor';
+sessionKey = st.viewer_url || '';
+if (sessionKey && sessionKey !== lastKey) { lastKey = sessionKey; if (sessionKey !== dismissedFor) expanded = false; }
+renderPanel();
+if (sessionKey && sessionKey === dismissedFor) { panel.hidden = true; }
+else {
 panel.hidden = false;
 if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
 wasActive = true;
 if (window.ogSetAvatar) ogSetAvatar('working', 4000);
-driving = st.control === 'visitor';
-if (openBtn) { openBtn.textContent = driving ? '🤝 Hand back' : 'Open browser'; openBtn.classList.toggle('og-open-driving', driving); }
+}
 if (driving && viewMode === 'still') setMode('live', false);
 if (st.viewer_url) {
 viewerUrl = st.viewer_url;
@@ -1674,16 +1701,18 @@ else if (viewMode === 'live' && !frameLoaded && srcSetAt && Date.now() - srcSetA
 }
 }).catch(function () {});
 }
-if (openBtn) openBtn.addEventListener('click', function () {
-if (driving) { post('/browser/control', 'og'); return; }
-if (viewerUrl) window.open(viewerUrl, '_blank', 'noopener');
-post('/browser/control', 'visitor');
+if (openBtn) openBtn.addEventListener('click', function () { expanded = true; renderPanel(); });
+if (takeBtn) takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
+if (handBtn) handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
+function endSession() { post('/browser/end'); panel.hidden = true; expanded = false; dismissedFor = null; sayAi('⏹ Browser session ended from the panel.'); }
+if (endTaskBtn) endTaskBtn.addEventListener('click', endSession);
+if (closeBtn) closeBtn.addEventListener('click', function () {
+if (expanded) { expanded = false; renderPanel(); }
+else { dismissedFor = sessionKey || viewerUrl; panel.hidden = true; }
 });
-function endSession() { post('/browser/end'); panel.hidden = true; sayAi('⏹ Browser session ended from the panel.'); }
-if (closeBtn) closeBtn.addEventListener('click', endSession);
 menuBtn.addEventListener('click', function () {
 var close = $('menuClose'); if (close) close.click();
-if (active) { panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+if (active) { dismissedFor = null; panel.hidden = false; panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 else sayAi("🌐 No browser session running — just name a site in chat (\"Facebook\", \"open Wikipedia\") and I'll fire one up and go straight there. Blue and Blackout plans carry browser minutes; everybody gets one free 10-minute taste.");
 });
 refresh();
