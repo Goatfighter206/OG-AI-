@@ -114,6 +114,7 @@
                     <button class="starter-chip og-row" type="button" data-prompt="Search the web: what are the top news headlines today?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span> Search the web</button>
                     <button class="starter-chip og-row" type="button" data-prompt="Make me a Unity game"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.62 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.62-6.58-.685-7.258A4 4 0 0 0 17.32 5z"/></svg></span> 🎮 Make me a Unity game</button>
                     <button class="starter-chip og-row" type="button" data-prompt="Make me a story video about a haunted lighthouse keeper"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20M7 4v5M17 4v5M10 12.5l5 2.5-5 2.5z"/></svg></span> 🎬 Make a story video</button>
+                    <button class="starter-chip og-row" type="button" data-prompt="Make me a song about a night-shift welder who never gives up"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span> 🎵 Make me a song</button>
                 </div>
             </div>
             <span id="welcome-time" hidden></span>
@@ -167,6 +168,18 @@
                 <p id="videoOutcome" class="og-approve-outcome" hidden></p>
             </div>
 
+            <div id="songCard" class="og-approve-card" hidden>
+                <div class="og-approve-head">🎵 <span id="songCardTitle">Song — ready when you are</span></div>
+                <p id="songDesc" class="og-approve-desc"></p>
+                <p id="songLyrics" class="og-approve-text" hidden></p>
+                <p id="songExp" class="og-approve-exp"></p>
+                <div class="og-approve-btns">
+                    <button id="songYesBtn" type="button">✓ Sing it</button>
+                    <button id="songNoBtn" type="button">✕ Scrap it</button>
+                </div>
+                <p id="songOutcome" class="og-approve-outcome" hidden></p>
+            </div>
+
             
             <div class="input-area">
                 <div id="fileChip" class="og-file-chip" hidden><span class="og-file-chip-icon">📎</span><span id="fileChipName" class="og-file-chip-name"></span><button id="fileChipRemove" class="og-file-chip-x" type="button" aria-label="Remove attached file">✕</button></div>
@@ -196,1729 +209,1816 @@
         </div>
     </div>
 
-    <style id="og-restyle-css">        .og-topbar { flex: 0 0 auto; width: 100%; max-width: 880px; margin: 0 auto; padding: 10px 14px 2px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-        .og-circle-btn { width: 42px; height: 42px; border-radius: 50%; background: #1b1b1b; border: 1px solid #333; color: #e8e8e8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
-        .og-circle-btn svg { width: 21px; height: 21px; }
-        .og-circle-btn:hover { border-color: rgba(255,193,7,.7); color: #ffc107; }
-        .og-circle-sm { width: 34px; height: 34px; }
-        .og-circle-sm svg { width: 16px; height: 16px; }
-        .og-pro-pill { display: inline-block; padding: 9px 22px; border-radius: 999px; border: 1px solid rgba(255,193,7,.75); background: rgba(255,193,7,.10); color: #ffc107; font-weight: 700; font-size: 1rem; text-decoration: none; letter-spacing: .2px; }
-        .og-pro-pill:hover { background: rgba(255,193,7,.20); }
-        .og-pro-pill.is-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
-        .og-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9000; }
-        .og-scrim[hidden] { display: none; }
-        .og-menu { position: fixed; top: 0; left: 0; height: 100vh; height: 100dvh; width: min(320px, 86vw); background: #101010; border-right: 1px solid #2b2b2b; z-index: 9001; transform: translateX(-105%); transition: transform .25s ease; display: flex; flex-direction: column; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(0,0,0,.5); }
-        .og-menu.open { transform: translateX(0); }
-        .og-menu-head { display: flex; align-items: center; gap: 10px; }
-        .og-menu-ava { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; border: 1px solid rgba(255,193,7,.6); flex: 0 0 auto; }
-        .og-menu-title { flex: 1 1 auto; min-width: 0; color: #f2f2f2; font-weight: 600; }
-        .og-menu .age-badge { font-size: .62em; }
-        .og-menu-status { font-weight: 400; font-size: .8rem; color: #a8a8a8; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-        .og-menu-token { color: #ffc107; font-size: .9rem; min-height: 1.1em; margin: 14px 4px 4px; }
-        .og-menu-list { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
-        .og-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 10px; border: none; border-radius: 10px; background: transparent; color: #ececec; font-size: 1rem; font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; }
-        .og-menu-item:hover { background: #1d1d1d; }
-        .og-mi { width: 22px; text-align: center; flex: 0 0 auto; }
-        .og-menu-foot { margin-top: auto; color: #999; font-size: .8rem; text-align: center; padding-top: 16px; }
-        .og-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6vh 20px 8px; }
-        .og-empty[hidden] { display: none; }
-        .og-empty-avatar { width: 84px; height: 84px; }
-        .og-empty-name { margin: 14px 0 4px; font-size: 1.5rem; color: #f5f5f5; font-weight: 700; letter-spacing: .3px; }
-        .og-empty .age-badge { font-size: .6em; }
-        .og-empty-tag { color: #a8a8a8; margin: 2px 0 0; line-height: 1.5; }
-        .og-rows { width: 100%; max-width: 540px; margin-top: 30px; display: flex; flex-direction: column; }
-        .og-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 8px; background: transparent; border: none; border-bottom: 1px solid #1f1f1f; color: #ececec; font-size: 1.02rem; font-family: inherit; text-align: left; cursor: pointer; }
-        .og-row:first-child { border-top: 1px solid #1f1f1f; }
-        .og-row:hover { color: #ffc107; background: rgba(255,193,7,.10); }
-        .og-row-ico { width: 22px; height: 22px; color: #bdbdbd; flex: 0 0 auto; display: grid; place-items: center; }
-        .og-row-ico svg { width: 21px; height: 21px; }
-        .og-row:hover .og-row-ico { color: #ffc107; }
-        .input-wrapper { flex-direction: row; flex-wrap: nowrap; }
-        .og-plus-btn { width: 38px; height: 38px; border-radius: 50%; border: none; background: transparent; color: #d8d8d8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
-        .og-plus-btn svg { width: 22px; height: 22px; }
-        .og-plus-btn:hover { color: #ffc107; }
-        #messageInput { flex: 1 1 auto; min-width: 0; }
-        .input-wrapper #voiceBtn { width: 40px; height: 40px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: transparent; border: 1px solid #3a3a3a; color: #e8e8e8; display: grid; place-items: center; padding: 0; }
-        .input-wrapper #voiceBtn svg { width: 20px; height: 20px; }
-        .input-wrapper #voiceBtn:hover { transform: none; border-color: rgba(255,193,7,.7); color: #ffc107; box-shadow: none; }
-        .input-wrapper #voiceBtn.recording, .input-wrapper #voiceBtn.speaking { background: rgba(255,193,7,.16); border-color: #ffc107; color: #ffc107; box-shadow: 0 0 0 3px rgba(255,193,7,.25), 0 0 16px rgba(255,193,7,.45); }
-        .input-wrapper #sendBtn { width: 42px; height: 42px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: linear-gradient(135deg, #ffc107, #ff8f00); border: none; color: #111; display: grid; place-items: center; padding: 0; cursor: pointer; }
-        .input-wrapper #sendBtn svg { width: 20px; height: 20px; }
-        .input-wrapper #sendBtn:hover { transform: none; box-shadow: 0 0 0 3px rgba(255,193,7,.25); }
-        .og-token-line { text-align: center; font-size: .82rem; color: #ffc107; min-height: 1em; margin: 8px 0 0; }
-        .og-legacy-btn { display: none !important; }
-        @media (max-width: 768px) {
-            .og-topbar { padding: 8px 10px 0; }
-            .input-wrapper { flex-direction: row; flex-wrap: nowrap; border-radius: 26px; gap: 4px; }
-            #messageInput { flex: 1 1 auto; order: 0; padding: 8px 6px; }
-            .input-wrapper #voiceBtn { flex: 0 0 auto; width: 40px; min-height: 0; }
-            .input-wrapper #sendBtn { flex: 0 0 auto; width: 42px; min-height: 0; }
-            .og-empty { padding-top: 4vh; }
-        }</style>
+    <style id="og-restyle-css">.og-topbar { flex: 0 0 auto; width: 100%; max-width: 880px; margin: 0 auto; padding: 10px 14px 2px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.og-circle-btn { width: 42px; height: 42px; border-radius: 50%; background: #1b1b1b; border: 1px solid #333; color: #e8e8e8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
+.og-circle-btn svg { width: 21px; height: 21px; }
+.og-circle-btn:hover { border-color: rgba(255,193,7,.7); color: #ffc107; }
+.og-circle-sm { width: 34px; height: 34px; }
+.og-circle-sm svg { width: 16px; height: 16px; }
+.og-pro-pill { display: inline-block; padding: 9px 22px; border-radius: 999px; border: 1px solid rgba(255,193,7,.75); background: rgba(255,193,7,.10); color: #ffc107; font-weight: 700; font-size: 1rem; text-decoration: none; letter-spacing: .2px; }
+.og-pro-pill:hover { background: rgba(255,193,7,.20); }
+.og-pro-pill.is-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
+.og-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9000; }
+.og-scrim[hidden] { display: none; }
+.og-menu { position: fixed; top: 0; left: 0; height: 100vh; height: 100dvh; width: min(320px, 86vw); background: #101010; border-right: 1px solid #2b2b2b; z-index: 9001; transform: translateX(-105%); transition: transform .25s ease; display: flex; flex-direction: column; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(0,0,0,.5); }
+.og-menu.open { transform: translateX(0); }
+.og-menu-head { display: flex; align-items: center; gap: 10px; }
+.og-menu-ava { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; border: 1px solid rgba(255,193,7,.6); flex: 0 0 auto; }
+.og-menu-title { flex: 1 1 auto; min-width: 0; color: #f2f2f2; font-weight: 600; }
+.og-menu .age-badge { font-size: .62em; }
+.og-menu-status { font-weight: 400; font-size: .8rem; color: #a8a8a8; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.og-menu-token { color: #ffc107; font-size: .9rem; min-height: 1.1em; margin: 14px 4px 4px; }
+.og-menu-list { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.og-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 10px; border: none; border-radius: 10px; background: transparent; color: #ececec; font-size: 1rem; font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.og-menu-item:hover { background: #1d1d1d; }
+.og-mi { width: 22px; text-align: center; flex: 0 0 auto; }
+.og-menu-foot { margin-top: auto; color: #999; font-size: .8rem; text-align: center; padding-top: 16px; }
+.og-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6vh 20px 8px; }
+.og-empty[hidden] { display: none; }
+.og-empty-avatar { width: 84px; height: 84px; }
+.og-empty-name { margin: 14px 0 4px; font-size: 1.5rem; color: #f5f5f5; font-weight: 700; letter-spacing: .3px; }
+.og-empty .age-badge { font-size: .6em; }
+.og-empty-tag { color: #a8a8a8; margin: 2px 0 0; line-height: 1.5; }
+.og-rows { width: 100%; max-width: 540px; margin-top: 30px; display: flex; flex-direction: column; }
+.og-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 8px; background: transparent; border: none; border-bottom: 1px solid #1f1f1f; color: #ececec; font-size: 1.02rem; font-family: inherit; text-align: left; cursor: pointer; }
+.og-row:first-child { border-top: 1px solid #1f1f1f; }
+.og-row:hover { color: #ffc107; background: rgba(255,193,7,.10); }
+.og-row-ico { width: 22px; height: 22px; color: #bdbdbd; flex: 0 0 auto; display: grid; place-items: center; }
+.og-row-ico svg { width: 21px; height: 21px; }
+.og-row:hover .og-row-ico { color: #ffc107; }
+.input-wrapper { flex-direction: row; flex-wrap: nowrap; }
+.og-plus-btn { width: 38px; height: 38px; border-radius: 50%; border: none; background: transparent; color: #d8d8d8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
+.og-plus-btn svg { width: 22px; height: 22px; }
+.og-plus-btn:hover { color: #ffc107; }
+#messageInput { flex: 1 1 auto; min-width: 0; }
+.input-wrapper #voiceBtn { width: 40px; height: 40px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: transparent; border: 1px solid #3a3a3a; color: #e8e8e8; display: grid; place-items: center; padding: 0; }
+.input-wrapper #voiceBtn svg { width: 20px; height: 20px; }
+.input-wrapper #voiceBtn:hover { transform: none; border-color: rgba(255,193,7,.7); color: #ffc107; box-shadow: none; }
+.input-wrapper #voiceBtn.recording, .input-wrapper #voiceBtn.speaking { background: rgba(255,193,7,.16); border-color: #ffc107; color: #ffc107; box-shadow: 0 0 0 3px rgba(255,193,7,.25), 0 0 16px rgba(255,193,7,.45); }
+.input-wrapper #sendBtn { width: 42px; height: 42px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: linear-gradient(135deg, #ffc107, #ff8f00); border: none; color: #111; display: grid; place-items: center; padding: 0; cursor: pointer; }
+.input-wrapper #sendBtn svg { width: 20px; height: 20px; }
+.input-wrapper #sendBtn:hover { transform: none; box-shadow: 0 0 0 3px rgba(255,193,7,.25); }
+.og-token-line { text-align: center; font-size: .82rem; color: #ffc107; min-height: 1em; margin: 8px 0 0; }
+.og-legacy-btn { display: none !important; }
+@media (max-width: 768px) {
+.og-topbar { padding: 8px 10px 0; }
+.input-wrapper { flex-direction: row; flex-wrap: nowrap; border-radius: 26px; gap: 4px; }
+#messageInput { flex: 1 1 auto; order: 0; padding: 8px 6px; }
+.input-wrapper #voiceBtn { flex: 0 0 auto; width: 40px; min-height: 0; }
+.input-wrapper #sendBtn { flex: 0 0 auto; width: 42px; min-height: 0; }
+.og-empty { padding-top: 4vh; }
+}</style>
 
-    <script>        const API_URL = window.location.origin;
-        const OG_AVATAR = '/avatar/poster.webp';
-        document.querySelectorAll('img.og-avatar, img.og-avatar-sm').forEach(img => { img.src = OG_AVATAR; });
-        function setMood(state) {
-            document.querySelectorAll('img.og-avatar').forEach(img => {
-                img.classList.remove('talking', 'listening', 'nod', 'thinking', 'win');
-                if (state) img.classList.add(state);
-                if (state === 'nod') setTimeout(() => img.classList.remove('nod'), 650);
-                if (state === 'win') setTimeout(() => img.classList.remove('win'), 1400);
-            });
-            if (document.body) {
-                document.body.classList.remove('og-mood-talking', 'og-mood-listening', 'og-mood-thinking', 'og-mood-win');
-                if (state) document.body.classList.add('og-mood-' + state);
-                if (state === 'win') setTimeout(() => document.body.classList.remove('og-mood-win'), 1400);
-            }
-        }
-        let isProcessing = false;
-        let recognition = null;
-        let synthesis = window.speechSynthesis;
-        let voiceMode = 'text';
-        let currentVoice = null;
-        let voiceChatOn = false;
-        let speakingNow = false;
-        let speechGen = 0;
-        let currentAudio = null;
-        let aiVoiceOk = null;
-        document.addEventListener('DOMContentLoaded', () => {
-            initVoice();
-            checkServerStatus();
-            createEffects();
-            initSpeech();
-            setInterval(createFireParticle, 200);
-            setInterval(createSmokeParticle, 1000);
-            document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
-            initAgeGate();
-        });
-        function primeSpeech() {
-            if (!synthesis) return;
-            try {
-                const u = new SpeechSynthesisUtterance(' ');
-                u.volume = 0;
-                synthesis.speak(u);
-            } catch (e) {  }
-        }
-        function initSpeech() {
-            if (!synthesis) return;
-            const pick = () => {
-                const voices = synthesis.getVoices();
-                if (voices.length > 0) {
-                    currentVoice =
-                        voices.find(v => /enhanced|premium/i.test(v.name) && v.lang.startsWith('en')) ||
-                        voices.find(v => v.name === 'Google US English') ||
-                        voices.find(v => v.lang.startsWith('en-')) ||
-                        voices[0];
-                }
-            };
-            pick();
-            synthesis.onvoiceschanged = pick;
-        }
-        function initVoice() {
-            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                try {
-                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                    recognition = new SpeechRecognition();
-                    recognition.continuous = false;
-                    recognition.interimResults = false;
-                    recognition.lang = 'en-US';
-                    recognition.maxAlternatives = 1;
-                    recognition.onstart = () => {
-                        updateStatus('Listening... (Speak now!)');
-                        setMood('listening');
-                    };
-                    recognition.onresult = (event) => {
-                        const transcript = event.results[0][0].transcript;
-                        document.getElementById('messageInput').value = transcript;
-                        sendMessage(true);
-                    };
-                    recognition.onerror = (event) => {
-                        if (event.error === 'not-allowed') {
-                            voiceChatOn = false;
-                            document.getElementById('voiceBtn').classList.remove('recording');
-                            updateStatus('Mic blocked — allow microphone access to talk');
-                        }
-                    };
-                    recognition.onend = () => {
-                        if (voiceChatOn && !speakingNow && !isProcessing) {
-                            setTimeout(startListening, 300);
-                        }
-                    };
-                } catch (error) {
-                    console.error('Speech recognition setup failed:', error);
-                }
-            }
-        }
-        async function checkServerStatus() {
-            try {
-                const response = await fetch(`${API_URL}/health`);
-                const data = await response.json();
-                updateStatus(`Connected - ${data.agent_name}`);
-            } catch (error) {
-                updateStatus('Server Offline - Start backend on port 8000');
-            }
-        }
-        function updateStatus(text) {
-            document.getElementById('status-text').textContent = text;
-            var vis = document.getElementById('ogStatusLine');
-            if (vis) vis.textContent = text;
-        }
-        function startListening() {
-            if (!voiceChatOn || speakingNow || isProcessing || !recognition) return;
-            try { recognition.start(); } catch (e) {  }
-        }
-        function maybeResumeListening() {
-            if (voiceChatOn) setTimeout(startListening, 350);
-        }
-        function stopSpeaking() {
-            speechGen++;
-            if (synthesis) synthesis.cancel();
-            if (currentAudio) { try { currentAudio.pause(); } catch (e) {} currentAudio = null; }
-            speakingNow = false;
-            document.getElementById('voiceBtn').classList.remove('speaking');
-            setMood('');
-        }
-        document.getElementById('voiceBtn').addEventListener('click', () => {
-            const btn = document.getElementById('voiceBtn');
-            if (!voiceChatOn) {
-                voiceChatOn = true;
-                unlockAudio();
-                if (!recognition) {
-                    btn.classList.add('recording');
-                    primeSpeech();
-                    updateStatus('Voice replies ON — OG talks back out loud. (This browser can\'t hear you — type your messages.)');
-                    return;
-                }
-                btn.classList.add('recording');
-                primeSpeech();
-                updateStatus('Voice chat ON — just talk. Tap Talk again to stop.');
-                startListening();
-            } else {
-                voiceChatOn = false;
-                btn.classList.remove('recording');
-                try { recognition.stop(); } catch (e) {  }
-                stopSpeaking();
-                updateStatus('Voice chat OFF');
-            }
-        });
-        function ageConfirmed() {
-            return document.cookie.split('; ').some(c => c === 'ogai_age_ok=1');
-        }
-        function initAgeGate() {
-            const gate = document.getElementById('ageGate');
-            if (ageConfirmed()) {
-                gate.hidden = true;
-                restoreConversation();
-                return;
-            }
-            gate.hidden = false;
-            document.getElementById('ageGateEnter').addEventListener('click', () => {
-                document.cookie = 'ogai_age_ok=1; max-age=31536000; path=/; SameSite=Lax';
-                gate.hidden = true;
-                restoreConversation();
-            });
-            document.getElementById('ageGateDecline').addEventListener('click', () => {
-                document.getElementById('ageGatePrompt').hidden = true;
-                document.getElementById('ageGateDeclined').hidden = false;
-            });
-        }
-        function updateTokenStatus(left) {
-            const el = document.getElementById('tokenStatus');
-            if (!el) return;
-            if (left === null || left === undefined) {
-                el.textContent = '💎 Pro — unlimited';
-            } else {
-                el.textContent = '🪙 ' + Number(left).toLocaleString() + ' free tokens left today';
-            }
-        }
-        function showUpgradeCta() {
-            const cta = document.createElement('div');
-            cta.style.cssText = 'text-align: center; padding: 8px 0 2px;';
-            cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — unlimited messages</a>';
-            document.getElementById('messagesArea').appendChild(cta);
-            ogFollowBottom(false);
-        }
-        async function sendMessage(speakResponse = false, coords = null) {
-            const input = document.getElementById('messageInput');
-            let message = input.value.trim();
-            const staged = window.__ogPeekStaged ? window.__ogPeekStaged() : null;
-            if ((!message && !staged) || isProcessing) return;
-            if (!message) message = 'Look at this picture I just sent you.';
-            addMessage('user', message);
-            if (staged && window.__ogDecorateSent) window.__ogDecorateSent();
-            input.value = '';
-            isProcessing = true;
-            unlockAudio();
-            setMood('thinking');
-            updateStatus('AI is thinking...');
-            try {
-                const imgFlag = !!staged;
-                const streamed = await streamReply(message, coords, imgFlag);
-                if (!streamed) await classicReply(message, coords, imgFlag);
-            } catch (error) {
-                console.error('Error:', error);
-                addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
-                updateStatus('Error - Check connection');
-            } finally {
-                isProcessing = false;
-            }
-        }
-        async function classicReply(message, coords = null, image = false) {
-            const payload = { message: message };
-            if (coords) payload.coords = coords;
-            if (image) payload.image = true;
-            const response = await fetch(`${API_URL}/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) throw new Error(`Server error: ${response.status}`);
-            const data = await response.json();
-            addMessage('ai', data.response, data.timestamp);
-            if (data.upgrade_url) showUpgradeCta();
-            if ('free_tokens_left' in data) updateTokenStatus(data.free_tokens_left);
-            speakReply(data.response);
-            updateStatus('Online & Ready');
-        }
-        async function streamReply(message, coords = null, image = false) {
-            let response;
-            try {
-                const payload = { message: message, stream: true };
-                if (coords) payload.coords = coords;
-                if (image) payload.image = true;
-                response = await fetch(`${API_URL}/chat`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            } catch (e) {
-                return false;
-            }
-            const contentType = response.headers.get('content-type') || '';
-            if (!response.ok || !response.body || !contentType.includes('text/event-stream')) {
-                return false;
-            }
-            const messagesArea = document.getElementById('messagesArea');
-            const bubble = document.createElement('div');
-            bubble.className = 'message ai';
-            bubble.innerHTML = `
+    <script>const API_URL = window.location.origin;
+const OG_AVATAR = '/avatar/poster.webp';
+document.querySelectorAll('img.og-avatar, img.og-avatar-sm').forEach(img => { img.src = OG_AVATAR; });
+function setMood(state) {
+document.querySelectorAll('img.og-avatar').forEach(img => {
+img.classList.remove('talking', 'listening', 'nod', 'thinking', 'win');
+if (state) img.classList.add(state);
+if (state === 'nod') setTimeout(() => img.classList.remove('nod'), 650);
+if (state === 'win') setTimeout(() => img.classList.remove('win'), 1400);
+});
+if (document.body) {
+document.body.classList.remove('og-mood-talking', 'og-mood-listening', 'og-mood-thinking', 'og-mood-win');
+if (state) document.body.classList.add('og-mood-' + state);
+if (state === 'win') setTimeout(() => document.body.classList.remove('og-mood-win'), 1400);
+}
+}
+let isProcessing = false;
+let recognition = null;
+let synthesis = window.speechSynthesis;
+let voiceMode = 'text';
+let currentVoice = null;
+let voiceChatOn = false;
+let speakingNow = false;
+let speechGen = 0;
+let currentAudio = null;
+let aiVoiceOk = null;
+document.addEventListener('DOMContentLoaded', () => {
+initVoice();
+checkServerStatus();
+createEffects();
+initSpeech();
+setInterval(createFireParticle, 200);
+setInterval(createSmokeParticle, 1000);
+document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
+initAgeGate();
+});
+function primeSpeech() {
+if (!synthesis) return;
+try {
+const u = new SpeechSynthesisUtterance(' ');
+u.volume = 0;
+synthesis.speak(u);
+} catch (e) {  }
+}
+function initSpeech() {
+if (!synthesis) return;
+const pick = () => {
+const voices = synthesis.getVoices();
+if (voices.length > 0) {
+currentVoice =
+voices.find(v => /enhanced|premium/i.test(v.name) && v.lang.startsWith('en')) ||
+voices.find(v => v.name === 'Google US English') ||
+voices.find(v => v.lang.startsWith('en-')) ||
+voices[0];
+}
+};
+pick();
+synthesis.onvoiceschanged = pick;
+}
+function initVoice() {
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+try {
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+recognition = new SpeechRecognition();
+recognition.continuous = false;
+recognition.interimResults = false;
+recognition.lang = 'en-US';
+recognition.maxAlternatives = 1;
+recognition.onstart = () => {
+updateStatus('Listening... (Speak now!)');
+setMood('listening');
+};
+recognition.onresult = (event) => {
+const transcript = event.results[0][0].transcript;
+document.getElementById('messageInput').value = transcript;
+sendMessage(true);
+};
+recognition.onerror = (event) => {
+if (event.error === 'not-allowed') {
+voiceChatOn = false;
+document.getElementById('voiceBtn').classList.remove('recording');
+updateStatus('Mic blocked — allow microphone access to talk');
+}
+};
+recognition.onend = () => {
+if (voiceChatOn && !speakingNow && !isProcessing) {
+setTimeout(startListening, 300);
+}
+};
+} catch (error) {
+console.error('Speech recognition setup failed:', error);
+}
+}
+}
+async function checkServerStatus() {
+try {
+const response = await fetch(`${API_URL}/health`);
+const data = await response.json();
+updateStatus(`Connected - ${data.agent_name}`);
+} catch (error) {
+updateStatus('Server Offline - Start backend on port 8000');
+}
+}
+function updateStatus(text) {
+document.getElementById('status-text').textContent = text;
+var vis = document.getElementById('ogStatusLine');
+if (vis) vis.textContent = text;
+}
+function startListening() {
+if (!voiceChatOn || speakingNow || isProcessing || !recognition) return;
+try { recognition.start(); } catch (e) {  }
+}
+function maybeResumeListening() {
+if (voiceChatOn) setTimeout(startListening, 350);
+}
+function stopSpeaking() {
+speechGen++;
+if (synthesis) synthesis.cancel();
+if (currentAudio) { try { currentAudio.pause(); } catch (e) {} currentAudio = null; }
+speakingNow = false;
+document.getElementById('voiceBtn').classList.remove('speaking');
+setMood('');
+}
+document.getElementById('voiceBtn').addEventListener('click', () => {
+const btn = document.getElementById('voiceBtn');
+if (!voiceChatOn) {
+voiceChatOn = true;
+unlockAudio();
+if (!recognition) {
+btn.classList.add('recording');
+primeSpeech();
+updateStatus('Voice replies ON — OG talks back out loud. (This browser can\'t hear you — type your messages.)');
+return;
+}
+btn.classList.add('recording');
+primeSpeech();
+updateStatus('Voice chat ON — just talk. Tap Talk again to stop.');
+startListening();
+} else {
+voiceChatOn = false;
+btn.classList.remove('recording');
+try { recognition.stop(); } catch (e) {  }
+stopSpeaking();
+updateStatus('Voice chat OFF');
+}
+});
+function ageConfirmed() {
+return document.cookie.split('; ').some(c => c === 'ogai_age_ok=1');
+}
+function initAgeGate() {
+const gate = document.getElementById('ageGate');
+if (ageConfirmed()) {
+gate.hidden = true;
+restoreConversation();
+return;
+}
+gate.hidden = false;
+document.getElementById('ageGateEnter').addEventListener('click', () => {
+document.cookie = 'ogai_age_ok=1; max-age=31536000; path=/; SameSite=Lax';
+gate.hidden = true;
+restoreConversation();
+});
+document.getElementById('ageGateDecline').addEventListener('click', () => {
+document.getElementById('ageGatePrompt').hidden = true;
+document.getElementById('ageGateDeclined').hidden = false;
+});
+}
+function updateTokenStatus(left) {
+const el = document.getElementById('tokenStatus');
+if (!el) return;
+if (left === null || left === undefined) {
+el.textContent = '💎 Pro — unlimited';
+} else {
+el.textContent = '🪙 ' + Number(left).toLocaleString() + ' free tokens left today';
+}
+}
+function showUpgradeCta() {
+const cta = document.createElement('div');
+cta.style.cssText = 'text-align: center; padding: 8px 0 2px;';
+cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — unlimited messages</a>';
+document.getElementById('messagesArea').appendChild(cta);
+ogFollowBottom(false);
+}
+async function sendMessage(speakResponse = false, coords = null) {
+const input = document.getElementById('messageInput');
+let message = input.value.trim();
+const staged = window.__ogPeekStaged ? window.__ogPeekStaged() : null;
+if ((!message && !staged) || isProcessing) return;
+if (!message) message = 'Look at this picture I just sent you.';
+addMessage('user', message);
+if (staged && window.__ogDecorateSent) window.__ogDecorateSent();
+input.value = '';
+isProcessing = true;
+unlockAudio();
+setMood('thinking');
+updateStatus('AI is thinking...');
+try {
+const imgFlag = !!staged;
+const streamed = await streamReply(message, coords, imgFlag);
+if (!streamed) await classicReply(message, coords, imgFlag);
+} catch (error) {
+console.error('Error:', error);
+addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
+updateStatus('Error - Check connection');
+} finally {
+isProcessing = false;
+}
+}
+async function classicReply(message, coords = null, image = false) {
+const payload = { message: message };
+if (coords) payload.coords = coords;
+if (image) payload.image = true;
+const response = await fetch(`${API_URL}/chat`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(payload)
+});
+if (!response.ok) throw new Error(`Server error: ${response.status}`);
+const data = await response.json();
+addMessage('ai', data.response, data.timestamp);
+if (data.upgrade_url) showUpgradeCta();
+if ('free_tokens_left' in data) updateTokenStatus(data.free_tokens_left);
+speakReply(data.response);
+updateStatus('Online & Ready');
+}
+async function streamReply(message, coords = null, image = false) {
+let response;
+try {
+const payload = { message: message, stream: true };
+if (coords) payload.coords = coords;
+if (image) payload.image = true;
+response = await fetch(`${API_URL}/chat`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(payload)
+});
+} catch (e) {
+return false;
+}
+const contentType = response.headers.get('content-type') || '';
+if (!response.ok || !response.body || !contentType.includes('text/event-stream')) {
+return false;
+}
+const messagesArea = document.getElementById('messagesArea');
+const bubble = document.createElement('div');
+bubble.className = 'message ai';
+bubble.innerHTML = `
                 <div class="message-content">
                     <div class="message-text"></div>
                     <div class="message-time">${new Date().toLocaleTimeString()}</div>
                 </div>`;
-            messagesArea.appendChild(bubble);
-            ogFollowBottom(false);
-            const textEl = bubble.querySelector('.message-text');
-            setMood('talking');
-            updateStatus('OG is typing...');
-            let full = '';
-            let doneData = null;
-            let streamError = false;
-            try {
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                let reading = true;
-                while (reading) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    let cut;
-                    while ((cut = buffer.indexOf('\n\n')) >= 0) {
-                        const rawEvent = buffer.slice(0, cut);
-                        buffer = buffer.slice(cut + 2);
-                        let eventName = 'message';
-                        let dataText = '';
-                        rawEvent.split('\n').forEach(line => {
-                            if (line.startsWith('event:')) eventName = line.slice(6).trim();
-                            else if (line.startsWith('data:')) dataText += line.slice(5).trim();
-                        });
-                        if (!dataText) continue;
-                        let payload;
-                        try { payload = JSON.parse(dataText); } catch (e) { continue; }
-                        if (eventName === 'chunk') {
-                            full += payload.text || '';
-                            textEl.textContent = full;
-                            ogFollowSoon(false);
-                        } else if (eventName === 'done') {
-                            doneData = payload;
-                            reading = false;
-                        } else if (eventName === 'error') {
-                            streamError = true;
-                            reading = false;
-                        }
-                    }
-                }
-            } catch (e) {
-                if (!full) { bubble.remove(); setMood(''); throw new Error('Stream dropped'); }
-                streamError = true;
-            }
-            bubble.remove();
-            if (streamError && !doneData) {
-                addMessage('ai', full);
-                speakReply(full);
-                updateStatus('Online & Ready');
-                return true;
-            }
-            const finalText = (doneData && doneData.response) || full;
-            addMessage('ai', finalText, doneData ? doneData.timestamp : null);
-            if (doneData && doneData.upgrade_url) showUpgradeCta();
-            if (doneData && 'free_tokens_left' in doneData) updateTokenStatus(doneData.free_tokens_left);
-            speakReply(finalText);
-            updateStatus('Online & Ready');
-            return true;
-        }
-        function cleanForSpeech(text) {
-            let codeNote = false;
-            let t = String(text).replace(/```[\s\S]*?```/g, () => {
-                if (!codeNote) { codeNote = true; return ' I dropped the code in the chat for you. '; }
-                return ' ';
-            });
-            t = t.replace(/`([^`]*)`/g, '$1');
-            return t
-                .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
-                .replace(/[*_#>]/g, '')
-                .trim();
-        }
-        function speechPassages(text) {
-            const sentences = text.match(/[^.!?\n]+[.!?]*\s*/g) || [text];
-            const out = [];
-            let cur = '';
-            for (const s of sentences) {
-                if (cur && (cur + s).length > 420) { out.push(cur.trim()); cur = ''; }
-                cur += s;
-            }
-            if (cur.trim()) out.push(cur.trim());
-            return out.filter(Boolean);
-        }
-        function fetchTTSPromise(text) {
-            return fetch(`${API_URL}/tts`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text })
-            }).then(r => { if (!r.ok) throw new Error('tts ' + r.status); return r.blob(); });
-        }
-        let ogAudioEl = null;
-        function ogAudio() {
-            if (!ogAudioEl) { ogAudioEl = new Audio(); ogAudioEl.preload = 'auto'; }
-            return ogAudioEl;
-        }
-        function unlockAudio() {
-            try {
-                const a = ogAudio();
-                const p = a.play();
-                if (p && p.catch) p.catch(() => {});
-                a.pause();
-            } catch (e) {}
-        }
-        async function playBlob(blob) {
-            const url = URL.createObjectURL(blob);
-            const heard = await new Promise((resolve) => {
-                const a = ogAudio();
-                currentAudio = a;
-                let settled = false;
-                const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
-                a.onended = () => { URL.revokeObjectURL(url); done(true); };
-                a.onerror = () => { URL.revokeObjectURL(url); done(false); };
-                try { a.src = url; } catch (e) { done(false); return; }
-                const p = a.play();
-                if (p && p.catch) p.catch(() => done(false));
-            });
-            currentAudio = null;
-            return heard;
-        }
-        function playChunkBrowser(chunk) {
-            return new Promise((resolve) => {
-                if (!synthesis) { resolve(); return; }
-                const watchdog = setTimeout(resolve, Math.min(20000, 1500 + chunk.length * 95));
-                const done = () => { clearTimeout(watchdog); resolve(); };
-                synthesis.resume();
-                const utterance = new SpeechSynthesisUtterance(chunk);
-                if (currentVoice) utterance.voice = currentVoice;
-                utterance.rate = 1.02;
-                utterance.pitch = 0.85;
-                utterance.volume = 1.0;
-                utterance.onend = done;
-                utterance.onerror = done;
-                synthesis.speak(utterance);
-            });
-        }
-        async function speakReply(text) {
-            const clean = cleanForSpeech(text);
-            if (!clean) { maybeResumeListening(); return; }
-            const passages = speechPassages(clean);
-            if (synthesis) synthesis.cancel();
-            speakingNow = true;
-            const gen = speechGen;
-            document.getElementById('voiceBtn').classList.add('speaking');
-            updateStatus('OG is talking...');
-            setMood('talking');
-            let nextFetch = (aiVoiceOk !== false && passages.length) ? fetchTTSPromise(passages[0]) : null;
-            let speakBlocked = false;
-            for (let i = 0; i < passages.length; i++) {
-                if (gen !== speechGen) break;
-                let played = false;
-                if (aiVoiceOk !== false) {
-                    try {
-                        const blob = await (nextFetch || fetchTTSPromise(passages[i]));
-                        nextFetch = (i + 1 < passages.length) ? fetchTTSPromise(passages[i + 1]) : null;
-                        const heard = await playBlob(blob);
-                        if (heard) { aiVoiceOk = true; played = true; }
-                        else { speakBlocked = true; }
-                    } catch (e) { aiVoiceOk = false; nextFetch = null; }
-                }
-                if (!played && gen === speechGen) await playChunkBrowser(passages[i]);
-            }
-            speakingNow = false;
-            document.getElementById('voiceBtn').classList.remove('speaking');
-            setMood(voiceChatOn ? 'listening' : '');
-            updateStatus(speakBlocked ? '🔇 Sound blocked — tap 🔊 on my reply to hear me' : (voiceChatOn ? 'Listening...' : 'Online & Ready'));
-            maybeResumeListening();
-        }
-        function escapeCodeText(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        function renderRichText(text) {
-            const re = /```(\w*)\s*\n?([\s\S]*?)```/g;
-            let htmlOut = '';
-            let last = 0;
-            let match;
-            const blockIds = [];
-            while ((match = re.exec(text)) !== null) {
-                htmlOut += escapeHtml(text.slice(last, match.index));
-                const code = match[2].replace(/\n$/, '');
-                const id = 'code-' + Math.random().toString(36).slice(2, 9);
-                blockIds.push(id);
-                htmlOut += `<div class="code-block"><div class="code-head"><span>${(match[1] || 'code').toUpperCase()}</span><button class="copy-btn" data-copy="${id}">📋 Copy</button></div><pre class="code-pre typing" id="${id}" data-code="${encodeURIComponent(code)}"><code></code></pre></div>`;
-                last = match.index + match[0].length;
-            }
-            htmlOut += escapeHtml(text.slice(last));
-            return { html: htmlOut, blockIds };
-        }
-        function typeCode(pre) {
-            const full = decodeURIComponent(pre.dataset.code);
-            const codeEl = pre.querySelector('code');
-            let pos = 0;
-            pre._typer = setInterval(() => {
-                pos = Math.min(full.length, pos + 9);
-                codeEl.textContent = full.slice(0, pos);
-                ogFollowSoon(false);
-                if (pos >= full.length) finishType(pre);
-            }, 12);
-        }
-        function finishType(pre) {
-            if (pre._typer) { clearInterval(pre._typer); pre._typer = null; }
-            pre.querySelector('code').textContent = decodeURIComponent(pre.dataset.code);
-            pre.classList.remove('typing');
-        }
-        var ogFollowWanted = true;
-        var ogFollowQueued = false;
-        function ogNearBottom(area) {
-            return area.scrollHeight - area.scrollTop - area.clientHeight < 140;
-        }
-        function ogFollowBottom(force) {
-            var area = document.getElementById('messagesArea');
-            if (!area) return;
-            if (force || ogFollowWanted) area.scrollTop = area.scrollHeight;
-        }
-        function ogFollowSoon(force) {
-            if (!(force || ogFollowWanted) || ogFollowQueued) return;
-            ogFollowQueued = true;
-            requestAnimationFrame(function () {
-                ogFollowQueued = false;
-                ogFollowBottom(force);
-            });
-        }
-        (function () {
-            var area = document.getElementById('messagesArea');
-            if (area) area.addEventListener('scroll', function () {
-                ogFollowWanted = ogNearBottom(area);
-            }, { passive: true });
-        })();
-        function addMessage(role, content, timestamp = null, instant = false) {
-            const messagesArea = document.getElementById('messagesArea');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
-            const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-            const rich = role === 'ai' ? renderRichText(String(content)) : { html: escapeHtml(String(content)), blockIds: [] };
-            messageDiv.innerHTML = `
+messagesArea.appendChild(bubble);
+ogFollowBottom(false);
+const textEl = bubble.querySelector('.message-text');
+setMood('talking');
+updateStatus('OG is typing...');
+let full = '';
+let doneData = null;
+let streamError = false;
+try {
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let buffer = '';
+let reading = true;
+while (reading) {
+const { done, value } = await reader.read();
+if (done) break;
+buffer += decoder.decode(value, { stream: true });
+let cut;
+while ((cut = buffer.indexOf('\n\n')) >= 0) {
+const rawEvent = buffer.slice(0, cut);
+buffer = buffer.slice(cut + 2);
+let eventName = 'message';
+let dataText = '';
+rawEvent.split('\n').forEach(line => {
+if (line.startsWith('event:')) eventName = line.slice(6).trim();
+else if (line.startsWith('data:')) dataText += line.slice(5).trim();
+});
+if (!dataText) continue;
+let payload;
+try { payload = JSON.parse(dataText); } catch (e) { continue; }
+if (eventName === 'chunk') {
+full += payload.text || '';
+textEl.textContent = full;
+ogFollowSoon(false);
+} else if (eventName === 'done') {
+doneData = payload;
+reading = false;
+} else if (eventName === 'error') {
+streamError = true;
+reading = false;
+}
+}
+}
+} catch (e) {
+if (!full) { bubble.remove(); setMood(''); throw new Error('Stream dropped'); }
+streamError = true;
+}
+bubble.remove();
+if (streamError && !doneData) {
+addMessage('ai', full);
+speakReply(full);
+updateStatus('Online & Ready');
+return true;
+}
+const finalText = (doneData && doneData.response) || full;
+addMessage('ai', finalText, doneData ? doneData.timestamp : null);
+if (doneData && doneData.upgrade_url) showUpgradeCta();
+if (doneData && 'free_tokens_left' in doneData) updateTokenStatus(doneData.free_tokens_left);
+speakReply(finalText);
+updateStatus('Online & Ready');
+return true;
+}
+function cleanForSpeech(text) {
+let codeNote = false;
+let t = String(text).replace(/```[\s\S]*?```/g, () => {
+if (!codeNote) { codeNote = true; return ' I dropped the code in the chat for you. '; }
+return ' ';
+});
+t = t.replace(/`([^`]*)`/g, '$1');
+return t
+.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+.replace(/[*_#>]/g, '')
+.trim();
+}
+function speechPassages(text) {
+const sentences = text.match(/[^.!?\n]+[.!?]*\s*/g) || [text];
+const out = [];
+let cur = '';
+for (const s of sentences) {
+if (cur && (cur + s).length > 420) { out.push(cur.trim()); cur = ''; }
+cur += s;
+}
+if (cur.trim()) out.push(cur.trim());
+return out.filter(Boolean);
+}
+function fetchTTSPromise(text) {
+return fetch(`${API_URL}/tts`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ text: text })
+}).then(r => { if (!r.ok) throw new Error('tts ' + r.status); return r.blob(); });
+}
+let ogAudioEl = null;
+function ogAudio() {
+if (!ogAudioEl) { ogAudioEl = new Audio(); ogAudioEl.preload = 'auto'; }
+return ogAudioEl;
+}
+function unlockAudio() {
+try {
+const a = ogAudio();
+const p = a.play();
+if (p && p.catch) p.catch(() => {});
+a.pause();
+} catch (e) {}
+}
+async function playBlob(blob) {
+const url = URL.createObjectURL(blob);
+const heard = await new Promise((resolve) => {
+const a = ogAudio();
+currentAudio = a;
+let settled = false;
+const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
+a.onended = () => { URL.revokeObjectURL(url); done(true); };
+a.onerror = () => { URL.revokeObjectURL(url); done(false); };
+try { a.src = url; } catch (e) { done(false); return; }
+const p = a.play();
+if (p && p.catch) p.catch(() => done(false));
+});
+currentAudio = null;
+return heard;
+}
+function playChunkBrowser(chunk) {
+return new Promise((resolve) => {
+if (!synthesis) { resolve(); return; }
+const watchdog = setTimeout(resolve, Math.min(20000, 1500 + chunk.length * 95));
+const done = () => { clearTimeout(watchdog); resolve(); };
+synthesis.resume();
+const utterance = new SpeechSynthesisUtterance(chunk);
+if (currentVoice) utterance.voice = currentVoice;
+utterance.rate = 1.02;
+utterance.pitch = 0.85;
+utterance.volume = 1.0;
+utterance.onend = done;
+utterance.onerror = done;
+synthesis.speak(utterance);
+});
+}
+async function speakReply(text) {
+const clean = cleanForSpeech(text);
+if (!clean) { maybeResumeListening(); return; }
+const passages = speechPassages(clean);
+if (synthesis) synthesis.cancel();
+speakingNow = true;
+const gen = speechGen;
+document.getElementById('voiceBtn').classList.add('speaking');
+updateStatus('OG is talking...');
+setMood('talking');
+let nextFetch = (aiVoiceOk !== false && passages.length) ? fetchTTSPromise(passages[0]) : null;
+let speakBlocked = false;
+for (let i = 0; i < passages.length; i++) {
+if (gen !== speechGen) break;
+let played = false;
+if (aiVoiceOk !== false) {
+try {
+const blob = await (nextFetch || fetchTTSPromise(passages[i]));
+nextFetch = (i + 1 < passages.length) ? fetchTTSPromise(passages[i + 1]) : null;
+const heard = await playBlob(blob);
+if (heard) { aiVoiceOk = true; played = true; }
+else { speakBlocked = true; }
+} catch (e) { aiVoiceOk = false; nextFetch = null; }
+}
+if (!played && gen === speechGen) await playChunkBrowser(passages[i]);
+}
+speakingNow = false;
+document.getElementById('voiceBtn').classList.remove('speaking');
+setMood(voiceChatOn ? 'listening' : '');
+updateStatus(speakBlocked ? '🔇 Sound blocked — tap 🔊 on my reply to hear me' : (voiceChatOn ? 'Listening...' : 'Online & Ready'));
+maybeResumeListening();
+}
+function escapeCodeText(text) {
+const div = document.createElement('div');
+div.textContent = text;
+return div.innerHTML;
+}
+function renderRichText(text) {
+const re = /```(\w*)\s*\n?([\s\S]*?)```/g;
+let htmlOut = '';
+let last = 0;
+let match;
+const blockIds = [];
+while ((match = re.exec(text)) !== null) {
+htmlOut += escapeHtml(text.slice(last, match.index));
+const code = match[2].replace(/\n$/, '');
+const id = 'code-' + Math.random().toString(36).slice(2, 9);
+blockIds.push(id);
+htmlOut += `<div class="code-block"><div class="code-head"><span>${(match[1] || 'code').toUpperCase()}</span><button class="copy-btn" data-copy="${id}">📋 Copy</button></div><pre class="code-pre typing" id="${id}" data-code="${encodeURIComponent(code)}"><code></code></pre></div>`;
+last = match.index + match[0].length;
+}
+htmlOut += escapeHtml(text.slice(last));
+return { html: htmlOut, blockIds };
+}
+function typeCode(pre) {
+const full = decodeURIComponent(pre.dataset.code);
+const codeEl = pre.querySelector('code');
+let pos = 0;
+pre._typer = setInterval(() => {
+pos = Math.min(full.length, pos + 9);
+codeEl.textContent = full.slice(0, pos);
+ogFollowSoon(false);
+if (pos >= full.length) finishType(pre);
+}, 12);
+}
+function finishType(pre) {
+if (pre._typer) { clearInterval(pre._typer); pre._typer = null; }
+pre.querySelector('code').textContent = decodeURIComponent(pre.dataset.code);
+pre.classList.remove('typing');
+}
+var ogFollowWanted = true;
+var ogFollowQueued = false;
+function ogNearBottom(area) {
+return area.scrollHeight - area.scrollTop - area.clientHeight < 140;
+}
+function ogFollowBottom(force) {
+var area = document.getElementById('messagesArea');
+if (!area) return;
+if (force || ogFollowWanted) area.scrollTop = area.scrollHeight;
+}
+function ogFollowSoon(force) {
+if (!(force || ogFollowWanted) || ogFollowQueued) return;
+ogFollowQueued = true;
+requestAnimationFrame(function () {
+ogFollowQueued = false;
+ogFollowBottom(force);
+});
+}
+(function () {
+var area = document.getElementById('messagesArea');
+if (area) area.addEventListener('scroll', function () {
+ogFollowWanted = ogNearBottom(area);
+}, { passive: true });
+})();
+function addMessage(role, content, timestamp = null, instant = false) {
+const messagesArea = document.getElementById('messagesArea');
+const messageDiv = document.createElement('div');
+messageDiv.className = `message ${role}`;
+const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+const rich = role === 'ai' ? renderRichText(String(content)) : { html: escapeHtml(String(content)), blockIds: [] };
+messageDiv.innerHTML = `
                 <div class="message-content">
                     <div class="message-text">${rich.html}</div>
                     <div class="message-time">${time}</div>
                 </div>
             `;
-            messagesArea.appendChild(messageDiv);
-            ogFollowBottom(role === 'user');
-            if (role === 'ai') {
-                const spkBtn = document.createElement('button');
-                spkBtn.type = 'button';
-                spkBtn.className = 'og-speak-btn';
-                spkBtn.title = 'Hear OG say this';
-                spkBtn.setAttribute('aria-label', 'Hear OG say this reply');
-                spkBtn.textContent = '🔊';
-                const spkText = String(content);
-                spkBtn.addEventListener('click', () => { unlockAudio(); speakReply(spkText); });
-                const mc = messageDiv.querySelector('.message-content');
-                if (mc) mc.appendChild(spkBtn);
-                setMood('nod');
-                setTimeout(() => { if (!speakingNow) setMood(voiceChatOn ? 'listening' : ''); }, 620);
-            }
-            rich.blockIds.forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                if (instant) finishType(el); else typeCode(el);
-            });
-        }
-        document.getElementById('messagesArea').addEventListener('click', (e) => {
-            const btn = e.target.closest('.copy-btn');
-            if (btn) {
-                const pre = document.getElementById(btn.dataset.copy);
-                const code = decodeURIComponent(pre.dataset.code);
-                const done = () => { btn.textContent = '✅ Copied'; setTimeout(() => { btn.textContent = '📋 Copy'; }, 1600); };
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(code).then(done).catch(() => fallbackCopy(code, done));
-                } else {
-                    fallbackCopy(code, done);
-                }
-                return;
-            }
-            const pre = e.target.closest('.code-pre');
-            if (pre && pre._typer) finishType(pre);
-        });
-        function fallbackCopy(text, done) {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            document.body.appendChild(ta);
-            ta.select();
-            try { document.execCommand('copy'); } catch (err) {  }
-            ta.remove();
-            done();
-        }
-        async function restoreConversation() {
-            try {
-                const r = await fetch(`${API_URL}/history`);
-                if (!r.ok) return;
-                const data = await r.json();
-                const convo = (data.conversation || []).slice(-30);
-                convo.forEach(m => {
-                    if (!m || !m.content) return;
-                    if (m.role === 'user') addMessage('user', m.content, m.timestamp || null, true);
-                    else if (m.role === 'assistant' || m.role === 'ai') addMessage('ai', m.content, m.timestamp || null, true);
-                });
-                if (convo.length) updateStatus('Welcome back — OG remembers this conversation 🧠');
-                if ('free_tokens_left' in data) updateTokenStatus(data.free_tokens_left);
-            } catch (e) {  }
-        }
-        document.getElementById('clearBtn').addEventListener('click', async () => {
-            if (!confirm('Clear conversation history?')) return;
-            try {
-                await fetch(`${API_URL}/clear`, { method: 'POST' });
-                document.getElementById('messagesArea').innerHTML = '';
-                addMessage('ai', 'Conversation cleared. What you need fam?');
-            } catch (error) {
-                console.error('Error:', error);
-            }
-        });
-        document.getElementById('messageInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage(true);
-            }
-        });
-        document.getElementById('sendBtn').addEventListener('click', () => {
-            sendMessage(true);
-        });
-        document.querySelectorAll('.starter-chip').forEach(chip => {
-            chip.addEventListener('click', () => {
-                document.getElementById('messageInput').value = chip.dataset.prompt;
-                sendMessage(true);
-            });
-        });
-        document.getElementById('shareBtn').addEventListener('click', async () => {
-            let text = 'Talk to OG-AI — the realest AI in the game 🔥';
-            try {
-                const r = await fetch(`${API_URL}/history`);
-                if (r.ok) {
-                    const data = await r.json();
-                    const lines = (data.conversation || []).slice(-20).map(m =>
-                        (m.role === 'user' ? 'Me: ' : 'OG-AI: ') + String(m.content || ''));
-                    if (lines.length) text = 'My conversation with OG-AI:\n\n' + lines.join('\n\n');
-                }
-            } catch (e) {  }
-            const url = window.location.origin + '/';
-            if (navigator.share) {
-                try { await navigator.share({ title: 'OG-AI', text: text, url: url }); } catch (e) {  }
-            } else {
-                const done = () => updateStatus('Conversation copied — paste it anywhere 📤');
-                const payload = text + '\n' + url;
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(payload).then(done).catch(() => fallbackCopy(payload, done));
-                } else {
-                    fallbackCopy(payload, done);
-                }
-            }
-        });
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML.replace(/\n/g, '<br>');
-        }
-        function createEffects() {
-            const container = document.getElementById('effects-container');
-            container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
-        }
-        function createFireParticle() {
-            const container = document.getElementById('effects-container');
-            const particle = document.createElement('div');
-            particle.className = 'fire-particle';
-            particle.style.left = Math.random() * 100 + '%';
-            particle.style.bottom = '0';
-            particle.style.animationDelay = Math.random() * 2 + 's';
-            container.appendChild(particle);
-            setTimeout(() => particle.remove(), 3000);
-        }
-        function createSmokeParticle() {
-            const container = document.getElementById('effects-container');
-            const particle = document.createElement('div');
-            particle.className = 'smoke-particle';
-            particle.style.left = Math.random() * 100 + '%';
-            particle.style.bottom = '0';
-            particle.style.animationDelay = Math.random() * 3 + 's';
-            container.appendChild(particle);
-            setTimeout(() => particle.remove(), 8000);
-        }
-        function createExplosion(x, y) {
-            const container = document.getElementById('effects-container');
-            const explosion = document.createElement('div');
-            explosion.className = 'explosion-particle';
-            explosion.style.left = x + 'px';
-            explosion.style.top = y + 'px';
-            explosion.style.animation = 'explosion 0.6s ease-out';
-            container.appendChild(explosion);
-            for (let i = 0; i < 3; i++) {
-                setTimeout(() => {
-                    const ring = document.createElement('div');
-                    ring.className = 'explosion-particle';
-                    ring.style.left = (x + Math.random() * 100 - 50) + 'px';
-                    ring.style.top = (y + Math.random() * 100 - 50) + 'px';
-                    ring.style.animation = 'explosion 0.4s ease-out';
-                    ring.style.animationDelay = (i * 0.1) + 's';
-                    container.appendChild(ring);
-                    setTimeout(() => ring.remove(), 600);
-                }, i * 100);
-            }
-            setTimeout(() => explosion.remove(), 600);
-        }
-        function randomExplosion() {
-            const x = Math.random() * window.innerWidth;
-            const y = Math.random() * window.innerHeight;
-            createExplosion(x, y);
-        }
-        setInterval(randomExplosion, 15000);
-        function createLightning() {
-            const container = document.getElementById('effects-container');
-            const bolt = document.createElement('div');
-            bolt.className = 'lightning-bolt';
-            bolt.style.left = Math.random() * 100 + '%';
-            bolt.style.top = '0';
-            bolt.style.animation = 'lightning 0.3s';
-            container.appendChild(bolt);
-            setTimeout(() => bolt.remove(), 300);
-        }
-        setInterval(() => {
-            if (Math.random() > 0.7) {
-                createLightning();
-            }
-        }, 5000);
-        const originalSendMessage = sendMessage;
-        sendMessage = function(...args) {
-            if (Math.random() > 0.5) {
-                const x = Math.random() * window.innerWidth;
-                const y = Math.random() * (window.innerHeight / 2);
-                createExplosion(x, y);
-            }
-            return originalSendMessage.apply(this, args);
-        };</script>
-    <script id="og-restyle-js">        (function () {
-            var $ = function (id) { return document.getElementById(id); };
-            var menu = $('sideMenu'), scrim = $('menuScrim');
-            function openMenu() { menu.classList.add('open'); menu.setAttribute('aria-hidden', 'false'); scrim.hidden = false; }
-            function closeMenu() { menu.classList.remove('open'); menu.setAttribute('aria-hidden', 'true'); scrim.hidden = true; }
-            $('menuBtn').addEventListener('click', openMenu);
-            $('plusBtn').addEventListener('click', function () { if (window.__ogTogglePlusSheet) window.__ogTogglePlusSheet(); else openMenu(); });
-            $('menuClose').addEventListener('click', closeMenu);
-            scrim.addEventListener('click', closeMenu);
-            document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
-            function delegate(id) { var b = $(id); if (b) b.click(); }
-            $('menuShareBtn').addEventListener('click', function () { closeMenu(); delegate('shareBtn'); });
-            $('menuClearBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
-            $('menuNewBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
-            $('newChatBtn').addEventListener('click', function () { delegate('clearBtn'); });
-            var pill = $('proPill'), mirror = $('tokenStatusMenu'), ts = $('tokenStatus');
-            function syncToken() {
-                if (!ts) return;
-                var text = ts.textContent || '';
-                if (mirror) mirror.textContent = text;
-                if (pill && /Pro — unlimited/.test(text)) { pill.textContent = '💎 Pro'; pill.classList.add('is-pro'); }
-            }
-            if (ts && window.MutationObserver) new MutationObserver(syncToken).observe(ts, { childList: true, characterData: true, subtree: true });
-            syncToken();
-            var area = $('messagesArea'), empty = $('emptyState');
-            function syncEmpty() { if (empty) empty.hidden = area.querySelector('.message') !== null; }
-            if (area && window.MutationObserver) new MutationObserver(syncEmpty).observe(area, { childList: true });
-            syncEmpty();
-            var input = $('messageInput'), send = $('sendBtn');
-            var ICON_SEND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
-            var ICON_VOICE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="7" x2="10" y2="17"/><line x1="14" y1="4" x2="14" y2="20"/><line x1="18" y1="10" x2="18" y2="14"/></svg>';
-            function syncSendBtn() { if (send) send.innerHTML = input.value.trim() ? ICON_SEND : ICON_VOICE; }
-            if (send && input) {
-                var fresh = send.cloneNode(true);
-                send.replaceWith(fresh);
-                send = fresh;
-                send.addEventListener('click', function () {
-                    if (input.value.trim()) sendMessage(true);
-                    else { var vb = $('voiceBtn'); if (vb) vb.click(); }
-                });
-                input.addEventListener('input', syncSendBtn);
-                var _ogSend = sendMessage;
-                sendMessage = function () { var r = _ogSend.apply(this, arguments); syncSendBtn(); return r; };
-                syncSendBtn();
-            }
-        })();</script>
-    <script>        (function () {
-            function $(id) { return document.getElementById(id); }
-            var btn = $('menuGoogleBtn'), info = $('menuGoogleInfo'),
-                emailEl = $('menuGoogleEmail'), disc = $('menuGoogleDisconnect');
-            if (!btn) return;
-            function refresh() {
-                fetch('/auth/google/status').then(function (r) { return r.json(); }).then(function (s) {
-                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-                    if (s.connected) {
-                        btn.hidden = true; info.hidden = false; disc.hidden = false;
-                        emailEl.textContent = s.email ? ('Google: ' + s.email) : 'Google connected';
-                    } else {
-                        btn.hidden = false; info.hidden = true; disc.hidden = true;
-                    }
-                }).catch(function () {  });
-            }
-            if (disc) disc.addEventListener('click', function () {
-                fetch('/auth/google/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-            });
-            refresh();
-        })();</script>
-    <script>        (function () {
-            function $(id) { return document.getElementById(id); }
-            var btn = $('menuSpotifyBtn'), info = $('menuSpotifyInfo'),
-                nameEl = $('menuSpotifyName'), disc = $('menuSpotifyDisconnect');
-            if (!btn) return;
-            function refresh() {
-                fetch('/auth/spotify/status').then(function (r) { return r.json(); }).then(function (s) {
-                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-                    if (s.connected) {
-                        btn.hidden = true; info.hidden = false; disc.hidden = false;
-                        var who = s.name || s.email;
-                        nameEl.textContent = who ? ('Spotify: ' + who) : 'Spotify connected';
-                    } else {
-                        btn.hidden = false; info.hidden = true; disc.hidden = true;
-                    }
-                }).catch(function () {  });
-            }
-            if (disc) disc.addEventListener('click', function () {
-                fetch('/auth/spotify/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-            });
-            refresh();
-        })();</script>
-    <script>        (function () {
-            function $(id) { return document.getElementById(id); }
-            var btn = $('menuCoinbaseBtn'), info = $('menuCoinbaseInfo'),
-                nameEl = $('menuCoinbaseName'), disc = $('menuCoinbaseDisconnect');
-            if (!btn) return;
-            function refresh() {
-                fetch('/auth/coinbase/status').then(function (r) { return r.json(); }).then(function (s) {
-                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-                    if (s.connected) {
-                        btn.hidden = true; info.hidden = false; disc.hidden = false;
-                        var who = s.name || s.email;
-                        nameEl.textContent = who ? ('Coinbase: ' + who) : 'Coinbase connected';
-                    } else {
-                        btn.hidden = false; info.hidden = true; disc.hidden = true;
-                    }
-                }).catch(function () {  });
-            }
-            if (disc) disc.addEventListener('click', function () {
-                fetch('/auth/coinbase/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-            });
-            refresh();
-        })();</script>
-    <script>        (function () {
-            function $(id) { return document.getElementById(id); }
-            var btn = $('menuGithubBtn'), info = $('menuGithubInfo'),
-                nameEl = $('menuGithubName'), disc = $('menuGithubDisconnect');
-            if (!btn) return;
-            function refresh() {
-                fetch('/auth/github/status').then(function (r) { return r.json(); }).then(function (s) {
-                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-                    if (s.connected) {
-                        btn.hidden = true; info.hidden = false; disc.hidden = false;
-                        var who = s.login || s.name || s.email;
-                        nameEl.textContent = who ? ('GitHub: ' + who) : 'GitHub connected';
-                    } else {
-                        btn.hidden = false; info.hidden = true; disc.hidden = true;
-                    }
-                }).catch(function () {  });
-            }
-            if (disc) disc.addEventListener('click', function () {
-                fetch('/auth/github/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-            });
-            refresh();
-        })();</script>
-    <script>        [['Youtube', 'youtube', function (s) { return s.name || s.email; }, 'YouTube'],
-         ['Discord', 'discord', function (s) { return s.username || s.name; }, 'Discord'],
-         ['Twitch', 'twitch', function (s) { return s.login || s.name || s.email; }, 'Twitch'],
-         ['Reddit', 'reddit', function (s) { return s.username || s.name; }, 'Reddit']
-        ].forEach(function (cfg) {
-            var key = cfg[0], path = cfg[1], pick = cfg[2], label = cfg[3];
-            (function () {
-                function $(id) { return document.getElementById(id); }
-                var btn = $('menu' + key + 'Btn'), info = $('menu' + key + 'Info'),
-                    nameEl = $('menu' + key + 'Name'), disc = $('menu' + key + 'Disconnect');
-                if (!btn) return;
-                function refresh() {
-                    fetch('/auth/' + path + '/status').then(function (r) { return r.json(); }).then(function (s) {
-                        if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-                        if (s.connected) {
-                            btn.hidden = true; info.hidden = false; disc.hidden = false;
-                            var who = pick(s);
-                            nameEl.textContent = who ? (label + ': ' + who) : (label + ' connected');
-                        } else {
-                            btn.hidden = false; info.hidden = true; disc.hidden = true;
-                        }
-                    }).catch(function () {  });
-                }
-                if (disc) disc.addEventListener('click', function () {
-                    fetch('/auth/' + path + '/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-                });
-                refresh();
-            })();
-        });</script>
+messagesArea.appendChild(messageDiv);
+ogFollowBottom(role === 'user');
+if (role === 'ai') {
+const spkBtn = document.createElement('button');
+spkBtn.type = 'button';
+spkBtn.className = 'og-speak-btn';
+spkBtn.title = 'Hear OG say this';
+spkBtn.setAttribute('aria-label', 'Hear OG say this reply');
+spkBtn.textContent = '🔊';
+const spkText = String(content);
+spkBtn.addEventListener('click', () => { unlockAudio(); speakReply(spkText); });
+const mc = messageDiv.querySelector('.message-content');
+if (mc) mc.appendChild(spkBtn);
+setMood('nod');
+setTimeout(() => { if (!speakingNow) setMood(voiceChatOn ? 'listening' : ''); }, 620);
+}
+rich.blockIds.forEach(id => {
+const el = document.getElementById(id);
+if (!el) return;
+if (instant) finishType(el); else typeCode(el);
+});
+}
+document.getElementById('messagesArea').addEventListener('click', (e) => {
+const btn = e.target.closest('.copy-btn');
+if (btn) {
+const pre = document.getElementById(btn.dataset.copy);
+const code = decodeURIComponent(pre.dataset.code);
+const done = () => { btn.textContent = '✅ Copied'; setTimeout(() => { btn.textContent = '📋 Copy'; }, 1600); };
+if (navigator.clipboard && navigator.clipboard.writeText) {
+navigator.clipboard.writeText(code).then(done).catch(() => fallbackCopy(code, done));
+} else {
+fallbackCopy(code, done);
+}
+return;
+}
+const pre = e.target.closest('.code-pre');
+if (pre && pre._typer) finishType(pre);
+});
+function fallbackCopy(text, done) {
+const ta = document.createElement('textarea');
+ta.value = text;
+document.body.appendChild(ta);
+ta.select();
+try { document.execCommand('copy'); } catch (err) {  }
+ta.remove();
+done();
+}
+async function restoreConversation() {
+try {
+const r = await fetch(`${API_URL}/history`);
+if (!r.ok) return;
+const data = await r.json();
+const convo = (data.conversation || []).slice(-30);
+convo.forEach(m => {
+if (!m || !m.content) return;
+if (m.role === 'user') addMessage('user', m.content, m.timestamp || null, true);
+else if (m.role === 'assistant' || m.role === 'ai') addMessage('ai', m.content, m.timestamp || null, true);
+});
+if (convo.length) updateStatus('Welcome back — OG remembers this conversation 🧠');
+if ('free_tokens_left' in data) updateTokenStatus(data.free_tokens_left);
+} catch (e) {  }
+}
+document.getElementById('clearBtn').addEventListener('click', async () => {
+if (!confirm('Clear conversation history?')) return;
+try {
+await fetch(`${API_URL}/clear`, { method: 'POST' });
+document.getElementById('messagesArea').innerHTML = '';
+addMessage('ai', 'Conversation cleared. What you need fam?');
+} catch (error) {
+console.error('Error:', error);
+}
+});
+document.getElementById('messageInput').addEventListener('keypress', (e) => {
+if (e.key === 'Enter' && !e.shiftKey) {
+e.preventDefault();
+sendMessage(true);
+}
+});
+document.getElementById('sendBtn').addEventListener('click', () => {
+sendMessage(true);
+});
+document.querySelectorAll('.starter-chip').forEach(chip => {
+chip.addEventListener('click', () => {
+document.getElementById('messageInput').value = chip.dataset.prompt;
+sendMessage(true);
+});
+});
+document.getElementById('shareBtn').addEventListener('click', async () => {
+let text = 'Talk to OG-AI — the realest AI in the game 🔥';
+try {
+const r = await fetch(`${API_URL}/history`);
+if (r.ok) {
+const data = await r.json();
+const lines = (data.conversation || []).slice(-20).map(m =>
+(m.role === 'user' ? 'Me: ' : 'OG-AI: ') + String(m.content || ''));
+if (lines.length) text = 'My conversation with OG-AI:\n\n' + lines.join('\n\n');
+}
+} catch (e) {  }
+const url = window.location.origin + '/';
+if (navigator.share) {
+try { await navigator.share({ title: 'OG-AI', text: text, url: url }); } catch (e) {  }
+} else {
+const done = () => updateStatus('Conversation copied — paste it anywhere 📤');
+const payload = text + '\n' + url;
+if (navigator.clipboard && navigator.clipboard.writeText) {
+navigator.clipboard.writeText(payload).then(done).catch(() => fallbackCopy(payload, done));
+} else {
+fallbackCopy(payload, done);
+}
+}
+});
+function escapeHtml(text) {
+const div = document.createElement('div');
+div.textContent = text;
+return div.innerHTML.replace(/\n/g, '<br>');
+}
+function createEffects() {
+const container = document.getElementById('effects-container');
+container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
+}
+function createFireParticle() {
+const container = document.getElementById('effects-container');
+const particle = document.createElement('div');
+particle.className = 'fire-particle';
+particle.style.left = Math.random() * 100 + '%';
+particle.style.bottom = '0';
+particle.style.animationDelay = Math.random() * 2 + 's';
+container.appendChild(particle);
+setTimeout(() => particle.remove(), 3000);
+}
+function createSmokeParticle() {
+const container = document.getElementById('effects-container');
+const particle = document.createElement('div');
+particle.className = 'smoke-particle';
+particle.style.left = Math.random() * 100 + '%';
+particle.style.bottom = '0';
+particle.style.animationDelay = Math.random() * 3 + 's';
+container.appendChild(particle);
+setTimeout(() => particle.remove(), 8000);
+}
+function createExplosion(x, y) {
+const container = document.getElementById('effects-container');
+const explosion = document.createElement('div');
+explosion.className = 'explosion-particle';
+explosion.style.left = x + 'px';
+explosion.style.top = y + 'px';
+explosion.style.animation = 'explosion 0.6s ease-out';
+container.appendChild(explosion);
+for (let i = 0; i < 3; i++) {
+setTimeout(() => {
+const ring = document.createElement('div');
+ring.className = 'explosion-particle';
+ring.style.left = (x + Math.random() * 100 - 50) + 'px';
+ring.style.top = (y + Math.random() * 100 - 50) + 'px';
+ring.style.animation = 'explosion 0.4s ease-out';
+ring.style.animationDelay = (i * 0.1) + 's';
+container.appendChild(ring);
+setTimeout(() => ring.remove(), 600);
+}, i * 100);
+}
+setTimeout(() => explosion.remove(), 600);
+}
+function randomExplosion() {
+const x = Math.random() * window.innerWidth;
+const y = Math.random() * window.innerHeight;
+createExplosion(x, y);
+}
+setInterval(randomExplosion, 15000);
+function createLightning() {
+const container = document.getElementById('effects-container');
+const bolt = document.createElement('div');
+bolt.className = 'lightning-bolt';
+bolt.style.left = Math.random() * 100 + '%';
+bolt.style.top = '0';
+bolt.style.animation = 'lightning 0.3s';
+container.appendChild(bolt);
+setTimeout(() => bolt.remove(), 300);
+}
+setInterval(() => {
+if (Math.random() > 0.7) {
+createLightning();
+}
+}, 5000);
+const originalSendMessage = sendMessage;
+sendMessage = function(...args) {
+if (Math.random() > 0.5) {
+const x = Math.random() * window.innerWidth;
+const y = Math.random() * (window.innerHeight / 2);
+createExplosion(x, y);
+}
+return originalSendMessage.apply(this, args);
+};</script>
+    <script id="og-restyle-js">(function () {
+var $ = function (id) { return document.getElementById(id); };
+var menu = $('sideMenu'), scrim = $('menuScrim');
+function openMenu() { menu.classList.add('open'); menu.setAttribute('aria-hidden', 'false'); scrim.hidden = false; }
+function closeMenu() { menu.classList.remove('open'); menu.setAttribute('aria-hidden', 'true'); scrim.hidden = true; }
+$('menuBtn').addEventListener('click', openMenu);
+$('plusBtn').addEventListener('click', function () { if (window.__ogTogglePlusSheet) window.__ogTogglePlusSheet(); else openMenu(); });
+$('menuClose').addEventListener('click', closeMenu);
+scrim.addEventListener('click', closeMenu);
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+function delegate(id) { var b = $(id); if (b) b.click(); }
+$('menuShareBtn').addEventListener('click', function () { closeMenu(); delegate('shareBtn'); });
+$('menuClearBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
+$('menuNewBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
+$('newChatBtn').addEventListener('click', function () { delegate('clearBtn'); });
+var pill = $('proPill'), mirror = $('tokenStatusMenu'), ts = $('tokenStatus');
+function syncToken() {
+if (!ts) return;
+var text = ts.textContent || '';
+if (mirror) mirror.textContent = text;
+if (pill && /Pro — unlimited/.test(text)) { pill.textContent = '💎 Pro'; pill.classList.add('is-pro'); }
+}
+if (ts && window.MutationObserver) new MutationObserver(syncToken).observe(ts, { childList: true, characterData: true, subtree: true });
+syncToken();
+var area = $('messagesArea'), empty = $('emptyState');
+function syncEmpty() { if (empty) empty.hidden = area.querySelector('.message') !== null; }
+if (area && window.MutationObserver) new MutationObserver(syncEmpty).observe(area, { childList: true });
+syncEmpty();
+var input = $('messageInput'), send = $('sendBtn');
+var ICON_SEND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+var ICON_VOICE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="7" x2="10" y2="17"/><line x1="14" y1="4" x2="14" y2="20"/><line x1="18" y1="10" x2="18" y2="14"/></svg>';
+function syncSendBtn() { if (send) send.innerHTML = input.value.trim() ? ICON_SEND : ICON_VOICE; }
+if (send && input) {
+var fresh = send.cloneNode(true);
+send.replaceWith(fresh);
+send = fresh;
+send.addEventListener('click', function () {
+if (input.value.trim()) sendMessage(true);
+else { var vb = $('voiceBtn'); if (vb) vb.click(); }
+});
+input.addEventListener('input', syncSendBtn);
+var _ogSend = sendMessage;
+sendMessage = function () { var r = _ogSend.apply(this, arguments); syncSendBtn(); return r; };
+syncSendBtn();
+}
+})();</script>
+    <script>(function () {
+function $(id) { return document.getElementById(id); }
+var btn = $('menuGoogleBtn'), info = $('menuGoogleInfo'),
+emailEl = $('menuGoogleEmail'), disc = $('menuGoogleDisconnect');
+if (!btn) return;
+function refresh() {
+fetch('/auth/google/status').then(function (r) { return r.json(); }).then(function (s) {
+if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+if (s.connected) {
+btn.hidden = true; info.hidden = false; disc.hidden = false;
+emailEl.textContent = s.email ? ('Google: ' + s.email) : 'Google connected';
+} else {
+btn.hidden = false; info.hidden = true; disc.hidden = true;
+}
+}).catch(function () {  });
+}
+if (disc) disc.addEventListener('click', function () {
+fetch('/auth/google/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+});
+refresh();
+})();</script>
+    <script>(function () {
+function $(id) { return document.getElementById(id); }
+var btn = $('menuSpotifyBtn'), info = $('menuSpotifyInfo'),
+nameEl = $('menuSpotifyName'), disc = $('menuSpotifyDisconnect');
+if (!btn) return;
+function refresh() {
+fetch('/auth/spotify/status').then(function (r) { return r.json(); }).then(function (s) {
+if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+if (s.connected) {
+btn.hidden = true; info.hidden = false; disc.hidden = false;
+var who = s.name || s.email;
+nameEl.textContent = who ? ('Spotify: ' + who) : 'Spotify connected';
+} else {
+btn.hidden = false; info.hidden = true; disc.hidden = true;
+}
+}).catch(function () {  });
+}
+if (disc) disc.addEventListener('click', function () {
+fetch('/auth/spotify/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+});
+refresh();
+})();</script>
+    <script>(function () {
+function $(id) { return document.getElementById(id); }
+var btn = $('menuCoinbaseBtn'), info = $('menuCoinbaseInfo'),
+nameEl = $('menuCoinbaseName'), disc = $('menuCoinbaseDisconnect');
+if (!btn) return;
+function refresh() {
+fetch('/auth/coinbase/status').then(function (r) { return r.json(); }).then(function (s) {
+if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+if (s.connected) {
+btn.hidden = true; info.hidden = false; disc.hidden = false;
+var who = s.name || s.email;
+nameEl.textContent = who ? ('Coinbase: ' + who) : 'Coinbase connected';
+} else {
+btn.hidden = false; info.hidden = true; disc.hidden = true;
+}
+}).catch(function () {  });
+}
+if (disc) disc.addEventListener('click', function () {
+fetch('/auth/coinbase/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+});
+refresh();
+})();</script>
+    <script>(function () {
+function $(id) { return document.getElementById(id); }
+var btn = $('menuGithubBtn'), info = $('menuGithubInfo'),
+nameEl = $('menuGithubName'), disc = $('menuGithubDisconnect');
+if (!btn) return;
+function refresh() {
+fetch('/auth/github/status').then(function (r) { return r.json(); }).then(function (s) {
+if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+if (s.connected) {
+btn.hidden = true; info.hidden = false; disc.hidden = false;
+var who = s.login || s.name || s.email;
+nameEl.textContent = who ? ('GitHub: ' + who) : 'GitHub connected';
+} else {
+btn.hidden = false; info.hidden = true; disc.hidden = true;
+}
+}).catch(function () {  });
+}
+if (disc) disc.addEventListener('click', function () {
+fetch('/auth/github/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+});
+refresh();
+})();</script>
+    <script>[['Youtube', 'youtube', function (s) { return s.name || s.email; }, 'YouTube'],
+['Discord', 'discord', function (s) { return s.username || s.name; }, 'Discord'],
+['Twitch', 'twitch', function (s) { return s.login || s.name || s.email; }, 'Twitch'],
+['Reddit', 'reddit', function (s) { return s.username || s.name; }, 'Reddit']
+].forEach(function (cfg) {
+var key = cfg[0], path = cfg[1], pick = cfg[2], label = cfg[3];
+(function () {
+function $(id) { return document.getElementById(id); }
+var btn = $('menu' + key + 'Btn'), info = $('menu' + key + 'Info'),
+nameEl = $('menu' + key + 'Name'), disc = $('menu' + key + 'Disconnect');
+if (!btn) return;
+function refresh() {
+fetch('/auth/' + path + '/status').then(function (r) { return r.json(); }).then(function (s) {
+if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+if (s.connected) {
+btn.hidden = true; info.hidden = false; disc.hidden = false;
+var who = pick(s);
+nameEl.textContent = who ? (label + ': ' + who) : (label + ' connected');
+} else {
+btn.hidden = false; info.hidden = true; disc.hidden = true;
+}
+}).catch(function () {  });
+}
+if (disc) disc.addEventListener('click', function () {
+fetch('/auth/' + path + '/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+});
+refresh();
+})();
+});</script>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-    <script>        (function () {
-            function $(id) { return document.getElementById(id); }
-            var btn = $('menuPlaidBtn'), info = $('menuPlaidInfo'),
-                nameEl = $('menuPlaidName'), disc = $('menuPlaidDisconnect');
-            if (!btn) return;
-            function refresh() {
-                fetch('/plaid/status').then(function (r) { return r.json(); }).then(function (s) {
-                    if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-                    if (s.connected) {
-                        btn.hidden = true; info.hidden = false; disc.hidden = false;
-                        nameEl.textContent = s.institution ? ('Bank: ' + s.institution) : 'Bank connected';
-                    } else {
-                        btn.hidden = false; info.hidden = true; disc.hidden = true;
-                    }
-                }).catch(function () {  });
-            }
-            btn.addEventListener('click', function () {
-                if (typeof Plaid === 'undefined') return;
-                fetch('/plaid/link-token', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
-                    if (!d.link_token) return;
-                    var handler = Plaid.create({
-                        token: d.link_token,
-                        onSuccess: function (publicToken) {
-                            fetch('/plaid/exchange', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ public_token: publicToken })
-                            }).then(refresh).catch(refresh);
-                        },
-                        onExit: function () {  }
-                    });
-                    handler.open();
-                }).catch(function () {  });
-            });
-            if (disc) disc.addEventListener('click', function () {
-                fetch('/plaid/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-            });
-            refresh();
-        })();</script>
-    <style id="og-image-css">        .og-gen-image { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 14px; margin: 10px 0 6px; border: 1px solid rgba(255, 193, 7, .35); }
-        .og-img-download { display: inline-block; margin: 2px 0 4px; color: #ffc107; font-weight: 600; text-decoration: none; }
-        .og-img-download:hover { text-decoration: underline; }
-        .og-drawing-pulse { animation: ogDrawingPulse 1.1s ease-in-out infinite; }
-        @keyframes ogDrawingPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }</style>
-    <script id="og-image-js">        (function () {
-            var DENY = /\b(draw\s+(an?\s+)?(conclusion|attention|breath|blood)|draw\s+(near|closer)|draw\s+the\s+(curtains?|blinds?))\b/i;
-            var VERB_ART = /\b(draw|paint|sketch|illustrate|render)\b/i;
-            var MAKE_ART = /\b(generate|create|make|design|show|give|get)\b[^.!?\n]{0,30}\b(image|picture|pic|photo|drawing|painting|illustration|logo|artwork|poster|wallpaper|sticker|meme)\b/i;
-            var ART_OF = /\b(image|picture|photo|drawing|painting|illustration|logo)\s+of\b/i;
-            function wantsImage(msg) {
-                if (!msg || DENY.test(msg)) return false;
-                if (VERB_ART.test(msg)) return true;
-                return MAKE_ART.test(msg) || ART_OF.test(msg);
-            }
-            var prevSend = sendMessage;
-            sendMessage = function () {
-                var input = document.getElementById('messageInput');
-                var msg = input ? input.value.trim() : '';
-                if (msg && !isProcessing && wantsImage(msg)) {
-                    ogDrawImage(msg);
-                    return Promise.resolve();
-                }
-                return prevSend.apply(this, arguments);
-            };
-            async function ogDrawImage(message) {
-                var input = document.getElementById('messageInput');
-                addMessage('user', message);
-                input.value = '';
-                input.dispatchEvent(new Event('input'));
-                isProcessing = true;
-                updateStatus('OG is drawing...');
-                if (typeof setMood === 'function') setMood('talking');
-                var area = document.getElementById('messagesArea');
-                var bubble = document.createElement('div');
-                bubble.className = 'message ai';
-                bubble.innerHTML =
-                    '<div class="message-content"><div class="message-text"><span class="og-drawing-pulse">🎨 Drawing that up for you…</span></div>' +
-                    '<div class="message-time">' + new Date().toLocaleTimeString() + '</div></div>';
-                area.appendChild(bubble);
-                ogFollowBottom(false);
-                try {
-                    var r = await fetch(API_URL + '/image', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt: message })
-                    });
-                    var data = await r.json();
-                    bubble.remove();
-                    if (data && data.ok && data.image) {
-                        addImageMessage(data);
-                        if (typeof speakReply === 'function') speakReply(data.response || '');
-                    } else {
-                        addMessage('ai', (data && data.response) || 'Yo, the drawing board glitched — hit me again in a sec.');
-                        if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
-                    }
-                } catch (e) {
-                    bubble.remove();
-                    addMessage('ai', 'Yo, the drawing board glitched — hit me again in a sec.');
-                } finally {
-                    isProcessing = false;
-                    updateStatus('Online & Ready');
-                    if (typeof setMood === 'function') setMood('');
-                }
-            }
-            function addImageMessage(data) {
-                var area = document.getElementById('messagesArea');
-                var div = document.createElement('div');
-                div.className = 'message ai';
-                div.innerHTML =
-                    '<div class="message-content"><div class="message-text"></div>' +
-                    '<div class="message-time">' + new Date().toLocaleTimeString() + '</div></div>';
-                var textEl = div.querySelector('.message-text');
-                var cap = document.createElement('div');
-                cap.textContent = data.response || '';
-                textEl.appendChild(cap);
-                var img = document.createElement('img');
-                img.className = 'og-gen-image';
-                img.alt = 'OG generated image: ' + (data.prompt || '');
-                img.src = data.image;
-                img.addEventListener('load', function () { ogFollowBottom(false); });
-                textEl.appendChild(img);
-                var a = document.createElement('a');
-                a.className = 'og-img-download';
-                a.href = data.image;
-                a.setAttribute('download', 'og-image.png');
-                a.textContent = '⬇ Download image';
-                textEl.appendChild(a);
-                area.appendChild(div);
-                ogFollowBottom(false);
-                if (typeof setMood === 'function') {
-                    setMood('nod');
-                    setTimeout(function () { setMood(''); }, 620);
-                }
-            }
-        })();</script>
-    <style id="og-file-css">        .og-file-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 12px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 999px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
-        .og-file-chip[hidden] { display: none; }
-        .og-file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .og-file-chip-x { flex: 0 0 auto; width: 22px; height: 22px; border: none; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #f2f2f2; cursor: pointer; line-height: 1; }
-        .og-file-chip-x:hover { background: rgba(255, 255, 255, .25); }
-        .og-plus-sheet { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
-        .og-plus-sheet[hidden] { display: none; }
-        .og-plus-sheet button { border: 1px solid rgba(255, 193, 7, .55); background: #1b1b1b; color: #f2f2f2; border-radius: 999px; padding: 8px 14px; font-size: .9rem; cursor: pointer; font-family: inherit; }
-        .og-plus-sheet button:hover { background: rgba(255, 193, 7, .18); }
-        .og-attach-preview { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 6px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 12px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
-        .og-attach-preview[hidden] { display: none; }
-        .og-attach-preview img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; display: block; }
-        .og-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .og-msg-img { display: block; max-width: 240px; max-height: 240px; border-radius: 10px; margin: 0 0 6px; }
-        .og-ava-wrap { position: relative; display: inline-block; line-height: 0; }
-        .og-ava-wrap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-        .og-menu-ava { position: relative; }
-        .og-menu-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }</style>
-    <script id="og-file-js">        (function () {
-            function $(id) { return document.getElementById(id); }
-            var chip = $('fileChip'), chipName = $('fileChipName'),
-                input = $('fileInput'), upBtn = $('menuUploadBtn');
-            if (!chip || !input || !upBtn) return;
-            function showChip(file) {
-                chipName.textContent = file ? (file.name + (file.detail ? ' · ' + file.detail : '')) : '';
-                chip.hidden = !file;
-            }
-            function sayAi(text) {
-                if (text && typeof addMessage === 'function') addMessage('ai', text);
-            }
-            upBtn.addEventListener('click', function () {
-                var close = $('menuClose'); if (close) close.click();
-                input.click();
-            });
-            input.addEventListener('change', async function () {
-                var f = input.files && input.files[0];
-                input.value = '';
-                if (!f) return;
-                updateStatus('OG is reading your file...');
-                var fd = new FormData();
-                fd.append('file', f);
-                try {
-                    var r = await fetch(API_URL + '/upload', { method: 'POST', body: fd });
-                    var data = await r.json();
-                    if (data && data.ok && data.file) {
-                        showChip(data.file);
-                        sayAi(data.response);
-                        if (typeof setMood === 'function') setMood('win');
-                    } else {
-                        sayAi((data && data.response) || 'Yo, that upload glitched — slide it again.');
-                        if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
-                    }
-                } catch (e) {
-                    sayAi('Yo, that upload glitched — slide it again.');
-                } finally {
-                    updateStatus('Online & Ready');
-                }
-            });
-            $('fileChipRemove').addEventListener('click', async function () {
-                try {
-                    var r = await fetch(API_URL + '/file/remove', { method: 'POST' });
-                    var data = await r.json();
-                    showChip(null);
-                    sayAi(data && data.response);
-                } catch (e) {
-                    showChip(null);
-                }
-            });
-            fetch(API_URL + '/file/status').then(function (r) { return r.json(); })
-                .then(function (s) { if (s && s.attached && s.file) showChip(s.file); })
-                .catch(function () {  });
-        })();</script>
+    <script>(function () {
+function $(id) { return document.getElementById(id); }
+var btn = $('menuPlaidBtn'), info = $('menuPlaidInfo'),
+nameEl = $('menuPlaidName'), disc = $('menuPlaidDisconnect');
+if (!btn) return;
+function refresh() {
+fetch('/plaid/status').then(function (r) { return r.json(); }).then(function (s) {
+if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
+if (s.connected) {
+btn.hidden = true; info.hidden = false; disc.hidden = false;
+nameEl.textContent = s.institution ? ('Bank: ' + s.institution) : 'Bank connected';
+} else {
+btn.hidden = false; info.hidden = true; disc.hidden = true;
+}
+}).catch(function () {  });
+}
+btn.addEventListener('click', function () {
+if (typeof Plaid === 'undefined') return;
+fetch('/plaid/link-token', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
+if (!d.link_token) return;
+var handler = Plaid.create({
+token: d.link_token,
+onSuccess: function (publicToken) {
+fetch('/plaid/exchange', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ public_token: publicToken })
+}).then(refresh).catch(refresh);
+},
+onExit: function () {  }
+});
+handler.open();
+}).catch(function () {  });
+});
+if (disc) disc.addEventListener('click', function () {
+fetch('/plaid/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
+});
+refresh();
+})();</script>
+    <style id="og-image-css">.og-gen-image { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 14px; margin: 10px 0 6px; border: 1px solid rgba(255, 193, 7, .35); }
+.og-img-download { display: inline-block; margin: 2px 0 4px; color: #ffc107; font-weight: 600; text-decoration: none; }
+.og-img-download:hover { text-decoration: underline; }
+.og-drawing-pulse { animation: ogDrawingPulse 1.1s ease-in-out infinite; }
+@keyframes ogDrawingPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }</style>
+    <script id="og-image-js">(function () {
+var DENY = /\b(draw\s+(an?\s+)?(conclusion|attention|breath|blood)|draw\s+(near|closer)|draw\s+the\s+(curtains?|blinds?))\b/i;
+var VERB_ART = /\b(draw|paint|sketch|illustrate|render)\b/i;
+var MAKE_ART = /\b(generate|create|make|design|show|give|get)\b[^.!?\n]{0,30}\b(image|picture|pic|photo|drawing|painting|illustration|logo|artwork|poster|wallpaper|sticker|meme)\b/i;
+var ART_OF = /\b(image|picture|photo|drawing|painting|illustration|logo)\s+of\b/i;
+function wantsImage(msg) {
+if (!msg || DENY.test(msg)) return false;
+if (VERB_ART.test(msg)) return true;
+return MAKE_ART.test(msg) || ART_OF.test(msg);
+}
+var prevSend = sendMessage;
+sendMessage = function () {
+var input = document.getElementById('messageInput');
+var msg = input ? input.value.trim() : '';
+if (msg && !isProcessing && wantsImage(msg)) {
+ogDrawImage(msg);
+return Promise.resolve();
+}
+return prevSend.apply(this, arguments);
+};
+async function ogDrawImage(message) {
+var input = document.getElementById('messageInput');
+addMessage('user', message);
+input.value = '';
+input.dispatchEvent(new Event('input'));
+isProcessing = true;
+updateStatus('OG is drawing...');
+if (typeof setMood === 'function') setMood('talking');
+var area = document.getElementById('messagesArea');
+var bubble = document.createElement('div');
+bubble.className = 'message ai';
+bubble.innerHTML =
+'<div class="message-content"><div class="message-text"><span class="og-drawing-pulse">🎨 Drawing that up for you…</span></div>' +
+'<div class="message-time">' + new Date().toLocaleTimeString() + '</div></div>';
+area.appendChild(bubble);
+ogFollowBottom(false);
+try {
+var r = await fetch(API_URL + '/image', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ prompt: message })
+});
+var data = await r.json();
+bubble.remove();
+if (data && data.ok && data.image) {
+addImageMessage(data);
+if (typeof speakReply === 'function') speakReply(data.response || '');
+} else {
+addMessage('ai', (data && data.response) || 'Yo, the drawing board glitched — hit me again in a sec.');
+if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
+}
+} catch (e) {
+bubble.remove();
+addMessage('ai', 'Yo, the drawing board glitched — hit me again in a sec.');
+} finally {
+isProcessing = false;
+updateStatus('Online & Ready');
+if (typeof setMood === 'function') setMood('');
+}
+}
+function addImageMessage(data) {
+var area = document.getElementById('messagesArea');
+var div = document.createElement('div');
+div.className = 'message ai';
+div.innerHTML =
+'<div class="message-content"><div class="message-text"></div>' +
+'<div class="message-time">' + new Date().toLocaleTimeString() + '</div></div>';
+var textEl = div.querySelector('.message-text');
+var cap = document.createElement('div');
+cap.textContent = data.response || '';
+textEl.appendChild(cap);
+var img = document.createElement('img');
+img.className = 'og-gen-image';
+img.alt = 'OG generated image: ' + (data.prompt || '');
+img.src = data.image;
+img.addEventListener('load', function () { ogFollowBottom(false); });
+textEl.appendChild(img);
+var a = document.createElement('a');
+a.className = 'og-img-download';
+a.href = data.image;
+a.setAttribute('download', 'og-image.png');
+a.textContent = '⬇ Download image';
+textEl.appendChild(a);
+area.appendChild(div);
+ogFollowBottom(false);
+if (typeof setMood === 'function') {
+setMood('nod');
+setTimeout(function () { setMood(''); }, 620);
+}
+}
+})();</script>
+    <style id="og-file-css">.og-file-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 12px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 999px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
+.og-file-chip[hidden] { display: none; }
+.og-file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.og-file-chip-x { flex: 0 0 auto; width: 22px; height: 22px; border: none; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #f2f2f2; cursor: pointer; line-height: 1; }
+.og-file-chip-x:hover { background: rgba(255, 255, 255, .25); }
+.og-plus-sheet { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+.og-plus-sheet[hidden] { display: none; }
+.og-plus-sheet button { border: 1px solid rgba(255, 193, 7, .55); background: #1b1b1b; color: #f2f2f2; border-radius: 999px; padding: 8px 14px; font-size: .9rem; cursor: pointer; font-family: inherit; }
+.og-plus-sheet button:hover { background: rgba(255, 193, 7, .18); }
+.og-attach-preview { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 6px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 12px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
+.og-attach-preview[hidden] { display: none; }
+.og-attach-preview img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; display: block; }
+.og-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.og-msg-img { display: block; max-width: 240px; max-height: 240px; border-radius: 10px; margin: 0 0 6px; }
+.og-ava-wrap { position: relative; display: inline-block; line-height: 0; }
+.og-ava-wrap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.og-menu-ava { position: relative; }
+.og-menu-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }</style>
+    <script id="og-file-js">(function () {
+function $(id) { return document.getElementById(id); }
+var chip = $('fileChip'), chipName = $('fileChipName'),
+input = $('fileInput'), upBtn = $('menuUploadBtn');
+if (!chip || !input || !upBtn) return;
+function showChip(file) {
+chipName.textContent = file ? (file.name + (file.detail ? ' · ' + file.detail : '')) : '';
+chip.hidden = !file;
+}
+function sayAi(text) {
+if (text && typeof addMessage === 'function') addMessage('ai', text);
+}
+upBtn.addEventListener('click', function () {
+var close = $('menuClose'); if (close) close.click();
+input.click();
+});
+input.addEventListener('change', async function () {
+var f = input.files && input.files[0];
+input.value = '';
+if (!f) return;
+updateStatus('OG is reading your file...');
+var fd = new FormData();
+fd.append('file', f);
+try {
+var r = await fetch(API_URL + '/upload', { method: 'POST', body: fd });
+var data = await r.json();
+if (data && data.ok && data.file) {
+showChip(data.file);
+sayAi(data.response);
+if (typeof setMood === 'function') setMood('win');
+} else {
+sayAi((data && data.response) || 'Yo, that upload glitched — slide it again.');
+if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
+}
+} catch (e) {
+sayAi('Yo, that upload glitched — slide it again.');
+} finally {
+updateStatus('Online & Ready');
+}
+});
+$('fileChipRemove').addEventListener('click', async function () {
+try {
+var r = await fetch(API_URL + '/file/remove', { method: 'POST' });
+var data = await r.json();
+showChip(null);
+sayAi(data && data.response);
+} catch (e) {
+showChip(null);
+}
+});
+fetch(API_URL + '/file/status').then(function (r) { return r.json(); })
+.then(function (s) { if (s && s.attached && s.file) showChip(s.file); })
+.catch(function () {  });
+})();</script>
 
-    <script id="og-storage-js">        (function () {
-            function $(id) { return document.getElementById(id); }
-            var menuBtn = $('menuStorageBtn'), chip = $('fileChip');
-            if (!menuBtn) return;
-            var saveBtn = document.createElement('button');
-            saveBtn.type = 'button'; saveBtn.id = 'lockerSaveBtn';
-            saveBtn.textContent = '🗄️ Save to my locker';
-            saveBtn.className = 'og-file-chip-x';
-            saveBtn.style.cssText = 'width:auto;height:auto;padding:6px 12px;border-radius:999px;margin:0 0 8px 8px;background:rgba(255,193,7,.16);color:#ffc107;font-size:.85rem;';
-            saveBtn.hidden = true;
-            if (chip && chip.parentNode) chip.parentNode.insertBefore(saveBtn, chip.nextSibling);
-            function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
-            var lockerOn = false;
-            function refresh() {
-                fetch(API_URL + '/storage/status').then(function (r) { return r.json(); }).then(function (st) {
-                    lockerOn = !!(st && st.enabled && st.quota > 0);
-                    menuBtn.hidden = !lockerOn;
-                    saveBtn.hidden = !(lockerOn && chip && !chip.hidden);
-                    return st;
-                }).catch(function () { menuBtn.hidden = true; saveBtn.hidden = true; });
-            }
-            menuBtn.addEventListener('click', function () {
-                var close = $('menuClose'); if (close) close.click();
-                fetch(API_URL + '/storage/status').then(function (r) { return r.json(); }).then(function (st) {
-                    if (!st || !st.enabled) { sayAi("Storage ain't switched on yet, fam."); return; }
-                    var lines = st.files.map(function (f) { return '• ' + f.name + ' — ' + f.date; }).join('\n');
-                    sayAi('🗄️ Your locker: ' + st.used_human + ' of ' + st.quota_human + ' used.' + (st.files.length ? '\n' + lines : ' Nothing in it yet — upload a file and hit "Save to my locker".'));
-                }).catch(function () { sayAi("Yo, the locker check glitched — try again."); });
-            });
-            saveBtn.addEventListener('click', async function () {
-                saveBtn.hidden = true;
-                try {
-                    var r = await fetch(API_URL + '/storage/save-temp', { method: 'POST' });
-                    var data = await r.json();
-                    sayAi(data && data.response);
-                    if (data && data.ok && chip) chip.hidden = true;
-                    if (data && data.ok && typeof setMood === 'function') setMood('win');
-                } catch (e) { sayAi('Yo, saving to the locker glitched — slide it again.'); }
-                refresh();
-            });
-            if (chip && window.MutationObserver) new MutationObserver(refresh).observe(chip, { attributes: true, attributeFilter: ['hidden'] });
-            refresh();
-        })();</script>
+    <script id="og-storage-js">(function () {
+function $(id) { return document.getElementById(id); }
+var menuBtn = $('menuStorageBtn'), chip = $('fileChip');
+if (!menuBtn) return;
+var saveBtn = document.createElement('button');
+saveBtn.type = 'button'; saveBtn.id = 'lockerSaveBtn';
+saveBtn.textContent = '🗄️ Save to my locker';
+saveBtn.className = 'og-file-chip-x';
+saveBtn.style.cssText = 'width:auto;height:auto;padding:6px 12px;border-radius:999px;margin:0 0 8px 8px;background:rgba(255,193,7,.16);color:#ffc107;font-size:.85rem;';
+saveBtn.hidden = true;
+if (chip && chip.parentNode) chip.parentNode.insertBefore(saveBtn, chip.nextSibling);
+function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
+var lockerOn = false;
+function refresh() {
+fetch(API_URL + '/storage/status').then(function (r) { return r.json(); }).then(function (st) {
+lockerOn = !!(st && st.enabled && st.quota > 0);
+menuBtn.hidden = !lockerOn;
+saveBtn.hidden = !(lockerOn && chip && !chip.hidden);
+return st;
+}).catch(function () { menuBtn.hidden = true; saveBtn.hidden = true; });
+}
+menuBtn.addEventListener('click', function () {
+var close = $('menuClose'); if (close) close.click();
+fetch(API_URL + '/storage/status').then(function (r) { return r.json(); }).then(function (st) {
+if (!st || !st.enabled) { sayAi("Storage ain't switched on yet, fam."); return; }
+var lines = st.files.map(function (f) { return '• ' + f.name + ' — ' + f.date; }).join('\n');
+sayAi('🗄️ Your locker: ' + st.used_human + ' of ' + st.quota_human + ' used.' + (st.files.length ? '\n' + lines : ' Nothing in it yet — upload a file and hit "Save to my locker".'));
+}).catch(function () { sayAi("Yo, the locker check glitched — try again."); });
+});
+saveBtn.addEventListener('click', async function () {
+saveBtn.hidden = true;
+try {
+var r = await fetch(API_URL + '/storage/save-temp', { method: 'POST' });
+var data = await r.json();
+sayAi(data && data.response);
+if (data && data.ok && chip) chip.hidden = true;
+if (data && data.ok && typeof setMood === 'function') setMood('win');
+} catch (e) { sayAi('Yo, saving to the locker glitched — slide it again.'); }
+refresh();
+});
+if (chip && window.MutationObserver) new MutationObserver(refresh).observe(chip, { attributes: true, attributeFilter: ['hidden'] });
+refresh();
+})();</script>
 
-    <style id="og-tiers-css">        .og-pro-pill.tier-standard { border-color: rgba(255,193,7,.75); background: rgba(255,193,7,.12); color: #ffc107; }
-        .og-pro-pill.tier-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
-        .og-pro-pill.tier-blue { border-color: #2f7bff; background: rgba(47,123,255,.14); color: #8dbcff; box-shadow: 0 0 12px rgba(47,123,255,.35); }
-        .og-pro-pill.tier-blackout { border-color: #ffc107; background: linear-gradient(160deg,#000,#241a02); color: #ffc107; box-shadow: 0 0 16px rgba(255,193,7,.5); font-weight: 800; letter-spacing: .3px; }</style>
-    <script id="og-tiers-js">        (function () {
-            var BADGE = { standard: '⭐ Standard', pro: '💎 Pro', blue: '💙 Blue', blackout: '🖤 Blackout' };
-            var tier = null;
-            var pill = document.getElementById('proPill');
-            var ts = document.getElementById('tokenStatus');
-            var planLine = document.getElementById('tierStatusMenu');
-            var planText = document.getElementById('menuPlanText');
-            function applyTier() {
-                if (!tier) return;
-                if (planLine) planLine.textContent = 'Plan: ' + (BADGE[tier] || 'Free');
-                if (tier === 'free') {
-                    if (pill) { pill.textContent = '✦ Upgrade'; pill.className = 'og-pro-pill'; }
-                    if (planText) planText.textContent = 'Upgrade — see plans';
-                    return;
-                }
-                if (pill) { pill.textContent = BADGE[tier]; pill.className = 'og-pro-pill tier-' + tier; }
-                if (planText) planText.textContent = 'Change plan';
-                if (ts && (ts.textContent || '').indexOf('free tokens left') === -1) {
-                    var want = BADGE[tier] + ' — unlimited';
-                    if (ts.textContent !== want) ts.textContent = want;
-                }
-            }
-            fetch('/history').then(function (r) { return r.json(); }).then(function (d) {
-                if (d && d.tier) { tier = d.tier; applyTier(); }
-            }).catch(function () {});
-            if (ts && window.MutationObserver) {
-                new MutationObserver(function () {
-                    if (tier && tier !== 'free' && ts.textContent === '💎 Pro — unlimited' && tier !== 'pro') applyTier();
-                }).observe(ts, { childList: true, characterData: true, subtree: true });
-            }
-        })();</script>
+    <style id="og-tiers-css">.og-pro-pill.tier-standard { border-color: rgba(255,193,7,.75); background: rgba(255,193,7,.12); color: #ffc107; }
+.og-pro-pill.tier-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
+.og-pro-pill.tier-blue { border-color: #2f7bff; background: rgba(47,123,255,.14); color: #8dbcff; box-shadow: 0 0 12px rgba(47,123,255,.35); }
+.og-pro-pill.tier-blackout { border-color: #ffc107; background: linear-gradient(160deg,#000,#241a02); color: #ffc107; box-shadow: 0 0 16px rgba(255,193,7,.5); font-weight: 800; letter-spacing: .3px; }</style>
+    <script id="og-tiers-js">(function () {
+var BADGE = { standard: '⭐ Standard', pro: '💎 Pro', blue: '💙 Blue', blackout: '🖤 Blackout' };
+var tier = null;
+var pill = document.getElementById('proPill');
+var ts = document.getElementById('tokenStatus');
+var planLine = document.getElementById('tierStatusMenu');
+var planText = document.getElementById('menuPlanText');
+function applyTier() {
+if (!tier) return;
+if (planLine) planLine.textContent = 'Plan: ' + (BADGE[tier] || 'Free');
+if (tier === 'free') {
+if (pill) { pill.textContent = '✦ Upgrade'; pill.className = 'og-pro-pill'; }
+if (planText) planText.textContent = 'Upgrade — see plans';
+return;
+}
+if (pill) { pill.textContent = BADGE[tier]; pill.className = 'og-pro-pill tier-' + tier; }
+if (planText) planText.textContent = 'Change plan';
+if (ts && (ts.textContent || '').indexOf('free tokens left') === -1) {
+var want = BADGE[tier] + ' — unlimited';
+if (ts.textContent !== want) ts.textContent = want;
+}
+}
+fetch('/history').then(function (r) { return r.json(); }).then(function (d) {
+if (d && d.tier) { tier = d.tier; applyTier(); }
+}).catch(function () {});
+if (ts && window.MutationObserver) {
+new MutationObserver(function () {
+if (tier && tier !== 'free' && ts.textContent === '💎 Pro — unlimited' && tier !== 'pro') applyTier();
+}).observe(ts, { childList: true, characterData: true, subtree: true });
+}
+})();</script>
 
 
-    <style id="og-nearme-css">        .og-loc-prompt { margin: 10px auto; max-width: 92%; background: rgba(255, 193, 7, .07); border: 1px solid rgba(255, 193, 7, .45); border-radius: 14px; padding: 12px 14px; }
-        .og-loc-text { line-height: 1.45; }
-        .og-loc-btns { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
-        .og-loc-yes { background: #ffc107; color: #111; border: none; border-radius: 999px; padding: 8px 18px; font-weight: 700; font-family: inherit; cursor: pointer; }
-        .og-loc-yes:disabled { opacity: .55; cursor: default; }
-        .og-loc-no { background: transparent; color: #ffc107; border: 1px solid rgba(255, 193, 7, .5); border-radius: 999px; padding: 8px 18px; font-family: inherit; cursor: pointer; }
-        .og-loc-no:disabled { opacity: .55; cursor: default; }
-        .og-loc-note { text-align: center; opacity: .85; font-size: .92em; padding: 6px 12px; }
-        .og-loc-menunote { font-size: .8em; color: #999; line-height: 1.45; margin: 0; padding: 2px 12px 8px 44px; }</style>
-    <script id="og-nearme-js">        (function () {
-            var PREF_KEY = 'ogai_loc_nearme';
-            var NEARME = /\b(near\s+(me|here)|around\s+(me|here)|from\s+here|my\s+location|closest\s+to\s+me|nearest\s+to\s+me)\b/i;
-            function prefOn() {
-                try { return localStorage.getItem(PREF_KEY) === 'on'; }
-                catch (e) { return false; }
-            }
-            function refreshLocMenu() {
-                var el = document.getElementById('menuLocState');
-                if (el) el.textContent = prefOn() ? 'On' : 'Off';
-            }
-            var locBtn = document.getElementById('menuLocBtn');
-            if (locBtn) locBtn.addEventListener('click', function () {
-                try { localStorage.setItem(PREF_KEY, prefOn() ? 'off' : 'on'); } catch (e) {  }
-                refreshLocMenu();
-            });
-            refreshLocMenu();
-            function getPositionOnce() {
-                return new Promise(function (resolve) {
-                    if (!('geolocation' in navigator) || !navigator.geolocation) {
-                        resolve({ error: 'unsupported' });
-                        return;
-                    }
-                    var settled = false;
-                    var timer = setTimeout(function () {
-                        if (!settled) { settled = true; resolve({ error: 'unavailable' }); }
-                    }, 12000);
-                    function finish(val) {
-                        if (settled) return;
-                        settled = true;
-                        clearTimeout(timer);
-                        resolve(val);
-                    }
-                    try {
-                        navigator.geolocation.getCurrentPosition(
-                            function (pos) { finish({ coords: { lat: pos.coords.latitude, lon: pos.coords.longitude } }); },
-                            function (err) { finish({ error: (err && err.code === 1) ? 'denied' : 'unavailable' }); },
-                            { timeout: 10000, maximumAge: 0, enableHighAccuracy: false });
-                    } catch (e) { finish({ error: 'unavailable' }); }
-                });
-            }
-            function locErrorLine(kind) {
-                if (kind === 'denied') return '📍 Location\'s blocked in your browser — no sweat. Name a city or neighborhood and I\'ll run it from there.';
-                if (kind === 'unsupported') return '📍 This browser don\'t do location sharing — name a city or neighborhood and I got you.';
-                return '📍 Couldn\'t grab your location just now — name a city or neighborhood and I got you.';
-            }
-            function threadNote(text) {
-                var area = document.getElementById('messagesArea');
-                if (!area) return;
-                var div = document.createElement('div');
-                div.className = 'og-loc-note';
-                div.textContent = text;
-                area.appendChild(div);
-                ogFollowBottom(false);
-            }
-            function offerLocationPrompt(message) {
-                var area = document.getElementById('messagesArea');
-                if (!area) return;
-                var old = document.getElementById('ogLocPrompt');
-                if (old) old.remove();
-                var wrap = document.createElement('div');
-                wrap.className = 'og-loc-prompt';
-                wrap.id = 'ogLocPrompt';
-                wrap.innerHTML =
-                    '<div class="og-loc-text">📍 Want me to use your location for that? It only rides this one answer — I don\'t save it, don\'t track you, none of that.</div>' +
-                    '<div class="og-loc-btns"><button type="button" class="og-loc-yes">Use my location</button>' +
-                    '<button type="button" class="og-loc-no">No thanks</button></div>';
-                area.appendChild(wrap);
-                ogFollowBottom(false);
-                wrap.querySelector('.og-loc-no').addEventListener('click', function () { wrap.remove(); });
-                wrap.querySelector('.og-loc-yes').addEventListener('click', async function () {
-                    var yes = wrap.querySelector('.og-loc-yes');
-                    var no = wrap.querySelector('.og-loc-no');
-                    yes.disabled = true;
-                    no.disabled = true;
-                    yes.textContent = 'Getting your location…';
-                    var pos = await getPositionOnce();
-                    wrap.remove();
-                    if (!pos.coords) { threadNote(locErrorLine(pos.error)); return; }
-                    if (isProcessing) return;
-                    isProcessing = true;
-                    updateStatus('AI is thinking...');
-                    try {
-                        var streamed = await streamReply(message, pos.coords);
-                        if (!streamed) await classicReply(message, pos.coords);
-                    } catch (error) {
-                        addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
-                        updateStatus('Error - Check connection');
-                    } finally {
-                        isProcessing = false;
-                    }
-                });
-            }
-            var prevSend = sendMessage;
-            sendMessage = async function () {
-                var input = document.getElementById('messageInput');
-                var msg = input ? input.value.trim() : '';
-                if (!msg || isProcessing || !NEARME.test(msg)) {
-                    return prevSend.apply(this, arguments);
-                }
-                if (prefOn()) {
-                    updateStatus('📍 Getting your location…');
-                    var pos = await getPositionOnce();
-                    if (pos.coords) {
-                        var args = Array.prototype.slice.call(arguments);
-                        args[1] = pos.coords;
-                        return prevSend.apply(this, args);
-                    }
-                    var r = await prevSend.apply(this, arguments);
-                    threadNote(locErrorLine(pos.error));
-                    return r;
-                }
-                var r2 = await prevSend.apply(this, arguments);
-                offerLocationPrompt(msg);
-                return r2;
-            };
-        })();</script>
-    <style id="og-browser-css">    .og-browser-panel { flex: 0 0 auto; margin: 0 12px 8px; border: 1px solid rgba(255,193,7,.45); border-radius: 14px; overflow: hidden; background: #101010; }
-    .og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
-    #browserPanelTitle { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .og-browser-meta { color: #bbb; font-size: .8rem; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .og-browser-btns { margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap; flex: 0 0 auto; }
-    .og-browser-btns button, .og-browser-btns a { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; font-family: inherit; white-space: nowrap; flex: 0 0 auto; }
-    #browserCloseBtn { font-weight: 700; }
-    @media (max-width: 560px) { #browserFullBtn .og-btn-label, #browserStillBtn .og-btn-label { display: none; } .og-browser-bar { gap: 6px; padding: 8px; } .og-browser-btns { gap: 4px; } .og-browser-btns button, .og-browser-btns a { padding: 5px 9px; } }
-    .og-browser-btns button:hover, .og-browser-btns a:hover { background: rgba(255,193,7,.18); }
-    .og-browser-btns button:disabled { opacity: .45; cursor: default; }
-    .og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 260px; background: #000; }
-    #browserFrame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
-    #browserShot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
-    .og-browser-note { margin: 0; padding: 6px 12px; color: #e8c95a; font-size: .8rem; background: rgba(255,193,7,.06); }
-    @media (max-width: 768px) {
-        .og-browser-panel { margin: 0 8px 8px; }
-        .og-browser-view { min-height: 230px; }
-    }
-    .og-approve-card { flex: 0 0 auto; margin: 0 12px 8px; border: 2px solid #ffc107; border-radius: 14px; background: linear-gradient(180deg, #1d1703, #121212); padding: 12px 14px; color: #f2f2f2; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
-    .og-approve-head { font-weight: 700; color: #ffc107; font-size: .95rem; }
-    .og-approve-desc { margin: 8px 0 0; font-size: .9rem; }
-    .og-approve-text { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid #ffc107; background: rgba(255,255,255,.05); font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
-    .og-approve-exp { margin: 8px 0 0; color: #bbb; font-size: .78rem; }
-    .og-approve-btns { display: flex; gap: 8px; margin-top: 10px; }
-    .og-approve-btns button { border-radius: 999px; padding: 8px 18px; font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit; }
-    #approveYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
-    #approveNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
-    #videoYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
-    #videoNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
-    .og-video-done video { width: 100%; border-radius: 12px; background: #000; display: block; margin-top: 8px; }
-    .og-video-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-    .og-video-actions a, .og-video-actions button { border-radius: 999px; padding: 7px 14px; font-size: .85rem; font-weight: 700; cursor: pointer; font-family: inherit; text-decoration: none; border: 1px solid #ffc107; background: rgba(255,193,7,.12); color: #ffc107; }
-    .og-approve-btns button:disabled { opacity: .5; cursor: default; }
-    .og-approve-outcome { margin: 10px 0 0; font-size: .85rem; color: #d8d8d8; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
-    @media (max-width: 768px) {
-        .og-approve-card { margin: 0 8px 8px; }
-    }</style>
-    <style id="og-autoscroll-css">        html, body { height: 100%; }
-        body { height: 100dvh; overflow: hidden; }
-        #messagesArea { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }</style>
-    <script id="og-browser-js">    (function () {
-        function $(id) { return document.getElementById(id); }
-        var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
-            frame = $('browserFrame'), title = $('browserPanelTitle'),
-            meta = $('browserPanelMeta'), takeBtn = $('browserTakeBtn'),
-            handBtn = $('browserHandBtn'), endBtn = $('browserEndBtn'),
-            closeBtn = $('browserCloseBtn'),
-            fullBtn = $('browserFullBtn'), stillBtn = $('browserStillBtn'),
-            shot = $('browserShot'), shotNote = $('browserShotNote'),
-            card = $('approveCard'), cardDesc = $('approveDesc'),
-            cardText = $('approveText'), cardExp = $('approveExp'),
-            yesBtn = $('approveYesBtn'), noBtn = $('approveNoBtn'),
-            cardOutcome = $('approveOutcome');
-        if (!menuBtn || !panel || !frame) return;
-        var lastSrc = '', active = false, wasActive = false;
-        var viewMode = 'live', frameLoaded = false, srcSetAt = 0,
-            shotTimer = null, outcomeUntil = 0;
-        function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
-        function post(path, mode) {
-            var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode: mode } : {}) };
-            return fetch(API_URL + path, opts).then(function () { refresh(); }).catch(function () {});
-        }
-        frame.addEventListener('load', function () {
-            if (frame.src && frame.src !== 'about:blank') frameLoaded = true;
-        });
-        function note(text) {
-            if (!shotNote) return;
-            shotNote.hidden = !text;
-            if (text) shotNote.textContent = text;
-        }
-        function loadShot() {
-            if (!shot) return;
-            shot.onerror = function () { note("Still view couldn't load a picture right now — ⛶ Full view is your reliable window."); };
-            shot.onload = function () { note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. You can\'t click in this view; use 📺 Live view or ⛶ Full view to drive.' : ''); };
-            shot.src = API_URL + '/browser/screenshot?ts=' + Date.now();
-        }
-        function setMode(mode, auto) {
-            viewMode = mode;
-            if (!shot || !stillBtn) return;
-            if (mode === 'still') {
-                frame.hidden = true; shot.hidden = false;
-                stillBtn.innerHTML = '📺 <span class="og-btn-label">Live view</span>';
-                loadShot();
-                if (shotTimer) clearInterval(shotTimer);
-                shotTimer = setInterval(function () { if (viewMode === 'still' && active) loadShot(); }, 5000);
-                if (auto) note('The live player didn\'t load in this browser, so here\'s the still view instead — a fresh picture every few seconds. ⛶ Full view opens the live session in a new tab.');
-            } else {
-                shot.hidden = true; frame.hidden = false;
-                stillBtn.innerHTML = '🖼 <span class="og-btn-label">Still view</span>';
-                if (shotTimer) { clearInterval(shotTimer); shotTimer = null; }
-                note('');
-            }
-        }
-        if (stillBtn) stillBtn.addEventListener('click', function () { setMode(viewMode === 'still' ? 'live' : 'still', false); });
-        function showOutcome(text) {
-            if (!card || !cardOutcome) return;
-            card.hidden = false;
-            cardOutcome.hidden = false;
-            cardOutcome.textContent = text;
-            outcomeUntil = Date.now() + 30000;
-            if (yesBtn) yesBtn.disabled = true;
-            if (noBtn) noBtn.disabled = true;
-        }
-        function decide(path) {
-            if (yesBtn) yesBtn.disabled = true;
-            if (noBtn) noBtn.disabled = true;
-            fetch(API_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-                .then(function (r) { return r.json(); })
-                .then(function (res) {
-                    if (res && res.ok) showOutcome('✅ ' + (res.title || 'Done') + (res.body ? '\n' + res.body.replace(/^\[OG BROWSER\]\s*/, '') : ''));
-                    else showOutcome('⚠️ That didn\'t go through — ' + ((res && res.error) || 'the action may have expired or already been answered in chat.'));
-                    refresh();
-                })
-                .catch(function () { showOutcome('⚠️ That didn\'t go through — connection hiccup. The action is still parked if the card reappears.'); refresh(); });
-        }
-        if (yesBtn) yesBtn.addEventListener('click', function () { decide('/browser/approve'); });
-        if (noBtn) noBtn.addEventListener('click', function () { decide('/browser/decline'); });
-        function renderPending(pa) {
-            if (!card) return;
-            if (Date.now() < outcomeUntil) return;
-            if (!pa) { card.hidden = true; return; }
-            card.hidden = false;
-            if (cardOutcome) cardOutcome.hidden = true;
-            if (yesBtn) yesBtn.disabled = false;
-            if (noBtn) noBtn.disabled = false;
-            var kindLabel = pa.kind === 'post' ? 'post this' : 'do this';
-            cardDesc.textContent = 'OG is ready to ' + kindLabel + ': ' + (pa.desc || 'a browser action') + (pa.site ? ' on ' + pa.site : '') + '. Nothing happens unless you approve.';
-            if (pa.text) { cardText.hidden = false; cardText.textContent = '"' + pa.text + '"'; }
-            else cardText.hidden = true;
-            cardExp.textContent = '⏳ Expires in ~' + pa.minutes_left + ' min. You can also just say YES or NO in chat — whichever you use first counts.';
-        }
-        function refresh() {
-            fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
-                if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
-                menuBtn.hidden = false;
-                active = !!st.active;
-                renderPending(st.pending_action || null);
-                if (!active) { panel.hidden = true; wasActive = false; if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
-                panel.hidden = false;
-                if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
-                wasActive = true;
-                if (window.ogSetAvatar) ogSetAvatar('working', 4000);
-                var driving = st.control === 'visitor';
-                title.textContent = driving ? "🌐 You're driving" : '🌐 OG is browsing';
-                meta.textContent = '⏱ ~' + st.minutes_left + ' min left' + (st.page_title ? ' · ' + st.page_title : '');
-                takeBtn.hidden = driving; handBtn.hidden = !driving;
-                if (stillBtn) { stillBtn.disabled = driving; stillBtn.title = driving ? 'Still view pauses while you drive — the live view is your window' : ''; }
-                if (driving && viewMode === 'still') setMode('live', false);
-                if (st.viewer_url) {
-                    if (fullBtn) { fullBtn.hidden = false; fullBtn.href = st.viewer_url; }
-                    if (st.viewer_url !== lastSrc) { frame.src = st.viewer_url; lastSrc = st.viewer_url; frameLoaded = false; srcSetAt = Date.now(); if (viewMode === 'still') loadShot(); }
-                    else if (viewMode === 'live' && !frameLoaded && srcSetAt && Date.now() - srcSetAt > 9000) setMode('still', true);
-                }
-            }).catch(function () {});
-        }
-        takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
-        handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
-        function endSession() { post('/browser/end'); panel.hidden = true; sayAi('⏹ Browser session ended from the panel.'); }
-        endBtn.addEventListener('click', endSession);
-        if (closeBtn) closeBtn.addEventListener('click', endSession);
-        menuBtn.addEventListener('click', function () {
-            var close = $('menuClose'); if (close) close.click();
-            if (active) { panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-            else sayAi("🌐 No browser session running — just name a site in chat (\"Facebook\", \"open Wikipedia\") and I'll fire one up and go straight there. Blue and Blackout plans carry browser minutes; everybody gets one free 10-minute taste.");
-        });
-        refresh();
-        setInterval(refresh, 8000);
-    })();</script>
-    <script id="og-video-js">    (function () {
-        function $(id) { return document.getElementById(id); }
-        var card = $('videoCard'), desc = $('videoDesc'), exp = $('videoExp'),
-            yesBtn = $('videoYesBtn'), noBtn = $('videoNoBtn'), out = $('videoOutcome');
-        var lastStageKey = '', doneShown = {}, outcomeUntil = 0;
-        function sayAi(t) { if (t && typeof addMessage === 'function') addMessage('ai', t); }
-        function fmtDur(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
-        function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB'; }
-        function decide(path) {
-            if (yesBtn) yesBtn.disabled = true;
-            if (noBtn) noBtn.disabled = true;
-            fetch(API_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-                .then(function (r) { return r.json(); })
-                .then(function (res) {
-                    if (!out) return;
-                    out.hidden = false;
-                    out.textContent = res && res.ok ? '🎬 Locked in — it\'s cooking. It lands right here in the thread when it\'s done.' : '⚠️ ' + ((res && res.error) || 'That didn\'t go through.');
-                    outcomeUntil = Date.now() + 20000;
-                    refresh();
-                })
-                .catch(function () { if (out) { out.hidden = false; out.textContent = '⚠️ Connection hiccup — if the card comes back, the story is still parked.'; } });
-        }
-        if (yesBtn) yesBtn.addEventListener('click', function () { decide('/video/approve'); });
-        if (noBtn) noBtn.addEventListener('click', function () { decide('/video/decline'); });
-        function renderPending(p) {
-            if (!card) return;
-            if (Date.now() < outcomeUntil) return;
-            if (!p) { card.hidden = true; return; }
-            card.hidden = false;
-            if (yesBtn) yesBtn.disabled = false;
-            if (noBtn) noBtn.disabled = false;
-            if (out) out.hidden = true;
-            if (p.stage === 'await_approval') {
-                desc.textContent = '"' + (p.title || 'Untitled') + '" — ' + p.scenes + ' scenes, about ' + p.est_min + ' min of video: a picture per scene, OG narrating, download right here. Nothing renders unless you approve.';
-                exp.textContent = '⏳ Parked for ~' + Math.max(1, Math.ceil((p.expires_in_s || 0) / 60)) + ' min. You can also just say YES or NO in chat — first answer counts.';
-            } else {
-                desc.textContent = 'The story is being written — this card fills in with the title and scene count the moment it lands.';
-                exp.textContent = '';
-            }
-        }
-        function showDone(job, lockerOk) {
-            var area = document.getElementById('messagesArea');
-            if (!area) { sayAi('🎬 "' + job.title + '" is done — grab it here: ' + API_URL + job.video_url); return; }
-            var div = document.createElement('div');
-            div.className = 'message ai';
-            var url = API_URL + job.video_url;
-            div.innerHTML = '<div class="message-content og-video-done"><div class="message-text">🎬 <b></b> is done — ' + fmtDur(job.duration) + ' · ' + fmtSize(job.size) + '</div><video controls preload="metadata" src="' + url + '"></video><div class="og-video-actions"><a href="' + url + '" download>⬇ Download</a>' + (lockerOk && !job.saved ? '<button type="button" class="og-video-save">🗄 Save to my locker</button>' : '') + '<span class="og-video-save-note"></span></div></div>';
-            div.querySelector('b').textContent = '"' + (job.title || 'Your story') + '"';
-            area.appendChild(div);
-            if (typeof ogFollowBottom === 'function') ogFollowBottom(false);
-            var btn = div.querySelector('.og-video-save'), note = div.querySelector('.og-video-save-note');
-            if (btn) btn.addEventListener('click', function () {
-                btn.disabled = true;
-                fetch(API_URL + '/video/save/' + job.id, { method: 'POST' }).then(function (r) { return r.json(); })
-                    .then(function (res) { note.textContent = res && res.ok ? ' ✓ Locked in your locker for good.' : ' ' + ((res && res.error) || 'Locker said no.'); if (!(res && res.ok)) btn.disabled = false; })
-                    .catch(function () { note.textContent = ' Locker hiccup — try again.'; btn.disabled = false; });
-            });
-        }
-        function renderJob(job, lockerOk) {
-            if (!job) return;
-            if (job.state === 'done') {
-                if (!doneShown[job.id]) { doneShown[job.id] = true; showDone(job, lockerOk); }
-                return;
-            }
-            var key = job.id + '|' + job.state;
-            if (key === lastStageKey) return;
-            lastStageKey = key;
-            if (window.ogSetAvatar) { if (job.state === 'done') ogSetAvatar('milestone', 5500); else if (job.state !== 'failed') ogSetAvatar('making'); }
-            if (job.state === 'failed') sayAi('🎬 ' + (job.detail || 'That render didn\'t make it — nothing was charged. Ask again and I\'ll recook it.'));
-            else if (job.state === 'stitching') sayAi('🎬 Stitching "' + (job.title || 'your story') + '" together…');
-            else if (job.state === 'drawing') sayAi('🎬 Drawing the pictures for "' + (job.title || 'your story') + '" — one per scene…');
-            else if (job.state === 'voicing') sayAi('🎬 Pictures done — now voicing it, scene by scene…');
-        }
-        function refresh() {
-            fetch(API_URL + '/video/status').then(function (r) { return r.json(); }).then(function (st) {
-                if (!st || !st.enabled) { if (card) card.hidden = true; return; }
-                renderPending(st.pending || null);
-                renderJob(st.job || null, !!st.locker_ok);
-            }).catch(function () {});
-        }
-        refresh();
-        setInterval(refresh, 6000);
-    })();</script>
-    <script id="og-attach-js">    (function () {
-        function $(id) { return document.getElementById(id); }
-        var sheet = $('plusSheet'), cam = $('camInput'), pic = $('picInput'),
-            prev = $('attachPreview'), thumb = $('attachThumb'),
-            nameEl = $('attachName'), input = $('messageInput');
-        if (!sheet || !cam || !pic || !prev) return;
-        var staged = null;
-        window.__ogTogglePlusSheet = function () { sheet.hidden = !sheet.hidden; };
-        function closeSheet() { sheet.hidden = true; }
-        $('plusCamBtn').addEventListener('click', function () { closeSheet(); cam.click(); });
-        $('plusPicBtn').addEventListener('click', function () { closeSheet(); pic.click(); });
-        $('plusFileBtn').addEventListener('click', function () { closeSheet(); var f = $('fileInput'); if (f) f.click(); });
-        var menuBtn = $('plusMenuBtn');
-        if (menuBtn) menuBtn.addEventListener('click', function () { closeSheet(); var m = $('menuBtn'); if (m) m.click(); });
-        document.addEventListener('click', function (e) {
-            if (!sheet.hidden && !sheet.contains(e.target) && !(e.target.closest && e.target.closest('#plusBtn'))) sheet.hidden = true;
-        });
-        async function stageFile(f) {
-            if (!f) return;
-            if (f.type && f.type.indexOf('image/') !== 0) {
-                if (typeof addMessage === 'function') addMessage('ai', 'Yo, that one ain\'t a picture — 📎 File in the + menu takes PDFs and docs.');
-                return;
-            }
-            updateStatus('Sending your picture to OG...');
-            var fd = new FormData(); fd.append('file', f);
-            try {
-                var r = await fetch(API_URL + '/upload', { method: 'POST', body: fd });
-                var data = await r.json();
-                if (data && data.ok) {
-                    if (staged && staged.url) URL.revokeObjectURL(staged.url);
-                    staged = { name: (data.file && data.file.name) || f.name, url: URL.createObjectURL(f) };
-                    thumb.src = staged.url;
-                    nameEl.textContent = staged.name;
-                    prev.hidden = false;
-                    var chip = $('fileChip'), cn = $('fileChipName');
-                    if (chip && cn) { cn.textContent = staged.name; chip.hidden = false; }
-                    if (input) input.focus();
-                } else {
-                    if (typeof addMessage === 'function') addMessage('ai', (data && data.response) || 'Yo, that picture didn\'t go through — try again.');
-                    if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
-                }
-            } catch (e) {
-                if (typeof addMessage === 'function') addMessage('ai', 'Yo, that picture didn\'t go through — try again.');
-            } finally { updateStatus('Online & Ready'); }
-        }
-        cam.addEventListener('change', function () { var f = cam.files && cam.files[0]; cam.value = ''; stageFile(f); });
-        pic.addEventListener('change', function () { var f = pic.files && pic.files[0]; pic.value = ''; stageFile(f); });
-        document.addEventListener('paste', function (e) {
-            var items = (e.clipboardData && e.clipboardData.items) || [];
-            for (var i = 0; i < items.length; i++) {
-                if (items[i].type && items[i].type.indexOf('image/') === 0) {
-                    var f = items[i].getAsFile();
-                    if (f) { stageFile(f); updateStatus('📷 Picture staged — hit send and OG will look at it.'); }
-                    break;
-                }
-            }
-        });
-        var rmBtn = $('attachRemove');
-        if (rmBtn) rmBtn.addEventListener('click', function () {
-            if (staged && staged.url) URL.revokeObjectURL(staged.url);
-            staged = null; prev.hidden = true;
-            fetch(API_URL + '/file/remove', { method: 'POST' }).catch(function () {});
-            var chip = $('fileChip'); if (chip) chip.hidden = true;
-        });
-        window.__ogPeekStaged = function () { return staged; };
-        window.__ogDecorateSent = function () {
-            if (!staged) return;
-            var url = staged.url, nm = staged.name;
-            var bubbles = document.querySelectorAll('#messagesArea .message.user');
-            var last = bubbles[bubbles.length - 1];
-            if (last) {
-                var content = last.querySelector('.message-content');
-                if (content) {
-                    var img = document.createElement('img');
-                    img.className = 'og-msg-img'; img.src = url; img.alt = nm || 'Attached picture';
-                    content.insertBefore(img, content.firstChild);
-                }
-            }
-            staged = null; prev.hidden = true;
-        };
-        fetch(API_URL + '/file/status').then(function (r) { return r.json(); }).then(function (s) {
-            if (!s || !s.attached || !s.file || s.file.kind !== 'image') return;
-            var want = '[📎 Uploaded a file: ' + s.file.name + ']';
-            var area = document.getElementById('messagesArea');
-            if (!area) return;
-            var obs = new MutationObserver(function () {
-                var texts = area.querySelectorAll('.message.user .message-text');
-                for (var i = texts.length - 1; i >= 0; i--) {
-                    var holder = texts[i].parentElement;
-                    if (texts[i].textContent.trim() === want && holder && !holder.querySelector('.og-msg-img')) {
-                        var img = document.createElement('img');
-                        img.className = 'og-msg-img'; img.src = API_URL + '/file/image'; img.alt = s.file.name;
-                        holder.insertBefore(img, holder.firstChild);
-                        obs.disconnect();
-                        return;
-                    }
-                }
-            });
-            obs.observe(area, { childList: true, subtree: true });
-            setTimeout(function () { obs.disconnect(); }, 20000);
-        }).catch(function () {});
-    })();</script>
-    <script id="og-avatar-js">    (function () {
-        var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-        var vids = [];
-        var big = document.getElementById('ogAvatarVideo');
-        var small = document.querySelector('.og-menu-ava video');
-        if (big) vids.push(big);
-        if (small) vids.push(small);
-        var SRC = { idle: '/avatar/idle.mp4', working: '/avatar/working.mp4', making: '/avatar/hood.mp4', milestone: '/avatar/drinking.mp4', connecting: '/avatar/idle.mp4' };
-        var dead = false, cur = '', holdTimer = null;
-        function showStills(show) {
-            document.querySelectorAll('img.og-avatar, img.og-avatar-sm').forEach(function (i) { i.style.visibility = show ? '' : 'hidden'; });
-        }
-        function fail() {
-            dead = true;
-            vids.forEach(function (v) { v.hidden = true; v.removeAttribute('src'); });
-            showStills(true);
-        }
-        vids.forEach(function (v) { v.addEventListener('error', fail); });
-        function swap(state) {
-            if (dead || reduced || !vids.length) return;
-            var src = SRC[state] || SRC.idle;
-            if (src === cur) return;
-            cur = src;
-            vids.forEach(function (v) {
-                v.hidden = false;
-                if (v.getAttribute('src') !== src) v.src = src;
-                var p = v.play(); if (p && p.catch) p.catch(function () {});
-            });
-            showStills(false);
-        }
-        window.ogSetAvatar = function (state, holdMs) {
-            if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-            swap(state);
-            if (holdMs) holdTimer = setTimeout(function () { swap('idle'); }, holdMs);
-        };
-        if (typeof setMood === 'function') {
-            var prevMood = setMood;
-            setMood = function (state) {
-                prevMood(state);
-                if (state === 'thinking') ogSetAvatar('working');
-                else if (state === 'win') ogSetAvatar('milestone', 5500);
-                else if (state === 'talking' || state === 'listening' || state === '') ogSetAvatar('idle');
-            };
-        }
-        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { ogSetAvatar('connecting'); });
-        else ogSetAvatar('connecting');
-    })();</script>
+    <style id="og-nearme-css">.og-loc-prompt { margin: 10px auto; max-width: 92%; background: rgba(255, 193, 7, .07); border: 1px solid rgba(255, 193, 7, .45); border-radius: 14px; padding: 12px 14px; }
+.og-loc-text { line-height: 1.45; }
+.og-loc-btns { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.og-loc-yes { background: #ffc107; color: #111; border: none; border-radius: 999px; padding: 8px 18px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.og-loc-yes:disabled { opacity: .55; cursor: default; }
+.og-loc-no { background: transparent; color: #ffc107; border: 1px solid rgba(255, 193, 7, .5); border-radius: 999px; padding: 8px 18px; font-family: inherit; cursor: pointer; }
+.og-loc-no:disabled { opacity: .55; cursor: default; }
+.og-loc-note { text-align: center; opacity: .85; font-size: .92em; padding: 6px 12px; }
+.og-loc-menunote { font-size: .8em; color: #999; line-height: 1.45; margin: 0; padding: 2px 12px 8px 44px; }</style>
+    <script id="og-nearme-js">(function () {
+var PREF_KEY = 'ogai_loc_nearme';
+var NEARME = /\b(near\s+(me|here)|around\s+(me|here)|from\s+here|my\s+location|closest\s+to\s+me|nearest\s+to\s+me)\b/i;
+function prefOn() {
+try { return localStorage.getItem(PREF_KEY) === 'on'; }
+catch (e) { return false; }
+}
+function refreshLocMenu() {
+var el = document.getElementById('menuLocState');
+if (el) el.textContent = prefOn() ? 'On' : 'Off';
+}
+var locBtn = document.getElementById('menuLocBtn');
+if (locBtn) locBtn.addEventListener('click', function () {
+try { localStorage.setItem(PREF_KEY, prefOn() ? 'off' : 'on'); } catch (e) {  }
+refreshLocMenu();
+});
+refreshLocMenu();
+function getPositionOnce() {
+return new Promise(function (resolve) {
+if (!('geolocation' in navigator) || !navigator.geolocation) {
+resolve({ error: 'unsupported' });
+return;
+}
+var settled = false;
+var timer = setTimeout(function () {
+if (!settled) { settled = true; resolve({ error: 'unavailable' }); }
+}, 12000);
+function finish(val) {
+if (settled) return;
+settled = true;
+clearTimeout(timer);
+resolve(val);
+}
+try {
+navigator.geolocation.getCurrentPosition(
+function (pos) { finish({ coords: { lat: pos.coords.latitude, lon: pos.coords.longitude } }); },
+function (err) { finish({ error: (err && err.code === 1) ? 'denied' : 'unavailable' }); },
+{ timeout: 10000, maximumAge: 0, enableHighAccuracy: false });
+} catch (e) { finish({ error: 'unavailable' }); }
+});
+}
+function locErrorLine(kind) {
+if (kind === 'denied') return '📍 Location\'s blocked in your browser — no sweat. Name a city or neighborhood and I\'ll run it from there.';
+if (kind === 'unsupported') return '📍 This browser don\'t do location sharing — name a city or neighborhood and I got you.';
+return '📍 Couldn\'t grab your location just now — name a city or neighborhood and I got you.';
+}
+function threadNote(text) {
+var area = document.getElementById('messagesArea');
+if (!area) return;
+var div = document.createElement('div');
+div.className = 'og-loc-note';
+div.textContent = text;
+area.appendChild(div);
+ogFollowBottom(false);
+}
+function offerLocationPrompt(message) {
+var area = document.getElementById('messagesArea');
+if (!area) return;
+var old = document.getElementById('ogLocPrompt');
+if (old) old.remove();
+var wrap = document.createElement('div');
+wrap.className = 'og-loc-prompt';
+wrap.id = 'ogLocPrompt';
+wrap.innerHTML =
+'<div class="og-loc-text">📍 Want me to use your location for that? It only rides this one answer — I don\'t save it, don\'t track you, none of that.</div>' +
+'<div class="og-loc-btns"><button type="button" class="og-loc-yes">Use my location</button>' +
+'<button type="button" class="og-loc-no">No thanks</button></div>';
+area.appendChild(wrap);
+ogFollowBottom(false);
+wrap.querySelector('.og-loc-no').addEventListener('click', function () { wrap.remove(); });
+wrap.querySelector('.og-loc-yes').addEventListener('click', async function () {
+var yes = wrap.querySelector('.og-loc-yes');
+var no = wrap.querySelector('.og-loc-no');
+yes.disabled = true;
+no.disabled = true;
+yes.textContent = 'Getting your location…';
+var pos = await getPositionOnce();
+wrap.remove();
+if (!pos.coords) { threadNote(locErrorLine(pos.error)); return; }
+if (isProcessing) return;
+isProcessing = true;
+updateStatus('AI is thinking...');
+try {
+var streamed = await streamReply(message, pos.coords);
+if (!streamed) await classicReply(message, pos.coords);
+} catch (error) {
+addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
+updateStatus('Error - Check connection');
+} finally {
+isProcessing = false;
+}
+});
+}
+var prevSend = sendMessage;
+sendMessage = async function () {
+var input = document.getElementById('messageInput');
+var msg = input ? input.value.trim() : '';
+if (!msg || isProcessing || !NEARME.test(msg)) {
+return prevSend.apply(this, arguments);
+}
+if (prefOn()) {
+updateStatus('📍 Getting your location…');
+var pos = await getPositionOnce();
+if (pos.coords) {
+var args = Array.prototype.slice.call(arguments);
+args[1] = pos.coords;
+return prevSend.apply(this, args);
+}
+var r = await prevSend.apply(this, arguments);
+threadNote(locErrorLine(pos.error));
+return r;
+}
+var r2 = await prevSend.apply(this, arguments);
+offerLocationPrompt(msg);
+return r2;
+};
+})();</script>
+    <style id="og-browser-css">.og-browser-panel { flex: 0 0 auto; margin: 0 12px 8px; border: 1px solid rgba(255,193,7,.45); border-radius: 14px; overflow: hidden; background: #101010; }
+.og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
+#browserPanelTitle { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.og-browser-meta { color: #bbb; font-size: .8rem; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.og-browser-btns { margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap; flex: 0 0 auto; }
+.og-browser-btns button, .og-browser-btns a { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; font-family: inherit; white-space: nowrap; flex: 0 0 auto; }
+#browserCloseBtn { font-weight: 700; }
+@media (max-width: 560px) { #browserFullBtn .og-btn-label, #browserStillBtn .og-btn-label { display: none; } .og-browser-bar { gap: 6px; padding: 8px; } .og-browser-btns { gap: 4px; } .og-browser-btns button, .og-browser-btns a { padding: 5px 9px; } }
+.og-browser-btns button:hover, .og-browser-btns a:hover { background: rgba(255,193,7,.18); }
+.og-browser-btns button:disabled { opacity: .45; cursor: default; }
+.og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 260px; background: #000; }
+#browserFrame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
+#browserShot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+.og-browser-note { margin: 0; padding: 6px 12px; color: #e8c95a; font-size: .8rem; background: rgba(255,193,7,.06); }
+@media (max-width: 768px) {
+.og-browser-panel { margin: 0 8px 8px; }
+.og-browser-view { min-height: 230px; }
+}
+.og-approve-card { flex: 0 0 auto; margin: 0 12px 8px; border: 2px solid #ffc107; border-radius: 14px; background: linear-gradient(180deg, #1d1703, #121212); padding: 12px 14px; color: #f2f2f2; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+.og-approve-head { font-weight: 700; color: #ffc107; font-size: .95rem; }
+.og-approve-desc { margin: 8px 0 0; font-size: .9rem; }
+.og-approve-text { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid #ffc107; background: rgba(255,255,255,.05); font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
+.og-approve-exp { margin: 8px 0 0; color: #bbb; font-size: .78rem; }
+.og-approve-btns { display: flex; gap: 8px; margin-top: 10px; }
+.og-approve-btns button { border-radius: 999px; padding: 8px 18px; font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+#approveYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+#approveNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+#videoYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+#videoNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+#songYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+#songNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+.og-song-done audio { width: 100%; display: block; margin-top: 8px; }
+.og-video-done video { width: 100%; border-radius: 12px; background: #000; display: block; margin-top: 8px; }
+.og-video-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.og-video-actions a, .og-video-actions button { border-radius: 999px; padding: 7px 14px; font-size: .85rem; font-weight: 700; cursor: pointer; font-family: inherit; text-decoration: none; border: 1px solid #ffc107; background: rgba(255,193,7,.12); color: #ffc107; }
+.og-approve-btns button:disabled { opacity: .5; cursor: default; }
+.og-approve-outcome { margin: 10px 0 0; font-size: .85rem; color: #d8d8d8; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
+@media (max-width: 768px) {
+.og-approve-card { margin: 0 8px 8px; }
+}</style>
+    <style id="og-autoscroll-css">html, body { height: 100%; }
+body { height: 100dvh; overflow: hidden; }
+#messagesArea { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }</style>
+    <script id="og-browser-js">(function () {
+function $(id) { return document.getElementById(id); }
+var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
+frame = $('browserFrame'), title = $('browserPanelTitle'),
+meta = $('browserPanelMeta'), takeBtn = $('browserTakeBtn'),
+handBtn = $('browserHandBtn'), endBtn = $('browserEndBtn'),
+closeBtn = $('browserCloseBtn'),
+fullBtn = $('browserFullBtn'), stillBtn = $('browserStillBtn'),
+shot = $('browserShot'), shotNote = $('browserShotNote'),
+card = $('approveCard'), cardDesc = $('approveDesc'),
+cardText = $('approveText'), cardExp = $('approveExp'),
+yesBtn = $('approveYesBtn'), noBtn = $('approveNoBtn'),
+cardOutcome = $('approveOutcome');
+if (!menuBtn || !panel || !frame) return;
+var lastSrc = '', active = false, wasActive = false;
+var viewMode = 'live', frameLoaded = false, srcSetAt = 0,
+shotTimer = null, outcomeUntil = 0;
+function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
+function post(path, mode) {
+var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode: mode } : {}) };
+return fetch(API_URL + path, opts).then(function () { refresh(); }).catch(function () {});
+}
+frame.addEventListener('load', function () {
+if (frame.src && frame.src !== 'about:blank') frameLoaded = true;
+});
+function note(text) {
+if (!shotNote) return;
+shotNote.hidden = !text;
+if (text) shotNote.textContent = text;
+}
+function loadShot() {
+if (!shot) return;
+shot.onerror = function () { note("Still view couldn't load a picture right now — ⛶ Full view is your reliable window."); };
+shot.onload = function () { note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. You can\'t click in this view; use 📺 Live view or ⛶ Full view to drive.' : ''); };
+shot.src = API_URL + '/browser/screenshot?ts=' + Date.now();
+}
+function setMode(mode, auto) {
+viewMode = mode;
+if (!shot || !stillBtn) return;
+if (mode === 'still') {
+frame.hidden = true; shot.hidden = false;
+stillBtn.innerHTML = '📺 <span class="og-btn-label">Live view</span>';
+loadShot();
+if (shotTimer) clearInterval(shotTimer);
+shotTimer = setInterval(function () { if (viewMode === 'still' && active) loadShot(); }, 5000);
+if (auto) note('The live player didn\'t load in this browser, so here\'s the still view instead — a fresh picture every few seconds. ⛶ Full view opens the live session in a new tab.');
+} else {
+shot.hidden = true; frame.hidden = false;
+stillBtn.innerHTML = '🖼 <span class="og-btn-label">Still view</span>';
+if (shotTimer) { clearInterval(shotTimer); shotTimer = null; }
+note('');
+}
+}
+if (stillBtn) stillBtn.addEventListener('click', function () { setMode(viewMode === 'still' ? 'live' : 'still', false); });
+function showOutcome(text) {
+if (!card || !cardOutcome) return;
+card.hidden = false;
+cardOutcome.hidden = false;
+cardOutcome.textContent = text;
+outcomeUntil = Date.now() + 30000;
+if (yesBtn) yesBtn.disabled = true;
+if (noBtn) noBtn.disabled = true;
+}
+function decide(path) {
+if (yesBtn) yesBtn.disabled = true;
+if (noBtn) noBtn.disabled = true;
+fetch(API_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+.then(function (r) { return r.json(); })
+.then(function (res) {
+if (res && res.ok) showOutcome('✅ ' + (res.title || 'Done') + (res.body ? '\n' + res.body.replace(/^\[OG BROWSER\]\s*/, '') : ''));
+else showOutcome('⚠️ That didn\'t go through — ' + ((res && res.error) || 'the action may have expired or already been answered in chat.'));
+refresh();
+})
+.catch(function () { showOutcome('⚠️ That didn\'t go through — connection hiccup. The action is still parked if the card reappears.'); refresh(); });
+}
+if (yesBtn) yesBtn.addEventListener('click', function () { decide('/browser/approve'); });
+if (noBtn) noBtn.addEventListener('click', function () { decide('/browser/decline'); });
+function renderPending(pa) {
+if (!card) return;
+if (Date.now() < outcomeUntil) return;
+if (!pa) { card.hidden = true; return; }
+card.hidden = false;
+if (cardOutcome) cardOutcome.hidden = true;
+if (yesBtn) yesBtn.disabled = false;
+if (noBtn) noBtn.disabled = false;
+var kindLabel = pa.kind === 'post' ? 'post this' : 'do this';
+cardDesc.textContent = 'OG is ready to ' + kindLabel + ': ' + (pa.desc || 'a browser action') + (pa.site ? ' on ' + pa.site : '') + '. Nothing happens unless you approve.';
+if (pa.text) { cardText.hidden = false; cardText.textContent = '"' + pa.text + '"'; }
+else cardText.hidden = true;
+cardExp.textContent = '⏳ Expires in ~' + pa.minutes_left + ' min. You can also just say YES or NO in chat — whichever you use first counts.';
+}
+function refresh() {
+fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
+if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+menuBtn.hidden = false;
+active = !!st.active;
+renderPending(st.pending_action || null);
+if (!active) { panel.hidden = true; wasActive = false; if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+panel.hidden = false;
+if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
+wasActive = true;
+if (window.ogSetAvatar) ogSetAvatar('working', 4000);
+var driving = st.control === 'visitor';
+title.textContent = driving ? "🌐 You're driving" : '🌐 OG is browsing';
+meta.textContent = '⏱ ~' + st.minutes_left + ' min left' + (st.page_title ? ' · ' + st.page_title : '');
+takeBtn.hidden = driving; handBtn.hidden = !driving;
+if (stillBtn) { stillBtn.disabled = driving; stillBtn.title = driving ? 'Still view pauses while you drive — the live view is your window' : ''; }
+if (driving && viewMode === 'still') setMode('live', false);
+if (st.viewer_url) {
+if (fullBtn) { fullBtn.hidden = false; fullBtn.href = st.viewer_url; }
+if (st.viewer_url !== lastSrc) { frame.src = st.viewer_url; lastSrc = st.viewer_url; frameLoaded = false; srcSetAt = Date.now(); if (viewMode === 'still') loadShot(); }
+else if (viewMode === 'live' && !frameLoaded && srcSetAt && Date.now() - srcSetAt > 9000) setMode('still', true);
+}
+}).catch(function () {});
+}
+takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
+handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
+function endSession() { post('/browser/end'); panel.hidden = true; sayAi('⏹ Browser session ended from the panel.'); }
+endBtn.addEventListener('click', endSession);
+if (closeBtn) closeBtn.addEventListener('click', endSession);
+menuBtn.addEventListener('click', function () {
+var close = $('menuClose'); if (close) close.click();
+if (active) { panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+else sayAi("🌐 No browser session running — just name a site in chat (\"Facebook\", \"open Wikipedia\") and I'll fire one up and go straight there. Blue and Blackout plans carry browser minutes; everybody gets one free 10-minute taste.");
+});
+refresh();
+setInterval(refresh, 8000);
+})();</script>
+    <script id="og-video-js">(function () {
+function $(id) { return document.getElementById(id); }
+var card = $('videoCard'), desc = $('videoDesc'), exp = $('videoExp'),
+yesBtn = $('videoYesBtn'), noBtn = $('videoNoBtn'), out = $('videoOutcome');
+var lastStageKey = '', doneShown = {}, outcomeUntil = 0;
+function sayAi(t) { if (t && typeof addMessage === 'function') addMessage('ai', t); }
+function fmtDur(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB'; }
+function decide(path) {
+if (yesBtn) yesBtn.disabled = true;
+if (noBtn) noBtn.disabled = true;
+fetch(API_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+.then(function (r) { return r.json(); })
+.then(function (res) {
+if (!out) return;
+out.hidden = false;
+out.textContent = res && res.ok ? '🎬 Locked in — it\'s cooking. It lands right here in the thread when it\'s done.' : '⚠️ ' + ((res && res.error) || 'That didn\'t go through.');
+outcomeUntil = Date.now() + 20000;
+refresh();
+})
+.catch(function () { if (out) { out.hidden = false; out.textContent = '⚠️ Connection hiccup — if the card comes back, the story is still parked.'; } });
+}
+if (yesBtn) yesBtn.addEventListener('click', function () { decide('/video/approve'); });
+if (noBtn) noBtn.addEventListener('click', function () { decide('/video/decline'); });
+function renderPending(p) {
+if (!card) return;
+if (Date.now() < outcomeUntil) return;
+if (!p) { card.hidden = true; return; }
+card.hidden = false;
+if (yesBtn) yesBtn.disabled = false;
+if (noBtn) noBtn.disabled = false;
+if (out) out.hidden = true;
+if (p.stage === 'await_approval') {
+desc.textContent = '"' + (p.title || 'Untitled') + '" — ' + p.scenes + ' scenes, about ' + p.est_min + ' min of video: a picture per scene, OG narrating, download right here. Nothing renders unless you approve.';
+exp.textContent = '⏳ Parked for ~' + Math.max(1, Math.ceil((p.expires_in_s || 0) / 60)) + ' min. You can also just say YES or NO in chat — first answer counts.';
+} else {
+desc.textContent = 'The story is being written — this card fills in with the title and scene count the moment it lands.';
+exp.textContent = '';
+}
+}
+function showDone(job, lockerOk) {
+var area = document.getElementById('messagesArea');
+if (!area) { sayAi('🎬 "' + job.title + '" is done — grab it here: ' + API_URL + job.video_url); return; }
+var div = document.createElement('div');
+div.className = 'message ai';
+var url = API_URL + job.video_url;
+div.innerHTML = '<div class="message-content og-video-done"><div class="message-text">🎬 <b></b> is done — ' + fmtDur(job.duration) + ' · ' + fmtSize(job.size) + '</div><video controls preload="metadata" src="' + url + '"></video><div class="og-video-actions"><a href="' + url + '" download>⬇ Download</a>' + (lockerOk && !job.saved ? '<button type="button" class="og-video-save">🗄 Save to my locker</button>' : '') + '<span class="og-video-save-note"></span></div></div>';
+div.querySelector('b').textContent = '"' + (job.title || 'Your story') + '"';
+area.appendChild(div);
+if (typeof ogFollowBottom === 'function') ogFollowBottom(false);
+var btn = div.querySelector('.og-video-save'), note = div.querySelector('.og-video-save-note');
+if (btn) btn.addEventListener('click', function () {
+btn.disabled = true;
+fetch(API_URL + '/video/save/' + job.id, { method: 'POST' }).then(function (r) { return r.json(); })
+.then(function (res) { note.textContent = res && res.ok ? ' ✓ Locked in your locker for good.' : ' ' + ((res && res.error) || 'Locker said no.'); if (!(res && res.ok)) btn.disabled = false; })
+.catch(function () { note.textContent = ' Locker hiccup — try again.'; btn.disabled = false; });
+});
+}
+function renderJob(job, lockerOk) {
+if (!job) return;
+if (job.state === 'done') {
+if (!doneShown[job.id]) { doneShown[job.id] = true; showDone(job, lockerOk); }
+return;
+}
+var key = job.id + '|' + job.state;
+if (key === lastStageKey) return;
+lastStageKey = key;
+if (window.ogSetAvatar) { if (job.state === 'done') ogSetAvatar('milestone', 5500); else if (job.state !== 'failed') ogSetAvatar('making'); }
+if (job.state === 'failed') sayAi('🎬 ' + (job.detail || 'That render didn\'t make it — nothing was charged. Ask again and I\'ll recook it.'));
+else if (job.state === 'stitching') sayAi('🎬 Stitching "' + (job.title || 'your story') + '" together…');
+else if (job.state === 'drawing') sayAi('🎬 Drawing the pictures for "' + (job.title || 'your story') + '" — one per scene…');
+else if (job.state === 'voicing') sayAi('🎬 Pictures done — now voicing it, scene by scene…');
+}
+function refresh() {
+fetch(API_URL + '/video/status').then(function (r) { return r.json(); }).then(function (st) {
+if (!st || !st.enabled) { if (card) card.hidden = true; return; }
+renderPending(st.pending || null);
+renderJob(st.job || null, !!st.locker_ok);
+}).catch(function () {});
+}
+refresh();
+setInterval(refresh, 6000);
+})();</script>
+    <script id="og-song-js">(function () {
+function $(id) { return document.getElementById(id); }
+var card = $('songCard'), desc = $('songDesc'), lyr = $('songLyrics'), exp = $('songExp'),
+yesBtn = $('songYesBtn'), noBtn = $('songNoBtn'), out = $('songOutcome');
+var lastStageKey = '', doneShown = {}, outcomeUntil = 0;
+function sayAi(t) { if (t && typeof addMessage === 'function') addMessage('ai', t); }
+function fmtDur(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB'; }
+function decide(path) {
+if (yesBtn) yesBtn.disabled = true;
+if (noBtn) noBtn.disabled = true;
+fetch(API_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+.then(function (r) { return r.json(); })
+.then(function (res) {
+if (!out) return;
+out.hidden = false;
+out.textContent = res && res.ok ? '🎵 Locked in — it\'s in the studio. The track lands right here in the thread when it\'s done.' : '⚠️ ' + ((res && res.error) || 'That didn\'t go through.');
+outcomeUntil = Date.now() + 20000;
+refresh();
+})
+.catch(function () { if (out) { out.hidden = false; out.textContent = '⚠️ Connection hiccup — if the card comes back, the song is still parked.'; } });
+}
+if (yesBtn) yesBtn.addEventListener('click', function () { decide('/song/approve'); });
+if (noBtn) noBtn.addEventListener('click', function () { decide('/song/decline'); });
+function renderPending(p) {
+if (!card) return;
+if (Date.now() < outcomeUntil) return;
+if (!p) { card.hidden = true; return; }
+card.hidden = false;
+if (yesBtn) yesBtn.disabled = false;
+if (noBtn) noBtn.disabled = false;
+if (out) out.hidden = true;
+if (p.stage === 'await_approval') {
+desc.textContent = '"' + (p.title || 'Untitled') + '" — ' + (p.style || 'original song') + ' · ' + p.sections + ' sections, about ' + p.est_min + ' min of sung track: OG\'s lyrics, sung for real, player + download right here. Nothing is generated unless you approve.';
+if (lyr) { if (p.lyrics_preview) { lyr.hidden = false; lyr.textContent = p.lyrics_preview; } else { lyr.hidden = true; } }
+exp.textContent = '⏳ Parked for ~' + Math.max(1, Math.ceil((p.expires_in_s || 0) / 60)) + ' min. You can also just say YES or NO in chat — first answer counts.';
+} else {
+desc.textContent = 'The song is being written — this card fills in with the title and lyrics the moment they land.';
+if (lyr) lyr.hidden = true;
+exp.textContent = '';
+}
+}
+function showDone(job, lockerOk) {
+var area = document.getElementById('messagesArea');
+if (!area) { sayAi('🎵 "' + job.title + '" is done — grab it here: ' + API_URL + job.song_url); return; }
+var div = document.createElement('div');
+div.className = 'message ai';
+var url = API_URL + job.song_url;
+div.innerHTML = '<div class="message-content og-song-done"><div class="message-text">🎵 <b></b> is done — ' + fmtDur(job.duration) + ' · ' + fmtSize(job.size) + '</div><audio controls preload="metadata" src="' + url + '"></audio><div class="og-video-actions"><a href="' + url + '" download>⬇ Download MP3</a>' + (lockerOk && !job.saved ? '<button type="button" class="og-song-save">🗄 Save to my locker</button>' : '') + '<span class="og-song-save-note"></span></div></div>';
+div.querySelector('b').textContent = '"' + (job.title || 'Your song') + '"';
+area.appendChild(div);
+if (typeof ogFollowBottom === 'function') ogFollowBottom(false);
+if (window.ogSetAvatar) ogSetAvatar('milestone', 5500);
+var btn = div.querySelector('.og-song-save'), note = div.querySelector('.og-song-save-note');
+if (btn) btn.addEventListener('click', function () {
+btn.disabled = true;
+fetch(API_URL + '/song/save/' + job.id, { method: 'POST' }).then(function (r) { return r.json(); })
+.then(function (res) { note.textContent = res && res.ok ? ' ✓ Locked in your locker for good.' : ' ' + ((res && res.error) || 'Locker said no.'); if (!(res && res.ok)) btn.disabled = false; })
+.catch(function () { note.textContent = ' Locker hiccup — try again.'; btn.disabled = false; });
+});
+}
+function renderJob(job, lockerOk) {
+if (!job) return;
+if (job.state === 'done') {
+if (!doneShown[job.id]) { doneShown[job.id] = true; showDone(job, lockerOk); }
+return;
+}
+var key = job.id + '|' + job.state;
+if (key === lastStageKey) return;
+lastStageKey = key;
+if (window.ogSetAvatar && job.state !== 'failed') ogSetAvatar('making');
+if (job.state === 'failed') sayAi('🎵 ' + (job.detail || 'That take didn\'t make it — nothing was charged. Ask again and I\'ll re-track it.'));
+else if (job.state === 'generating') sayAi('🎵 In the studio — tracking "' + (job.title || 'your song') + '" now…');
+}
+function refresh() {
+fetch(API_URL + '/song/status').then(function (r) { return r.json(); }).then(function (st) {
+if (!st || !st.enabled) { if (card) card.hidden = true; return; }
+renderPending(st.pending || null);
+renderJob(st.job || null, !!st.locker_ok);
+}).catch(function () {});
+}
+refresh();
+setInterval(refresh, 6000);
+})();</script>
+    <script id="og-attach-js">(function () {
+function $(id) { return document.getElementById(id); }
+var sheet = $('plusSheet'), cam = $('camInput'), pic = $('picInput'),
+prev = $('attachPreview'), thumb = $('attachThumb'),
+nameEl = $('attachName'), input = $('messageInput');
+if (!sheet || !cam || !pic || !prev) return;
+var staged = null;
+window.__ogTogglePlusSheet = function () { sheet.hidden = !sheet.hidden; };
+function closeSheet() { sheet.hidden = true; }
+$('plusCamBtn').addEventListener('click', function () { closeSheet(); cam.click(); });
+$('plusPicBtn').addEventListener('click', function () { closeSheet(); pic.click(); });
+$('plusFileBtn').addEventListener('click', function () { closeSheet(); var f = $('fileInput'); if (f) f.click(); });
+var menuBtn = $('plusMenuBtn');
+if (menuBtn) menuBtn.addEventListener('click', function () { closeSheet(); var m = $('menuBtn'); if (m) m.click(); });
+document.addEventListener('click', function (e) {
+if (!sheet.hidden && !sheet.contains(e.target) && !(e.target.closest && e.target.closest('#plusBtn'))) sheet.hidden = true;
+});
+async function stageFile(f) {
+if (!f) return;
+if (f.type && f.type.indexOf('image/') !== 0) {
+if (typeof addMessage === 'function') addMessage('ai', 'Yo, that one ain\'t a picture — 📎 File in the + menu takes PDFs and docs.');
+return;
+}
+updateStatus('Sending your picture to OG...');
+var fd = new FormData(); fd.append('file', f);
+try {
+var r = await fetch(API_URL + '/upload', { method: 'POST', body: fd });
+var data = await r.json();
+if (data && data.ok) {
+if (staged && staged.url) URL.revokeObjectURL(staged.url);
+staged = { name: (data.file && data.file.name) || f.name, url: URL.createObjectURL(f) };
+thumb.src = staged.url;
+nameEl.textContent = staged.name;
+prev.hidden = false;
+var chip = $('fileChip'), cn = $('fileChipName');
+if (chip && cn) { cn.textContent = staged.name; chip.hidden = false; }
+if (input) input.focus();
+} else {
+if (typeof addMessage === 'function') addMessage('ai', (data && data.response) || 'Yo, that picture didn\'t go through — try again.');
+if (data && data.upgrade_url && typeof showUpgradeCta === 'function') showUpgradeCta();
+}
+} catch (e) {
+if (typeof addMessage === 'function') addMessage('ai', 'Yo, that picture didn\'t go through — try again.');
+} finally { updateStatus('Online & Ready'); }
+}
+cam.addEventListener('change', function () { var f = cam.files && cam.files[0]; cam.value = ''; stageFile(f); });
+pic.addEventListener('change', function () { var f = pic.files && pic.files[0]; pic.value = ''; stageFile(f); });
+document.addEventListener('paste', function (e) {
+var items = (e.clipboardData && e.clipboardData.items) || [];
+for (var i = 0; i < items.length; i++) {
+if (items[i].type && items[i].type.indexOf('image/') === 0) {
+var f = items[i].getAsFile();
+if (f) { stageFile(f); updateStatus('📷 Picture staged — hit send and OG will look at it.'); }
+break;
+}
+}
+});
+var rmBtn = $('attachRemove');
+if (rmBtn) rmBtn.addEventListener('click', function () {
+if (staged && staged.url) URL.revokeObjectURL(staged.url);
+staged = null; prev.hidden = true;
+fetch(API_URL + '/file/remove', { method: 'POST' }).catch(function () {});
+var chip = $('fileChip'); if (chip) chip.hidden = true;
+});
+window.__ogPeekStaged = function () { return staged; };
+window.__ogDecorateSent = function () {
+if (!staged) return;
+var url = staged.url, nm = staged.name;
+var bubbles = document.querySelectorAll('#messagesArea .message.user');
+var last = bubbles[bubbles.length - 1];
+if (last) {
+var content = last.querySelector('.message-content');
+if (content) {
+var img = document.createElement('img');
+img.className = 'og-msg-img'; img.src = url; img.alt = nm || 'Attached picture';
+content.insertBefore(img, content.firstChild);
+}
+}
+staged = null; prev.hidden = true;
+};
+fetch(API_URL + '/file/status').then(function (r) { return r.json(); }).then(function (s) {
+if (!s || !s.attached || !s.file || s.file.kind !== 'image') return;
+var want = '[📎 Uploaded a file: ' + s.file.name + ']';
+var area = document.getElementById('messagesArea');
+if (!area) return;
+var obs = new MutationObserver(function () {
+var texts = area.querySelectorAll('.message.user .message-text');
+for (var i = texts.length - 1; i >= 0; i--) {
+var holder = texts[i].parentElement;
+if (texts[i].textContent.trim() === want && holder && !holder.querySelector('.og-msg-img')) {
+var img = document.createElement('img');
+img.className = 'og-msg-img'; img.src = API_URL + '/file/image'; img.alt = s.file.name;
+holder.insertBefore(img, holder.firstChild);
+obs.disconnect();
+return;
+}
+}
+});
+obs.observe(area, { childList: true, subtree: true });
+setTimeout(function () { obs.disconnect(); }, 20000);
+}).catch(function () {});
+})();</script>
+    <script id="og-avatar-js">(function () {
+var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+var vids = [];
+var big = document.getElementById('ogAvatarVideo');
+var small = document.querySelector('.og-menu-ava video');
+if (big) vids.push(big);
+if (small) vids.push(small);
+var SRC = { idle: '/avatar/idle.mp4', working: '/avatar/working.mp4', making: '/avatar/hood.mp4', milestone: '/avatar/drinking.mp4', connecting: '/avatar/idle.mp4' };
+var dead = false, cur = '', holdTimer = null;
+function showStills(show) {
+document.querySelectorAll('img.og-avatar, img.og-avatar-sm').forEach(function (i) { i.style.visibility = show ? '' : 'hidden'; });
+}
+function fail() {
+dead = true;
+vids.forEach(function (v) { v.hidden = true; v.removeAttribute('src'); });
+showStills(true);
+}
+vids.forEach(function (v) { v.addEventListener('error', fail); });
+function swap(state) {
+if (dead || reduced || !vids.length) return;
+var src = SRC[state] || SRC.idle;
+if (src === cur) return;
+cur = src;
+vids.forEach(function (v) {
+v.hidden = false;
+if (v.getAttribute('src') !== src) v.src = src;
+var p = v.play(); if (p && p.catch) p.catch(function () {});
+});
+showStills(false);
+}
+window.ogSetAvatar = function (state, holdMs) {
+if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+swap(state);
+if (holdMs) holdTimer = setTimeout(function () { swap('idle'); }, holdMs);
+};
+if (typeof setMood === 'function') {
+var prevMood = setMood;
+setMood = function (state) {
+prevMood(state);
+if (state === 'thinking') ogSetAvatar('working');
+else if (state === 'win') ogSetAvatar('milestone', 5500);
+else if (state === 'talking' || state === 'listening' || state === '') ogSetAvatar('idle');
+};
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { ogSetAvatar('connecting'); });
+else ogSetAvatar('connecting');
+})();</script>
 </body>
 </html>
