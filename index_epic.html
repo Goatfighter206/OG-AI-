@@ -132,9 +132,9 @@
                 </div>
                 <p id="browserShotNote" class="og-browser-note" hidden></p>
                 <div class="og-browser-actions" id="browserActions" hidden>
-                    <button id="browserTakeBtn" type="button" title="Take control" aria-label="Take control">🕹️ Take control</button>
-                    <button id="browserHandBtn" type="button" hidden title="Hand back" aria-label="Hand back">🤝 Hand back</button>
-                    <button id="browserEndTaskBtn" type="button" title="End task" aria-label="End task">⏹ End task</button>
+                    <button id="browserEndTaskBtn" type="button" title="End task" aria-label="End task">End task</button>
+                    <button id="browserTakeBtn" type="button" title="Take control" aria-label="Take control">Take control</button>
+                    <button id="browserHandBtn" type="button" hidden title="Hand back" aria-label="Hand back">Hand back</button>
                 </div>
                 <button id="browserOpenBtn" class="og-browser-open" type="button">Open browser</button>
             </div>
@@ -1541,7 +1541,8 @@ return r2;
 .og-browser-actions button { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 6px 12px; font-size: .8rem; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .og-browser-actions button:hover { background: rgba(255,193,7,.18); }
 .og-browser-actions [hidden] { display: none !important; }
-#browserEndTaskBtn { margin-left: auto; border-color: rgba(255,110,110,.55); color: #ff9d9d; }
+#browserEndTaskBtn { border-color: rgba(255,110,110,.55); color: #ff9d9d; }
+#browserTakeBtn, #browserHandBtn { margin-left: auto; }
 .og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; background: radial-gradient(120% 130% at 50% 0%, #1d1d1d 0%, #121212 55%, #0b0b0b 100%); }
 .og-browser-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 18px; color: #d9ba55; font-size: .88rem; letter-spacing: .02em; pointer-events: none; }
 .og-browser-view.og-view-live .og-browser-face { display: none; }
