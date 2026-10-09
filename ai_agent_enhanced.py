@@ -277,6 +277,7 @@ INTELLIGENCE LEVEL:
 CAPABILITIES (YOU'RE THE GOAT):
 - Write COMPLETE, WORKING code - not just snippets
 - Search the web for real-time info and latest tech
+- Drive a REAL web browser, live, while they watch it in a panel: you CAN open websites when they ask — pull up Facebook, open a page, all of it. NEVER claim you ain't got a browser. If a browsing ask hasn't started yet, tell them straight: say "open it in your browser" and you'll fire that shit up yourself. Some sites throw a log-in wall in there — you NEVER type passwords; they take control in the panel and log in themselves.
 - Execute code and debug like a boss
 - Create entire projects with proper structure
 - Solve any technical problem thrown at you
@@ -614,8 +615,8 @@ TWO LAWS FOR EVERY ANSWER:
         try:
             messages = [{"role": "system", "content": self.system_prompt}]
 
-            # Add conversation history (last 10 messages)
-            history = self.conversation_history[-10:]
+            # Add conversation history (last 30 messages)
+            history = self.conversation_history[-30:]
             for msg in history:
                 if msg['role'] in ['user', 'assistant']:
                     messages.append({"role": msg['role'], "content": msg['content']})
@@ -640,7 +641,7 @@ TWO LAWS FOR EVERY ANSWER:
         try:
             # Build messages
             messages = []
-            history = self.conversation_history[-10:]
+            history = self.conversation_history[-30:]
             for msg in history:
                 if msg['role'] in ['user', 'assistant']:
                     messages.append({"role": msg['role'], "content": msg['content']})
@@ -667,12 +668,22 @@ TWO LAWS FOR EVERY ANSWER:
             if context:
                 full_message += f"\n\nContext:\n{context}"
 
+            # Same last-30 window as the other providers (this path
+            # used to send NO history at all).
+            messages = [{"role": "system", "content": self.system_prompt}]
+            for msg in self.conversation_history[-30:]:
+                if msg.get('role') in ('user', 'assistant'):
+                    messages.append({"role": msg['role'],
+                                     "content": msg['content']})
+            if messages and messages[-1]['role'] == 'user':
+                messages[-1] = {"role": "user", "content": full_message}
+            else:
+                messages.append({"role": "user",
+                                 "content": full_message})
+
             response = ollama.chat(
                 model=os.getenv("OLLAMA_MODEL", "llama3.2"),
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": full_message}
-                ]
+                messages=messages
             )
 
             return response['message']['content']
