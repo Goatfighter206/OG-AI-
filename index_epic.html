@@ -121,21 +121,43 @@
             <!-- Messages Area -->
             <div class="messages-area" id="messagesArea"></div>
 
-            <!-- OG browser live view (Round 23, dark): appears only
-                 while a browser session is live; the iframe src is
-                 Steel's session viewer URL, fetched fresh from
-                 /browser/status on every poll — never stored. -->
+            <!-- OG browser live view: only while a session is
+                 live; viewer URL fetched fresh per poll, never
+                 stored. Round 27: sized view wrap + Full/Still
+                 fallbacks so the panel can never render blank. -->
             <div id="browserPanel" class="og-browser-panel" hidden>
                 <div class="og-browser-bar">
                     <span id="browserPanelTitle">🌐 OG is browsing</span>
                     <span id="browserPanelMeta" class="og-browser-meta"></span>
                     <span class="og-browser-btns">
+                        <a id="browserFullBtn" href="#" target="_blank" rel="noopener" hidden>⛶ Full view</a>
+                        <button id="browserStillBtn" type="button">🖼 Still view</button>
                         <button id="browserTakeBtn" type="button">🕹️ Take control</button>
                         <button id="browserHandBtn" type="button" hidden>🤝 Hand back</button>
                         <button id="browserEndBtn" type="button">⏹ End</button>
                     </span>
                 </div>
-                <iframe id="browserFrame" title="OG browser — live view"></iframe>
+                <div class="og-browser-view">
+                    <iframe id="browserFrame" title="OG browser — live view"></iframe>
+                    <img id="browserShot" alt="OG browser — still view" hidden>
+                </div>
+                <p id="browserShotNote" class="og-browser-note" hidden></p>
+            </div>
+
+            <!-- Approval card (Round 27): a parked commit action
+                 surfaces here as its own card — never inside a chat
+                 message — exact action + payload, Approve / Decline.
+                 Same gate as chat YES/NO; first resolution wins. -->
+            <div id="approveCard" class="og-approve-card" hidden>
+                <div class="og-approve-head">⚠️ <span id="approveTitle">OG is waiting on you</span></div>
+                <p id="approveDesc" class="og-approve-desc"></p>
+                <blockquote id="approveText" class="og-approve-text" hidden></blockquote>
+                <p id="approveExp" class="og-approve-exp"></p>
+                <div class="og-approve-btns">
+                    <button id="approveYesBtn" type="button">✓ Approve</button>
+                    <button id="approveNoBtn" type="button">✕ Decline</button>
+                </div>
+                <p id="approveOutcome" class="og-approve-outcome" hidden></p>
             </div>
 
             <!-- Input Area: one pill — + · input · mic · round gold button -->
@@ -425,12 +447,9 @@
         });
 
         // Send Message
-        // --- 18+ age gate ---------------------------------------------------
-        // First visit: an explicit confirmation overlay covers the chat; the
-        // chat behind it does not load (no history restore) until the visitor
-        // confirms. Confirmation persists in a cookie for a year, so returning
-        // adults are not re-gated. Declining swaps the gate to a
-        // "come back at 18" state and the chat stays unloaded.
+        // --- 18+ age gate: first-visit confirmation overlay; the
+        // chat does not load until confirmed (cookie, 1 year).
+        // Declining leaves the chat unloaded.
         function ageConfirmed() {
             return document.cookie.split('; ').some(c => c === 'ogai_age_ok=1');
         }
@@ -664,13 +683,9 @@
             }).then(r => { if (!r.ok) throw new Error('tts ' + r.status); return r.blob(); });
         }
 
-        // OG's voice rides ONE persistent audio element. Mobile
-        // browsers (iOS especially) only keep an element audible if it was
-        // unlocked inside a real user tap, so OG's buttons prime this
-        // element and every /tts playback goes through it. Resolves true
-        // only if the sound ACTUALLY played — a blocked play() used to
-        // resolve as success, which is why OG went silent on phones with
-        // no error anywhere.
+        // OG's voice rides ONE persistent audio element, primed
+        // inside a real user tap (iOS autoplay rules); resolves
+        // true only if the sound ACTUALLY played.
         let ogAudioEl = null;
         function ogAudio() {
             if (!ogAudioEl) { ogAudioEl = new Audio(); ogAudioEl.preload = 'auto'; }
@@ -795,15 +810,10 @@
             pre.classList.remove('typing');
         }
 
-        // --- Round 26 P0: auto-follow the newest message ----------------
-        // The view follows new content ONLY while the visitor is near
-        // the bottom (within ~140px) or the message is their own send:
-        // a visitor who scrolled up to re-read is never yanked down,
-        // and following resumes on its own once they're back near the
-        // bottom. ogFollowWanted is tracked from the area's own scroll
-        // events, so programmatic follow-scrolls (which land at the
-        // bottom) keep it true. Every render path routes through
-        // ogFollowBottom / ogFollowSoon below.
+        // --- Round 26 P0: auto-follow the newest message. Follow
+        // only while the visitor is near the bottom (~140px) or on
+        // their own send — never yank a reader who scrolled up.
+        // Every render path routes through ogFollowBottom/Soon.
         var ogFollowWanted = true;
         var ogFollowQueued = false;
         function ogNearBottom(area) {
@@ -1344,12 +1354,9 @@
         @keyframes ogDrawingPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
     </style>
     <script id="og-image-js">
-        // Round 5: image generation. Intent detection lives here,
-        // wrapping sendMessage like the earlier restyle wiring — so a
-        // drawing request behaves identically on the streamed and the
-        // classic chat paths (it never reaches /chat or the token meter
-        // at all). The server (POST /image) cleans the prompt, enforces
-        // the free/Pro daily caps, and generates with the OpenAI key.
+        // Round 5: image generation — intent detection wraps
+        // sendMessage so drawing asks never reach /chat or the
+        // token meter; POST /image enforces the tier caps.
         (function () {
             var DENY = /\b(draw\s+(an?\s+)?(conclusion|attention|breath|blood)|draw\s+(near|closer)|draw\s+the\s+(curtains?|blinds?))\b/i;
             var VERB_ART = /\b(draw|paint|sketch|illustrate|render)\b/i;
@@ -1457,12 +1464,9 @@
         .og-file-chip-x:hover { background: rgba(255, 255, 255, .25); }
     </style>
     <script id="og-file-js">
-        // Round 6: file reading. The menu's "Upload a file" sends the
-        // pick to POST /upload; the server stores it per-visitor and
-        // chat questions about it are answered from its content (the
-        // seam is server-side — sends stay ordinary /chat messages).
-        // The chip above the composer shows what's attached; its ✕
-        // clears the file server-side via POST /file/remove.
+        // Round 6: file reading — the menu's Upload sends the pick
+        // to POST /upload (stored per-visitor); the composer chip
+        // shows the attachment, ✕ clears it via POST /file/remove.
         (function () {
             function $(id) { return document.getElementById(id); }
             var chip = $('fileChip'), chipName = $('fileChipName'),
@@ -1639,20 +1643,12 @@
         .og-loc-menunote { font-size: .8em; color: #999; line-height: 1.45; margin: 0; padding: 2px 12px 8px 44px; }
     </style>
     <script id="og-nearme-js">
-        // Round 11: GPS "near me". A place/route question with no
-        // named place ("coffee near me", "directions from here to
-        // Sea-Tac") first rides to the server WITHOUT coordinates —
-        // OG asks his clarifying question like always. Then this
-        // block offers a one-time in-thread opt-in; on "Use my
-        // location" it takes ONE browser geolocation fix and resends
-        // the same message with {lat, lon} attached as a separate
-        // /chat field, so the server can center the answer on the
-        // visitor. Coordinates are never written into the message
-        // text, never kept by this page between answers, and the
-        // server uses them for that one answer only (never stored,
-        // never logged). The slide-over menu toggle (localStorage)
-        // remembers only the PREFERENCE: with it on, a near-me ask
-        // grabs a fresh fix up front and skips the prompt.
+        // Round 11: GPS "near me". A place ask with no named place
+        // goes to the server without coordinates first; this block
+        // then offers a one-time opt-in and resends with ONE
+        // geolocation fix as a separate /chat field (never in the
+        // message text, never stored/logged; the menu toggle
+        // remembers only the preference).
         (function () {
             var PREF_KEY = 'ogai_loc_nearme';
             var NEARME = /\b(near\s+(me|here)|around\s+(me|here)|from\s+here|my\s+location|closest\s+to\s+me|nearest\s+to\s+me)\b/i;
@@ -1789,86 +1785,190 @@
         })();
     </script>
     <style id="og-browser-css">
-        /* Round 23: OG browser live-view panel (ships dark). */
-        .og-browser-panel { margin: 0 12px 8px; border: 1px solid rgba(255,193,7,.45); border-radius: 14px; overflow: hidden; background: #101010; }
-        .og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
-        .og-browser-meta { color: #bbb; font-size: .8rem; }
-        .og-browser-btns { margin-left: auto; display: flex; gap: 6px; }
-        .og-browser-btns button { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; }
-        .og-browser-btns button:hover { background: rgba(255,193,7,.18); }
-        #browserFrame { width: 100%; height: 420px; border: 0; display: block; background: #000; }
-        /* Round 26: phone width — the 420px desktop frame buried the
-           live view under the fold; shrink it and widen the panel. */
-        @media (max-width: 768px) {
-            .og-browser-panel { margin: 0 8px 8px; }
-            #browserFrame { height: 300px; }
-        }
-    </style>
+    /* OG browser panel. Round 27 CRUSH FIX: as a flex item
+       with overflow:hidden and no flex sizing, the panel's
+       automatic minimum size was 0 and the viewport-pinned
+       column crushed it on phones (buttons clipped, iframe
+       squeezed away). flex:0 0 auto = unshrinkable; the view
+       wrap's aspect-ratio (session surface is 16/10) + a
+       min-height floor give the iframe a box that cannot
+       collapse. */
+    .og-browser-panel { flex: 0 0 auto; margin: 0 12px 8px; border: 1px solid rgba(255,193,7,.45); border-radius: 14px; overflow: hidden; background: #101010; }
+    .og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
+    .og-browser-meta { color: #bbb; font-size: .8rem; }
+    .og-browser-btns { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+    .og-browser-btns button, .og-browser-btns a { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; font-family: inherit; }
+    .og-browser-btns button:hover, .og-browser-btns a:hover { background: rgba(255,193,7,.18); }
+    .og-browser-btns button:disabled { opacity: .45; cursor: default; }
+    .og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; min-height: 260px; background: #000; }
+    #browserFrame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    #browserShot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+    .og-browser-note { margin: 0; padding: 6px 12px; color: #e8c95a; font-size: .8rem; background: rgba(255,193,7,.06); }
+    @media (max-width: 768px) {
+        .og-browser-panel { margin: 0 8px 8px; }
+        .og-browser-view { min-height: 230px; }
+    }
+    /* Approval card: distinct pinned card, unshrinkable. */
+    .og-approve-card { flex: 0 0 auto; margin: 0 12px 8px; border: 2px solid #ffc107; border-radius: 14px; background: linear-gradient(180deg, #1d1703, #121212); padding: 12px 14px; color: #f2f2f2; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+    .og-approve-head { font-weight: 700; color: #ffc107; font-size: .95rem; }
+    .og-approve-desc { margin: 8px 0 0; font-size: .9rem; }
+    .og-approve-text { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid #ffc107; background: rgba(255,255,255,.05); font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
+    .og-approve-exp { margin: 8px 0 0; color: #bbb; font-size: .78rem; }
+    .og-approve-btns { display: flex; gap: 8px; margin-top: 10px; }
+    .og-approve-btns button { border-radius: 999px; padding: 8px 18px; font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+    #approveYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+    #approveNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+    .og-approve-btns button:disabled { opacity: .5; cursor: default; }
+    .og-approve-outcome { margin: 10px 0 0; font-size: .85rem; color: #d8d8d8; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
+    @media (max-width: 768px) {
+        .og-approve-card { margin: 0 8px 8px; }
+    }
+</style>
     <style id="og-autoscroll-css">
-        /* Round 26 P0 (Brent 2026-10-09): the chat never auto-scrolled.
-           styles.css gives body only min-height:100dvh, so the flex
-           column GREW with the conversation and the DOCUMENT scrolled
-           — #messagesArea never overflowed, and every
-           area.scrollTop = area.scrollHeight in the render code was a
-           no-op. Pin the shell to the viewport height so the messages
-           area's overflow-y:auto actually engages; header, browser
-           panel and composer are flex siblings and stay put. */
+        /* Round 26 P0: pin the shell to the viewport height so
+           #messagesArea's overflow-y:auto actually engages (with
+           only min-height:100dvh the column grew and the document
+           scrolled instead, and every scrollTop follow was a
+           no-op). */
         html, body { height: 100%; }
         body { height: 100dvh; overflow: hidden; }
         #messagesArea { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
     </style>
     <script id="og-browser-js">
-        // Round 23: OG's own browser (ships dark). The menu item and
-        // live-view panel only appear when /browser/status says the
-        // browser is on; the panel follows the visitor's live
-        // session. The viewer URL comes fresh from the server on
-        // every poll and is never stored client-side. Take control /
-        // Hand back flip who's driving (OG runs no actions at all
-        // while the visitor drives); End kills the session.
-        (function () {
-            function $(id) { return document.getElementById(id); }
-            var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
-                frame = $('browserFrame'), title = $('browserPanelTitle'),
-                meta = $('browserPanelMeta'), takeBtn = $('browserTakeBtn'),
-                handBtn = $('browserHandBtn'), endBtn = $('browserEndBtn');
-            if (!menuBtn || !panel || !frame) return;
-            var lastSrc = '', active = false;
-            function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
-            function post(path, mode) {
-                var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode: mode } : {}) };
-                return fetch(API_URL + path, opts).then(function () { refresh(); }).catch(function () {});
+    // OG browser panel (ships dark): menu item + panel follow
+    // /browser/status; viewer URL fresh per poll, never stored.
+    // Round 27: ⛶ Full view (new tab), 🖼 Still view (server
+    // stills, 5s refresh, auto-engages if the player document
+    // hasn't loaded ~9s after src set); the approval card
+    // renders this visitor's parked commit action from the
+    // same poll — first resolution (card or chat) wins.
+    (function () {
+        function $(id) { return document.getElementById(id); }
+        var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
+            frame = $('browserFrame'), title = $('browserPanelTitle'),
+            meta = $('browserPanelMeta'), takeBtn = $('browserTakeBtn'),
+            handBtn = $('browserHandBtn'), endBtn = $('browserEndBtn'),
+            fullBtn = $('browserFullBtn'), stillBtn = $('browserStillBtn'),
+            shot = $('browserShot'), shotNote = $('browserShotNote'),
+            card = $('approveCard'), cardDesc = $('approveDesc'),
+            cardText = $('approveText'), cardExp = $('approveExp'),
+            yesBtn = $('approveYesBtn'), noBtn = $('approveNoBtn'),
+            cardOutcome = $('approveOutcome');
+        if (!menuBtn || !panel || !frame) return;
+        var lastSrc = '', active = false, wasActive = false;
+        var viewMode = 'live', frameLoaded = false, srcSetAt = 0,
+            shotTimer = null, outcomeUntil = 0;
+        function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
+        function post(path, mode) {
+            var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode: mode } : {}) };
+            return fetch(API_URL + path, opts).then(function () { refresh(); }).catch(function () {});
+        }
+        frame.addEventListener('load', function () {
+            if (frame.src && frame.src !== 'about:blank') frameLoaded = true;
+        });
+        function note(text) {
+            if (!shotNote) return;
+            shotNote.hidden = !text;
+            if (text) shotNote.textContent = text;
+        }
+        function loadShot() {
+            if (!shot) return;
+            shot.onerror = function () { note("Still view couldn't load a picture right now — ⛶ Full view is your reliable window."); };
+            shot.onload = function () { note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. You can\'t click in this view; use 📺 Live view or ⛶ Full view to drive.' : ''); };
+            shot.src = API_URL + '/browser/screenshot?ts=' + Date.now();
+        }
+        function setMode(mode, auto) {
+            viewMode = mode;
+            if (!shot || !stillBtn) return;
+            if (mode === 'still') {
+                frame.hidden = true; shot.hidden = false;
+                stillBtn.textContent = '📺 Live view';
+                loadShot();
+                if (shotTimer) clearInterval(shotTimer);
+                shotTimer = setInterval(function () { if (viewMode === 'still' && active) loadShot(); }, 5000);
+                if (auto) note('The live player didn\'t load in this browser, so here\'s the still view instead — a fresh picture every few seconds. ⛶ Full view opens the live session in a new tab.');
+            } else {
+                shot.hidden = true; frame.hidden = false;
+                stillBtn.textContent = '🖼 Still view';
+                if (shotTimer) { clearInterval(shotTimer); shotTimer = null; }
+                note('');
             }
-            var wasActive = false;
-            function refresh() {
-                fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
-                    if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
-                    menuBtn.hidden = false;
-                    active = !!st.active;
-                    if (!active) { panel.hidden = true; wasActive = false; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
-                    panel.hidden = false;
-                    // Round 26: a session that starts from chat must be
-                    // SEEN — scroll the panel into view once, on the
-                    // inactive->active edge only (not every poll).
-                    if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
-                    wasActive = true;
-                    var driving = st.control === 'visitor';
-                    title.textContent = driving ? "🌐 You're driving" : '🌐 OG is browsing';
-                    meta.textContent = '⏱ ~' + st.minutes_left + ' min left' + (st.page_title ? ' · ' + st.page_title : '');
-                    takeBtn.hidden = driving; handBtn.hidden = !driving;
-                    if (st.viewer_url && st.viewer_url !== lastSrc) { frame.src = st.viewer_url; lastSrc = st.viewer_url; }
-                }).catch(function () {});
-            }
-            takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
-            handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
-            endBtn.addEventListener('click', function () { post('/browser/end'); sayAi('⏹ Browser session ended from the panel.'); });
-            menuBtn.addEventListener('click', function () {
-                var close = $('menuClose'); if (close) close.click();
-                if (active) { panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-                else sayAi("🌐 No browser session running — ask me in chat to open a page or run a web errand and I'll start one (Blue and Blackout plans carry browser minutes; everybody gets one free 10-minute taste).");
-            });
-            refresh();
-            setInterval(refresh, 8000);
-        })();
-    </script>
+        }
+        if (stillBtn) stillBtn.addEventListener('click', function () { setMode(viewMode === 'still' ? 'live' : 'still', false); });
+        function showOutcome(text) {
+            if (!card || !cardOutcome) return;
+            card.hidden = false;
+            cardOutcome.hidden = false;
+            cardOutcome.textContent = text;
+            outcomeUntil = Date.now() + 30000;
+            if (yesBtn) yesBtn.disabled = true;
+            if (noBtn) noBtn.disabled = true;
+        }
+        function decide(path) {
+            if (yesBtn) yesBtn.disabled = true;
+            if (noBtn) noBtn.disabled = true;
+            fetch(API_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (res && res.ok) showOutcome('✅ ' + (res.title || 'Done') + (res.body ? '\n' + res.body.replace(/^\[OG BROWSER\]\s*/, '') : ''));
+                    else showOutcome('⚠️ That didn\'t go through — ' + ((res && res.error) || 'the action may have expired or already been answered in chat.'));
+                    refresh();
+                })
+                .catch(function () { showOutcome('⚠️ That didn\'t go through — connection hiccup. The action is still parked if the card reappears.'); refresh(); });
+        }
+        if (yesBtn) yesBtn.addEventListener('click', function () { decide('/browser/approve'); });
+        if (noBtn) noBtn.addEventListener('click', function () { decide('/browser/decline'); });
+        function renderPending(pa) {
+            if (!card) return;
+            if (Date.now() < outcomeUntil) return; // outcome line is showing
+            if (!pa) { card.hidden = true; return; }
+            card.hidden = false;
+            if (cardOutcome) cardOutcome.hidden = true;
+            if (yesBtn) yesBtn.disabled = false;
+            if (noBtn) noBtn.disabled = false;
+            var kindLabel = pa.kind === 'post' ? 'post this' : 'do this';
+            cardDesc.textContent = 'OG is ready to ' + kindLabel + ': ' + (pa.desc || 'a browser action') + (pa.site ? ' on ' + pa.site : '') + '. Nothing happens unless you approve.';
+            if (pa.text) { cardText.hidden = false; cardText.textContent = '"' + pa.text + '"'; }
+            else cardText.hidden = true;
+            cardExp.textContent = '⏳ Expires in ~' + pa.minutes_left + ' min. You can also just say YES or NO in chat — whichever you use first counts.';
+        }
+        function refresh() {
+            fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
+                if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+                menuBtn.hidden = false;
+                active = !!st.active;
+                renderPending(st.pending_action || null);
+                if (!active) { panel.hidden = true; wasActive = false; if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+                panel.hidden = false;
+                // Round 26: a session that starts from chat must be
+                // SEEN — scroll the panel into view once, on the
+                // inactive->active edge only (not every poll).
+                if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
+                wasActive = true;
+                var driving = st.control === 'visitor';
+                title.textContent = driving ? "🌐 You're driving" : '🌐 OG is browsing';
+                meta.textContent = '⏱ ~' + st.minutes_left + ' min left' + (st.page_title ? ' · ' + st.page_title : '');
+                takeBtn.hidden = driving; handBtn.hidden = !driving;
+                if (stillBtn) { stillBtn.disabled = driving; stillBtn.title = driving ? 'Still view pauses while you drive — the live view is your window' : ''; }
+                if (driving && viewMode === 'still') setMode('live', false);
+                if (st.viewer_url) {
+                    if (fullBtn) { fullBtn.hidden = false; fullBtn.href = st.viewer_url; }
+                    if (st.viewer_url !== lastSrc) { frame.src = st.viewer_url; lastSrc = st.viewer_url; frameLoaded = false; srcSetAt = Date.now(); if (viewMode === 'still') loadShot(); }
+                    else if (viewMode === 'live' && !frameLoaded && srcSetAt && Date.now() - srcSetAt > 9000) setMode('still', true);
+                }
+            }).catch(function () {});
+        }
+        takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
+        handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
+        endBtn.addEventListener('click', function () { post('/browser/end'); sayAi('⏹ Browser session ended from the panel.'); });
+        menuBtn.addEventListener('click', function () {
+            var close = $('menuClose'); if (close) close.click();
+            if (active) { panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            else sayAi("🌐 No browser session running — just name a site in chat (\"Facebook\", \"open Wikipedia\") and I'll fire one up and go straight there. Blue and Blackout plans carry browser minutes; everybody gets one free 10-minute taste.");
+        });
+        refresh();
+        setInterval(refresh, 8000);
+    })();
+</script>
 </body>
 </html>
