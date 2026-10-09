@@ -224,7 +224,7 @@
                 <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" hidden>
                 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
                 <input type="file" id="picInput" accept="image/*" hidden>
-                <div id="plusSheet" class="og-plus-sheet" hidden><button id="plusCamBtn" type="button">📷 Camera</button><button id="plusPicBtn" type="button">🖼️ Picture</button><button id="plusFileBtn" type="button">📎 File</button><button id="plusMenuBtn" type="button">☰ All actions</button></div>
+                <div id="plusSheet" class="og-plus-sheet" hidden><div class="og-ps-head"><span class="og-ps-title">Add</span><button id="plusCloseBtn" class="og-ps-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div><div class="og-ps-tiles"><button id="plusCamBtn" class="og-ps-tile" type="button"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>Camera</span></button><button id="plusPicBtn" class="og-ps-tile" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Picture</span></button></div><div class="og-ps-card"><button id="plusFileBtn" class="og-ps-row" type="button"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span>Add files</span></button><button id="plusMenuBtn" class="og-ps-row" type="button"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg><span>All actions</span></button></div></div>
                 <div id="attachPreview" class="og-attach-preview" hidden><img id="attachThumb" alt="Picture ready to send"><span id="attachName" class="og-attach-name"></span><button id="attachRemove" class="og-file-chip-x" type="button" aria-label="Remove picture">✕</button></div>
                 <div class="input-wrapper">
                     <button id="plusBtn" class="og-plus-btn" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
@@ -1312,10 +1312,22 @@ setTimeout(function () { setMood(''); }, 620);
 .og-file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .og-file-chip-x { flex: 0 0 auto; width: 22px; height: 22px; border: none; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #f2f2f2; cursor: pointer; line-height: 1; }
 .og-file-chip-x:hover { background: rgba(255, 255, 255, .25); }
-.og-plus-sheet { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+.og-plus-sheet { margin: 0 0 8px; padding: 14px; border: 1px solid rgba(255,193,7,.35); border-radius: 20px; background: #121212; }
 .og-plus-sheet[hidden] { display: none; }
-.og-plus-sheet button { border: 1px solid rgba(255, 193, 7, .55); background: #1b1b1b; color: #f2f2f2; border-radius: 999px; padding: 8px 14px; font-size: .9rem; cursor: pointer; font-family: inherit; }
-.og-plus-sheet button:hover { background: rgba(255, 193, 7, .18); }
+.og-plus-sheet svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.og-ps-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; }
+.og-ps-title { font-size: 1.05rem; font-weight: 700; color: #f5f5f5; }
+.og-ps-x { width: 30px; height: 30px; border: none; border-radius: 50%; background: rgba(255,255,255,.08); color: #d8d8d8; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.og-ps-x svg { width: 15px; height: 15px; }
+.og-ps-tiles { display: flex; gap: 10px; margin: 0 0 12px; }
+.og-ps-tile { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 88px; border: 1px solid rgba(255,193,7,.3); border-radius: 16px; background: #1b1b1b; color: #f2f2f2; font-size: .92rem; font-family: inherit; cursor: pointer; padding: 12px 6px; }
+.og-ps-tile svg { width: 30px; height: 30px; color: #ffc107; }
+.og-ps-tile:hover { background: rgba(255,193,7,.14); }
+.og-ps-card { border: 1px solid rgba(255,193,7,.3); border-radius: 16px; background: #1b1b1b; overflow: hidden; }
+.og-ps-row { display: flex; align-items: center; gap: 14px; width: 100%; border: none; background: transparent; color: #f2f2f2; font-size: 1.05rem; font-family: inherit; text-align: left; padding: 15px 16px; cursor: pointer; }
+.og-ps-row + .og-ps-row { border-top: 1px solid rgba(255,255,255,.09); }
+.og-ps-row svg { width: 24px; height: 24px; flex: 0 0 auto; color: #ffc107; }
+.og-ps-row:hover { background: rgba(255,193,7,.12); }
 .og-attach-preview { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 6px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 12px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
 .og-attach-preview[hidden] { display: none; }
 .og-attach-preview img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; display: block; }
@@ -1968,6 +1980,8 @@ $('plusPicBtn').addEventListener('click', function () { closeSheet(); pic.click(
 $('plusFileBtn').addEventListener('click', function () { closeSheet(); var f = $('fileInput'); if (f) f.click(); });
 var menuBtn = $('plusMenuBtn');
 if (menuBtn) menuBtn.addEventListener('click', function () { closeSheet(); var m = $('menuBtn'); if (m) m.click(); });
+var plusClose = $('plusCloseBtn');
+if (plusClose) plusClose.addEventListener('click', function () { closeSheet(); });
 document.addEventListener('click', function (e) {
 if (!sheet.hidden && !sheet.contains(e.target) && !(e.target.closest && e.target.closest('#plusBtn'))) sheet.hidden = true;
 });
