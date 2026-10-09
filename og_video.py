@@ -1034,6 +1034,74 @@ def _image_prompt(title: str, scene: str, retry: bool = False) -> str:
             f"words, no letters, no watermark.")
 
 
+# --- Per-scene upstream deadlines (28.3) -------------------------------------
+#
+# httpx timeouts are per-operation: a response that keeps
+# trickling bytes (a "slow drip") resets the read timer
+# forever, so ONE hung image or TTS call could freeze a whole
+# render until the 45-minute stale rule noticed (28.0 live
+# attempt 3 hung at "voicing scene 1"; the first post-upgrade
+# verification cook sat on scene 4's picture call for the
+# full 45 minutes). Every
+# upstream call in the cook path now ALSO runs under a TOTAL
+# deadline: the call runs in a daemon worker thread and the
+# job thread waits at most OG_VIDEO_SCENE_DEADLINE_S for it.
+# A call that blows the deadline is retried ONCE; a second
+# blow raises _SceneStall and the job fails honestly at that
+# scene — nothing is charged (the completion-only charge
+# rule is untouched). The leaked worker is a daemon doing
+# one HTTP call; it dies with its response or the process.
+# (The ffmpeg steps already carry subprocess timeouts.)
+
+_SCENE_DEADLINE_DEFAULT = 120.0
+
+
+def _scene_deadline_s() -> float:
+    try:
+        v = float(os.environ.get("OG_VIDEO_SCENE_DEADLINE_S", "")
+                  or _SCENE_DEADLINE_DEFAULT)
+    except (TypeError, ValueError):
+        return _SCENE_DEADLINE_DEFAULT
+    return v if v > 0 else _SCENE_DEADLINE_DEFAULT
+
+
+class _SceneStall(Exception):
+    """One scene's upstream call hung past the total deadline
+    twice. `what` is "picture" or "narration"."""
+
+    def __init__(self, what: str):
+        super().__init__(f"{what} call hung past the "
+                         f"deadline twice")
+        self.what = what
+
+
+def _with_deadline(fn, what: str):
+    """Run fn() under the per-scene total deadline; retry
+    ONCE on a timeout; raise _SceneStall on a second timeout.
+    Any other exception passes straight through — the wrapped
+    calls carry their own retry logic for ordinary failures,
+    and only a hang earns the extra attempt."""
+    deadline = _scene_deadline_s()
+    for _attempt in (1, 2):
+        box: Dict = {}
+
+        def _target():
+            try:
+                box["value"] = fn()
+            except BaseException as e:  # re-raised in caller
+                box["error"] = e
+
+        worker = threading.Thread(target=_target, daemon=True)
+        worker.start()
+        worker.join(deadline)
+        if worker.is_alive():
+            continue  # timed out — one retry, then _SceneStall
+        if "error" in box:
+            raise box["error"]
+        return box.get("value")
+    raise _SceneStall(what)
+
+
 def _fetch_image_bytes(api_key: str, title: str,
                        scene: str) -> bytes:
     """One scene picture via the existing og_image_gen path.
@@ -1077,18 +1145,27 @@ def _tts_scene(api_key: str, scene: str, out_mp3: str) -> None:
     parts = []
     with httpx.Client(timeout=90) as client:
         for i, chunk in enumerate(chunks):
-            r = client.post(
-                "https://api.openai.com/v1/audio/speech",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": _TTS_MODEL, "voice": _TTS_VOICE,
-                      "input": chunk, "response_format": "mp3"})
-            if r.status_code != 200:
-                raise RuntimeError(
-                    f"TTS answered {r.status_code}: "
-                    f"{r.text[:160]}")
+            def _post(chunk=chunk):
+                r = client.post(
+                    "https://api.openai.com/v1/audio/speech",
+                    headers={"Authorization":
+                             f"Bearer {api_key}"},
+                    json={"model": _TTS_MODEL,
+                          "voice": _TTS_VOICE,
+                          "input": chunk,
+                          "response_format": "mp3"})
+                if r.status_code != 200:
+                    raise RuntimeError(
+                        f"TTS answered {r.status_code}: "
+                        f"{r.text[:160]}")
+                return r.content
+            # 28.3: total deadline per chunk call — the
+            # client's 90 s read timeout alone does not bound
+            # a slow-drip response.
+            content = _with_deadline(_post, "narration")
             part = f"{out_mp3}.part{i}"
             with open(part, "wb") as f:
-                f.write(r.content)
+                f.write(content)
             parts.append(part)
     if len(parts) == 1:
         os.replace(parts[0], out_mp3)
@@ -1188,6 +1265,7 @@ def _run_job(job_id: str, uid: str) -> None:
     title = rec.get("title", "OG's Story")
     scenes = rec.get("scenes", [])
     job_dir = os.path.join(STORE_DIR, job_id)
+    stall_scene = 0
     try:
         with _render_slots:
             os.makedirs(job_dir, exist_ok=True)
@@ -1195,16 +1273,27 @@ def _run_job(job_id: str, uid: str) -> None:
             prev_img: Optional[str] = None
             reused = 0
             for i, scene in enumerate(scenes):
+                stall_scene = i
                 _update(rec, state="drawing",
                         detail=f"Drawing scene {i + 1} of "
                                f"{len(scenes)}…",
                         scenes_done=i)
                 img_path = os.path.join(job_dir, f"scene{i}.png")
                 try:
-                    data = _fetch_image_bytes(api_key, title, scene)
+                    # 28.3: total deadline on the picture call
+                    # (see _with_deadline). A stall fails the
+                    # job honestly at this scene — it does NOT
+                    # fall into the reuse-previous-picture path
+                    # below, which is for ordinary failures.
+                    data = _with_deadline(
+                        lambda: _fetch_image_bytes(
+                            api_key, title, scene),
+                        "picture")
                     with open(img_path, "wb") as f:
                         f.write(data)
                     prev_img = img_path
+                except _SceneStall:
+                    raise
                 except Exception:
                     if prev_img is None:
                         raise
@@ -1262,11 +1351,19 @@ def _run_job(job_id: str, uid: str) -> None:
     except Exception as e:
         logger.warning(f"Story video job {job_id} failed: {e}")
         try:
+            if isinstance(e, _SceneStall):
+                detail = (f"Scene {stall_scene + 1} stalled — "
+                          f"its {e.what} call hung twice, so I "
+                          f"cut the render off. Nothing was "
+                          f"charged. Ask again and I'll "
+                          f"recook it.")
+            else:
+                detail = ("That render didn't make it — nothing "
+                          "was charged. Ask again and I'll "
+                          "recook it.")
             _update(rec, state="failed",
                     error=str(e)[:300],
-                    detail="That render didn't make it — nothing "
-                           "was charged. Ask again and I'll "
-                           "recook it.")
+                    detail=detail)
         except Exception:
             pass
 
