@@ -313,6 +313,8 @@ import og_watch as _og_watch
 import og_register as _og_register
 # Story videos (Round 28): og_video.py
 import og_video as _og_video
+# OG songs (Round 30, dark until OG_SONG_ENABLED + studio key).
+import og_songs as _og_songs
 import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
@@ -1803,6 +1805,7 @@ def get_agent() -> AIAgent:
         _og_browser.install_browser_tools(agent, lambda: _current_uid.get("uid", ""))
         _og_video.install_video_tools(agent, lambda: _current_uid.get("uid", ""))
         _og_watch.install_watch_tools(agent, lambda: _current_uid.get("uid", ""), lambda: _current_tier.get("tier", "free"))
+        _og_songs.install_song_tools(agent, lambda: _current_uid.get("uid", ""))
         _reset_memory_store()
 
     return agent
@@ -2559,6 +2562,12 @@ _og_video.bind_app({"load_usage": _load_usage_store,
 _og_video.register_video_routes(app)
 _og_watch.bind_app({"tier_of": lambda uid, req: _tier_of(req.cookies, uid)})
 _og_watch.register_watch_routes(app)
+_og_songs.bind_app({"load_usage": _load_usage_store,
+    "save_usage": _save_usage_store, "usage_lock": _usage_lock,
+    "get_tier": lambda: _current_tier.get("tier", "free"),
+    "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
+    "load_history": _load_visitor_history_locked})
+_og_songs.register_song_routes(app)
 _og_avatar.register_avatar_routes(app)
 _og_legal.register_legal_routes(app)
 
