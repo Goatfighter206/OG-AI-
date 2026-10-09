@@ -31,12 +31,13 @@ SAFETY RULES THIS MODULE IS BUILT AROUND (plan section 6.2):
    and never stored; input VALUES are never read into a snapshot
    (labels/placeholders only; password fields are invisible to the
    driver). Phase B4 (persistent logins) is OUT of scope here.
-4. NARROW ALLOWLIST + HARD BLOCKLIST. Only http(s) pages on the
-   starter allowlist (env OG_BROWSER_ALLOWLIST extends it) can be
-   opened. Banking/financial-login and password-manager domains,
-   OG's own host, IP-literal and local addresses are refused
-   outright, allowlist or not. A redirect that lands on a blocked
-   host is backed out immediately.
+4. ALLOWLIST + HARD BLOCKLIST. Only http(s) pages on the starter
+   allowlist (mainstream public sites — search, news, social,
+   video, shopping, sports; env OG_BROWSER_ALLOWLIST extends it)
+   can be opened. Banking/financial-login and password-manager
+   domains, OG's own host, IP-literal and local addresses are
+   refused outright, allowlist or not. A redirect that lands on a
+   blocked host is backed out immediately.
 5. HARD MINUTE CAPS, ENFORCED SERVER-SIDE. New og_tiers kind
    "browser_min": Blue 60 min/day, Blackout 600 min/day, every
    other tier 0 (env OG_CAP_<TIER>_BROWSER_MIN overrides). PLUS
@@ -140,10 +141,20 @@ _ALLOW_DEFAULT = (
     "amazon.com", "walmart.com", "target.com", "bestbuy.com",
     "homedepot.com", "lowes.com", "zillow.com", "redfin.com",
     "autotrader.com", "cars.com", "weather.com", "accuweather.com",
-    "espn.com", "apnews.com", "reuters.com", "bbc.com", "cnn.com",
-    "nytimes.com", "seattletimes.com", "king5.com", "komonews.com",
-    "github.com", "stackoverflow.com", "yelp.com", "tripadvisor.com",
-    "allrecipes.com", "foodnetwork.com", "reddit.com",
+    "weather.gov", "espn.com", "apnews.com", "reuters.com",
+    "bbc.com", "cnn.com", "nytimes.com", "seattletimes.com",
+    "king5.com", "komonews.com", "github.com", "stackoverflow.com",
+    "yelp.com", "tripadvisor.com", "allrecipes.com",
+    "foodnetwork.com", "reddit.com",
+    # Round 26: mainstream social / video / public platforms —
+    # facebook.com missing here is half of why "open facebook.com
+    # in your browser" died in Round 25 (see _is_start_request).
+    "facebook.com", "instagram.com", "twitter.com", "x.com",
+    "tiktok.com", "linkedin.com", "pinterest.com", "netflix.com",
+    "hulu.com", "twitch.tv", "spotify.com", "discord.com",
+    "nfl.com", "nba.com", "mlb.com", "nhl.com", "cbssports.com",
+    "foxsports.com", "usatoday.com", "washingtonpost.com",
+    "theguardian.com", "soundcloud.com", "vimeo.com",
 )
 
 # Banking / financial logins + credential stores: refused outright,
@@ -812,11 +823,43 @@ def _session_footer(uid: str) -> str:
             "any time.]")
 
 
+def _login_wall(snap: Dict) -> str:
+    """Detect a log-in wall from the snapshot (password fields are
+    invisible to the driver by design, so the signals are the page
+    title, a log-in action next to a credential field, and the
+    forgot-password tell). Returns the host or ""."""
+    title = (snap.get("title") or "").lower()
+    text = (snap.get("text") or "").lower()
+    els = snap.get("elements") or []
+    labels = [str(el.get("label") or "").lower() for el in els]
+    login_act = any(re.search(r"\blog ?in\b|\bsign ?in\b", l)
+                    for l in labels)
+    cred_field = any(
+        el.get("tag") == "input" and re.search(
+            r"e-?mail|phone|user ?name|mobile number",
+            str(el.get("label") or ""), re.I)
+        for el in els)
+    if re.search(r"log ?in|sign ?in", title) \
+            or (login_act and cred_field) \
+            or "forgot password" in text or "forgot account" in text:
+        host = urllib.parse.urlparse(snap.get("url") or "").hostname
+        return host or "this site"
+    return ""
+
+
 def _narrate_snapshot(uid: str, snap: Dict, lead: str) -> List[Dict]:
     title = snap.get("title") or "(untitled page)"
     url = snap.get("url") or ""
     text = " ".join(str(snap.get("text") or "").split())[:1400]
     lines = [f"{lead} Page: {title} — {url}"]
+    wall = _login_wall(snap)
+    if wall:
+        lines.append(
+            f"LOGIN WALL: {wall} is showing a log-in page — OG "
+            "can't log in for you and never touches passwords. "
+            "The visitor can take control in the panel and log in "
+            "themselves, or pick a different page. Say exactly "
+            "that; never claim the browser doesn't exist.")
     if text:
         lines.append(f"WHAT'S ON IT: {text}")
     els = snap.get("elements") or []
@@ -925,9 +968,63 @@ _DECLINE_RE = re.compile(
 _URL_TOKEN_RE = re.compile(
     r"(?:https?://)?(?:www\.)?[a-z0-9][a-z0-9-]*\.[a-z]{2,}"
     r"(?:/[^\s<>\"']*)?", re.I)
-_START_VERB_RE = re.compile(
-    r"\b(browse|browser|open|visit|pull up|go to|navigate|load)\b",
-    re.I)
+# Round 26: the full natural start-verb set (see _is_start_request;
+# supersedes Round 25's _START_VERB_RE).
+_NAV_START_RE = re.compile(
+    r"\b(open|visit|browse|navigate|load|pull up|bring up|pop up|"
+    r"show( me)?|display|go to|start|launch|fire up|use|get on|"
+    r"hop on)\b|\bput\b(?:\s+\w+){0,3}?\s+up\b", re.I)
+# Content words turn a site mention into a LOOKUP ask, not a
+# browsing ask ("show me the headlines on bbc.com" = fetch the
+# headlines as text) — unless the visitor said "browser" out loud,
+# which always means the browser.
+_CONTENT_MARKER_RE = re.compile(
+    r"\b(headlines?|news|articles?|weather|forecast|scores?|prices?|"
+    r"story|stories|lyrics|song|recipes?|directions|traffic)\b", re.I)
+
+# Well-known site names a visitor names instead of a domain
+# ("pull up Facebook", "show me ESPN"). Every target is on the
+# allowlist; the hard blocklist has no names here by construction.
+_SITE_NAMES = {
+    "facebook": "facebook.com", "instagram": "instagram.com",
+    "twitter": "twitter.com", "youtube": "youtube.com",
+    "espn": "espn.com", "reddit": "reddit.com",
+    "amazon": "amazon.com", "ebay": "ebay.com",
+    "walmart": "walmart.com", "target": "target.com",
+    "best buy": "bestbuy.com", "netflix": "netflix.com",
+    "twitch": "twitch.tv", "github": "github.com",
+    "wikipedia": "wikipedia.org", "google": "google.com",
+    "bbc": "bbc.com", "cnn": "cnn.com", "zillow": "zillow.com",
+    "craigslist": "craigslist.org", "yelp": "yelp.com",
+    "spotify": "spotify.com", "tiktok": "tiktok.com",
+    "pinterest": "pinterest.com", "linkedin": "linkedin.com",
+    "weather channel": "weather.com", "home depot": "homedepot.com",
+    "lowes": "lowes.com", "lowe's": "lowes.com",
+    "duckduckgo": "duckduckgo.com",
+}
+_SITE_NAME_RE = re.compile(
+    r"\b(" + "|".join(
+        re.escape(k) for k in sorted(_SITE_NAMES, key=len,
+                                     reverse=True)) + r")\b", re.I)
+
+# A start ask that NAMES a hard-blocked target gets the honest
+# refusal at proposal time (no session, no minutes): banking,
+# money and password targets are never opened, by name or by URL.
+_BLOCKED_TARGET_RE = re.compile(
+    r"\b(bank|banking|chase|wells fargo|bank of america|"
+    r"capital one|us bank|truist|citi ?bank|credit union|paypal|"
+    r"venmo|cash ?app|fidelity|vanguard|schwab|brokerage|"
+    r"1 ?password|lastpass|bitwarden|dashlane|password manager|"
+    r"password vault)\b", re.I)
+
+
+def _resolve_site_url(low: str) -> str:
+    """'pull up facebook' -> 'https://facebook.com'; '' if the
+    message names no well-known site."""
+    m = _SITE_NAME_RE.search(low)
+    if not m:
+        return ""
+    return "https://" + _SITE_NAMES[m.group(1).lower()]
 _BROWSER_WORD_RE = re.compile(r"\bbrowser\b", re.I)
 _END_RE = re.compile(
     r"^(stop|end|close|kill|shut down)\b.*\b(browser|session|browsing)\b"
@@ -970,20 +1067,50 @@ def _extract_url(message: str) -> str:
 
 
 def _is_start_request(message: str, low: str) -> bool:
-    """A browser session may only be proposed on an EXPLICIT browsing
-    ask (Round 25): the word "browser" plus a start verb, or a URL
-    plus a navigation verb. Lookup-flavored wording — "check the
-    headlines on bbc.com", "read this article <url>", "check the
-    listing" — is NOT a start request: those asks belong to the
-    text lookup. Claiming them here is what used to hijack a plain
-    lookup into a session proposal, and a casual YES then dropped
-    a live browser screen into the middle of the chat."""
-    if _BROWSER_WORD_RE.search(low) and re.search(
-            r"\b(use|open|start|fire up|launch|get on|hop on)\b", low):
+    """THE RULE (Round 26, supersedes Round 25's narrower gate).
+
+    A start is claimed when the visitor asks OG to GO somewhere:
+    a navigation verb (open / pull up / put ... up / bring up /
+    show / visit / go to / load / browse / start / use ...) aimed
+    at a SITE reference — a URL token, a well-known site NAME
+    (_SITE_NAMES), or the word "browser" itself. An explicit
+    "browser" mention claims with any start verb, full stop.
+
+    A start is NOT claimed when the visitor asks for CONTENT from
+    a site: lookup verbs (check / read / watch / search / what's)
+    never claim, and neither does a navigation verb aimed at
+    content words (headlines, news, weather, scores, prices ... —
+    _CONTENT_MARKER_RE) unless "browser" was said out loud. Those
+    asks belong to the text lookup and must answer in text with no
+    session and no proposal.
+
+    History: Round 25 narrowed the gate to "browser + verb, or URL
+    + nav verb" after the old lookup-verb gate hijacked "check the
+    headlines on bbc.com" into a live session that dropped a
+    browser screen into the chat. That narrowing overshot: "pull
+    up Facebook" (no URL token, no "browser") and "put Facebook up
+    on your browser" ("put ... up" was not a verb) claimed NOTHING
+    and the bare model — whose persona knew of no browser — flatly
+    denied having one; "open facebook.com in your browser" claimed
+    but died at _url_gate because facebook.com was missing from
+    the allowlist, and the paraphrased refusal came out as the
+    same false denial. Round 26 keeps the anti-hijack half of
+    Round 25 (content asks stay text) and restores the natural
+    half (go-somewhere asks start the flow)."""
+    has_browser = bool(_BROWSER_WORD_RE.search(low))
+    if has_browser and _NAV_START_RE.search(low):
         return True
-    if _extract_url(message) and _START_VERB_RE.search(low):
-        return True
-    return False
+    site = _extract_url(message) or _resolve_site_url(low)
+    if not site:
+        return False
+    token = _extract_url(message)
+    if token and str(message).strip().rstrip(".,!?)\"'") == token:
+        return True  # a bare URL pasted alone means "open this"
+    if not _NAV_START_RE.search(low):
+        return False
+    if _CONTENT_MARKER_RE.search(low) and not has_browser:
+        return False
+    return True
 
 
 def _claim_job(message: str, uid: str) -> Optional[Dict]:
@@ -1029,13 +1156,16 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
         if m and not _ENTER_RE.search(low):
             return {"op": "act", "verb": "click", "words": m.group(1)}
         url = _extract_url(raw)
+        if not url and _NAV_VERB_RE.search(low):
+            url = _resolve_site_url(low)
         if url and (_NAV_VERB_RE.search(low)
                     or raw.strip().rstrip(".,!?)\"'") == url):
             return {"op": "act", "verb": "navigate", "url": url}
         return None
     # 3) No live session: a start request becomes a proposal.
     if _is_start_request(raw, low):
-        return {"op": "propose", "url": _extract_url(raw), "goal": raw}
+        url = _extract_url(raw) or _resolve_site_url(low)
+        return {"op": "propose", "url": url, "goal": raw}
     if _BROWSER_WORD_RE.search(low) and _extract_url(raw):
         return {"op": "propose", "url": _extract_url(raw), "goal": raw}
     return None
@@ -1085,6 +1215,14 @@ def _do_propose(uid: str, job: Dict) -> List[Dict]:
             return _result("OG BROWSER", "OG browser — refused",
                            f"I can't take the browser there: {reason}. "
                            "No session started, nothing used.")
+    elif _BLOCKED_TARGET_RE.search(job.get("goal", "")):
+        return _result(
+            "OG BROWSER", "OG browser — refused",
+            "Real talk: I DO have a browser, but that target is on "
+            "the hard blocklist — banking, money, and password "
+            "sites are never opened in it, by name or by link. No "
+            "session started, nothing used. Point me at a regular "
+            "public site and I'll open it.")
     if plan["mode"] == "none":
         return _result(
             "OG BROWSER", "OG browser — no minutes",
