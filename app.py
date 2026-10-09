@@ -311,6 +311,8 @@ import og_storage as _og_storage
 # OG browser (Round 23, dark).
 import og_browser as _og_browser
 import og_register as _og_register
+# Story videos (Round 28): og_video.py
+import og_video as _og_video
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
 
@@ -1802,6 +1804,7 @@ def get_agent() -> AIAgent:
         _og_storage.install_storage_tools(
             agent, lambda: _current_uid.get("uid", ""))
         _og_browser.install_browser_tools(agent, lambda: _current_uid.get("uid", ""))
+        _og_video.install_video_tools(agent, lambda: _current_uid.get("uid", ""))
         _reset_memory_store()
 
     return agent
@@ -2551,6 +2554,13 @@ _og_browser.bind_app({"load_usage": _load_usage_store,
     "get_tier": lambda: _current_tier.get("tier", "free"),
     "tier_of": lambda uid, req: _tier_of(req.cookies, uid)})
 _og_browser.register_browser_routes(app)
+_og_video.bind_app({"load_usage": _load_usage_store,
+    "save_usage": _save_usage_store, "usage_lock": _usage_lock,
+    "get_tier": lambda: _current_tier.get("tier", "free"),
+    "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
+    "get_api_key": lambda: os.getenv("OPENAI_API_KEY"),
+    "load_history": _load_visitor_history_locked})
+_og_video.register_video_routes(app)
 _og_legal.register_legal_routes(app)
 
 @app.post("/stripe/webhook")
