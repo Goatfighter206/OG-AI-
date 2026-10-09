@@ -310,6 +310,8 @@ import og_trading as _og_trading
 import og_storage as _og_storage
 # OG browser (Round 23, dark).
 import og_browser as _og_browser
+# Legal pages (/privacy, /terms): og_legal.py
+import og_legal as _og_legal
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -531,9 +533,7 @@ def _og_web_search(agent_instance, query: str, num_results: int = 5):
     if uid and not _consume_lookup(uid):
         logger.info("Web lookup skipped: visitor at daily lookup cap")
         return []
-    # Round 4: structured live data (weather, scores, quotes, headlines)
-    # gets first crack at the question; a miss falls through to the
-    # general web lookup routes below.
+    # Round 4: structured live data (weather, scores, quotes, headlines) gets first crack; a miss falls through to the web lookup routes below.
     data_results = _og_data_tools(query)
     if data_results:
         return data_results[: max(1, num_results)]
@@ -1731,9 +1731,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware to allow cross-origin requests
-# NOTE: For production, set the ALLOWED_ORIGINS environment variable to specific allowed origins
-# Example: ALLOWED_ORIGINS='["https://yourdomain.com"]'
+# CORS middleware. Production: set ALLOWED_ORIGINS to specific origins, e.g. '["https://yourdomain.com"]'
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
 if allowed_origins_env:
     try:
@@ -1762,9 +1760,7 @@ if not os.path.exists("static"):
     os.makedirs("static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Global agent instance — the object is shared, but history is
-# per-visitor: /chat swaps in each visitor's own persisted thread
-# under _memory_lock for the duration of their request.
+# Global agent instance — object shared, history per-visitor: /chat swaps in each visitor's persisted thread under _memory_lock per request.
 agent = None
 
 def get_agent() -> AIAgent:
@@ -1966,9 +1962,7 @@ async def health_check():
         "message": "Service is running"
     }
 
-# --- Streaming chat: /chat {"stream": true} = SSE, one `event:
-# chunk` per token piece, final `event: done` (= classic JSON),
-# `event: error` on failure. Non-streaming paths deliver whole.
+# --- Streaming chat: /chat {"stream": true} = SSE: one `event: chunk` per token, final `event: done` (= classic JSON), `event: error` on failure.
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
@@ -2272,9 +2266,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
-    # Freemium gate (Round 7): any paid tier skips the token cap.
-    # A webhook-confirmed buyer counts before their cookie lands and
-    # is handed the tier cookie on this response.
+    # Freemium gate (Round 7): paid tiers skip the token cap; a webhook-confirmed buyer counts before their cookie lands and gets the tier cookie on this response.
     tier = _tier_of(raw_request.cookies, uid)
     is_pro = tier != "free"
     entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
@@ -2596,6 +2588,7 @@ _og_browser.bind_app({"load_usage": _load_usage_store,
     "get_tier": lambda: _current_tier.get("tier", "free"),
     "tier_of": lambda uid, req: _tier_of(req.cookies, uid)})
 _og_browser.register_browser_routes(app)
+_og_legal.register_legal_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
