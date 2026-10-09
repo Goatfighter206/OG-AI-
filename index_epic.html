@@ -31,54 +31,80 @@
     
     <div id="menuScrim" class="og-scrim" hidden></div>
     <aside id="sideMenu" class="og-menu" aria-hidden="true">
+        <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+        <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+        <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+        <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+        <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+        <symbol id="i-pin" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+        <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+        <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
+        </defs></svg>
         <div class="og-menu-head">
             <span class="og-menu-ava"><img class="og-avatar-sm" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video class="og-avatar-video-sm" muted loop playsinline preload="none" hidden></video></span>
             <div class="og-menu-title">
-                <div>OG-AI <span class="age-badge">18+</span></div>
+                <div><span id="menuName">OG</span> <span class="age-badge">18+</span></div>
                 <div class="og-menu-status"><span class="status-indicator"></span> <span id="status-text">Online &amp; Ready</span></div>
             </div>
             <button id="menuClose" class="og-circle-btn og-circle-sm" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
         </div>
-        <p id="tokenStatusMenu" class="og-menu-token"></p>
-        <p id="tierStatusMenu" class="og-menu-token" style="margin-top:0"></p>
-        <nav class="og-menu-list">
-            <a class="og-menu-item" id="menuPlanBtn" href="/pro"><span class="og-mi">✦</span> <span id="menuPlanText">Upgrade — see plans</span></a>
-            <button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi">💬</span> New chat</button>
-            <button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi">📤</span> Share conversation</button>
-            <button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi">🗑️</span> Clear chat</button>
-            <a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi">🔗</span> Connect Google</a>
-            <div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi">✅</span> <span id="menuGoogleEmail"></span></div>
-            <button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Google</button>
-            <a class="og-menu-item" id="menuSpotifyBtn" href="/auth/spotify" hidden><span class="og-mi">🎧</span> Connect Spotify</a>
-            <div class="og-menu-item" id="menuSpotifyInfo" hidden><span class="og-mi">✅</span> <span id="menuSpotifyName"></span></div>
-            <button class="og-menu-item" id="menuSpotifyDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Spotify</button>
-            <a class="og-menu-item" id="menuGithubBtn" href="/auth/github" hidden><span class="og-mi">🐙</span> Connect GitHub</a>
-            <div class="og-menu-item" id="menuGithubInfo" hidden><span class="og-mi">✅</span> <span id="menuGithubName"></span></div>
-            <button class="og-menu-item" id="menuGithubDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect GitHub</button>
-            <a class="og-menu-item" id="menuYoutubeBtn" href="/auth/youtube" hidden><span class="og-mi">📺</span> Connect YouTube</a>
-            <div class="og-menu-item" id="menuYoutubeInfo" hidden><span class="og-mi">✅</span> <span id="menuYoutubeName"></span></div>
-            <button class="og-menu-item" id="menuYoutubeDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect YouTube</button>
-            <a class="og-menu-item" id="menuDiscordBtn" href="/auth/discord" hidden><span class="og-mi">🎮</span> Connect Discord</a>
-            <div class="og-menu-item" id="menuDiscordInfo" hidden><span class="og-mi">✅</span> <span id="menuDiscordName"></span></div>
-            <button class="og-menu-item" id="menuDiscordDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Discord</button>
-            <a class="og-menu-item" id="menuTwitchBtn" href="/auth/twitch" hidden><span class="og-mi">💜</span> Connect Twitch</a>
-            <div class="og-menu-item" id="menuTwitchInfo" hidden><span class="og-mi">✅</span> <span id="menuTwitchName"></span></div>
-            <button class="og-menu-item" id="menuTwitchDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Twitch</button>
-            <a class="og-menu-item" id="menuRedditBtn" href="/auth/reddit" hidden><span class="og-mi">🟠</span> Connect Reddit</a>
-            <div class="og-menu-item" id="menuRedditInfo" hidden><span class="og-mi">✅</span> <span id="menuRedditName"></span></div>
-            <button class="og-menu-item" id="menuRedditDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Reddit</button>
-            <button class="og-menu-item" id="menuPlaidBtn" type="button" hidden><span class="og-mi">🏦</span> Connect bank (Plaid)</button>
-            <div class="og-menu-item" id="menuPlaidInfo" hidden><span class="og-mi">✅</span> <span id="menuPlaidName"></span></div>
-            <button class="og-menu-item" id="menuPlaidDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect bank</button>
-            <a class="og-menu-item" id="menuCoinbaseBtn" href="/auth/coinbase" hidden><span class="og-mi">🪙</span> Connect Coinbase (trading)</a>
-            <div class="og-menu-item" id="menuCoinbaseInfo" hidden><span class="og-mi">✅</span> <span id="menuCoinbaseName"></span></div>
-            <button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi">🔌</span> Disconnect Coinbase</button>
-            <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi">📎</span> Upload a file</button>
-            <button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi">🗄️</span> My file locker</button>
-            <button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi">🌐</span> OG's browser — live view</button>
-            <button class="og-menu-item" id="menuLocBtn" type="button"><span class="og-mi">📍</span> Location for 'near me': <span id="menuLocState">Off</span></button>
+        <div class="og-menu-body">
+        <section class="og-plan-card">
+            <p id="tierStatusMenu" class="og-plan-name"></p>
+            <p id="tokenStatusMenu" class="og-plan-usage"></p>
+            <div class="og-plan-bar"><span id="planBarFill"></span></div>
+            <a class="og-menu-item og-plan-action" id="menuPlanBtn" href="/pro"><span class="og-mi">✦</span> <span id="menuPlanText">Upgrade — see plans</span></a>
+        </section>
+        <h3 class="og-menu-sec">Chat</h3>
+        <nav class="og-menu-card">
+            <button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi"><svg><use href="#i-pencil"/></svg></span> New chat</button>
+            <button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi"><svg><use href="#i-share"/></svg></span> Share conversation</button>
+            <button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi"><svg><use href="#i-trash"/></svg></span> Clear chat</button>
+            <button class="og-menu-item" id="menuCustomizeBtn" type="button"><span class="og-mi"><svg><use href="#i-sliders"/></svg></span> Customize OG</button>
+        </nav>
+        <h3 class="og-menu-sec">Tools</h3>
+        <nav class="og-menu-card">
+            <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi"><svg><use href="#i-clip"/></svg></span> Upload a file</button>
+            <button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-folder"/></svg></span> My file locker</button>
+            <button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-globe"/></svg></span> OG's browser — live view</button>
+            <button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
             <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
         </nav>
+        <h3 class="og-menu-sec">Connect accounts</h3>
+        <nav class="og-menu-card">
+            <a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Google</a>
+            <div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuGoogleEmail"></span></div>
+            <button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Google</button>
+            <a class="og-menu-item" id="menuSpotifyBtn" href="/auth/spotify" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Spotify</a>
+            <div class="og-menu-item" id="menuSpotifyInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuSpotifyName"></span></div>
+            <button class="og-menu-item" id="menuSpotifyDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Spotify</button>
+            <a class="og-menu-item" id="menuGithubBtn" href="/auth/github" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect GitHub</a>
+            <div class="og-menu-item" id="menuGithubInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuGithubName"></span></div>
+            <button class="og-menu-item" id="menuGithubDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect GitHub</button>
+            <a class="og-menu-item" id="menuYoutubeBtn" href="/auth/youtube" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect YouTube</a>
+            <div class="og-menu-item" id="menuYoutubeInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuYoutubeName"></span></div>
+            <button class="og-menu-item" id="menuYoutubeDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect YouTube</button>
+            <a class="og-menu-item" id="menuDiscordBtn" href="/auth/discord" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Discord</a>
+            <div class="og-menu-item" id="menuDiscordInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuDiscordName"></span></div>
+            <button class="og-menu-item" id="menuDiscordDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Discord</button>
+            <a class="og-menu-item" id="menuTwitchBtn" href="/auth/twitch" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Twitch</a>
+            <div class="og-menu-item" id="menuTwitchInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuTwitchName"></span></div>
+            <button class="og-menu-item" id="menuTwitchDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Twitch</button>
+            <a class="og-menu-item" id="menuRedditBtn" href="/auth/reddit" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Reddit</a>
+            <div class="og-menu-item" id="menuRedditInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuRedditName"></span></div>
+            <button class="og-menu-item" id="menuRedditDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Reddit</button>
+            <button class="og-menu-item" id="menuPlaidBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect bank (Plaid)</button>
+            <div class="og-menu-item" id="menuPlaidInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuPlaidName"></span></div>
+            <button class="og-menu-item" id="menuPlaidDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect bank</button>
+            <a class="og-menu-item" id="menuCoinbaseBtn" href="/auth/coinbase" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Coinbase (trading)</a>
+            <div class="og-menu-item" id="menuCoinbaseInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuCoinbaseName"></span></div>
+            <button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Coinbase</button>
+        </nav>
+        </div>
         <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
     </aside>
 
@@ -232,19 +258,35 @@
 .og-pro-pill.is-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
 .og-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9000; }
 .og-scrim[hidden] { display: none; }
-.og-menu { position: fixed; top: 0; left: 0; height: 100vh; height: 100dvh; width: min(320px, 86vw); background: #101010; border-right: 1px solid #2b2b2b; z-index: 9001; transform: translateX(-105%); transition: transform .25s ease; display: flex; flex-direction: column; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(0,0,0,.5); }
+.og-menu { position: fixed; top: 0; left: 0; height: 100vh; height: 100dvh; width: min(320px, 86vw); background: #0c0c0c; border-right: 1px solid #2b2b2b; z-index: 9001; transform: translateX(-105%); transition: transform .25s ease; display: flex; flex-direction: column; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(0,0,0,.5); }
 .og-menu.open { transform: translateX(0); }
-.og-menu-head { display: flex; align-items: center; gap: 10px; }
-.og-menu-ava { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; border: 1px solid rgba(255,193,7,.6); flex: 0 0 auto; }
-.og-menu-title { flex: 1 1 auto; min-width: 0; color: #f2f2f2; font-weight: 600; }
+.og-menu [hidden] { display: none !important; }
+.og-menu-head { display: flex; align-items: center; gap: 12px; padding: 0 2px 14px; }
+.og-menu-ava { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; border: 1.5px solid rgba(255,193,7,.65); flex: 0 0 auto; }
+.og-menu-title { flex: 1 1 auto; min-width: 0; color: #f2f2f2; font-weight: 700; font-size: 1.12rem; }
 .og-menu .age-badge { font-size: .62em; }
 .og-menu-status { font-weight: 400; font-size: .8rem; color: #a8a8a8; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.og-menu-token { color: #ffc107; font-size: .9rem; min-height: 1.1em; margin: 14px 4px 4px; }
-.og-menu-list { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
-.og-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 10px; border: none; border-radius: 10px; background: transparent; color: #ececec; font-size: 1rem; font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; }
-.og-menu-item:hover { background: #1d1d1d; }
-.og-mi { width: 22px; text-align: center; flex: 0 0 auto; }
-.og-menu-foot { margin-top: auto; color: #999; font-size: .8rem; text-align: center; padding-top: 16px; }
+.og-menu-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding-bottom: 4px; }
+.og-plan-card { background: linear-gradient(165deg, #1d1d1d, #131313); border: 1px solid rgba(255,193,7,.38); border-radius: 20px; padding: 16px 16px 4px; box-shadow: 0 10px 26px rgba(0,0,0,.45); }
+.og-plan-name { margin: 0; font-size: 1.32rem; font-weight: 700; color: #f5f5f5; min-height: 1.15em; line-height: 1.2; }
+.og-plan-usage { margin: 5px 0 0; font-size: .92rem; color: #bcbcbc; min-height: 1.1em; }
+.og-plan-bar { height: 6px; border-radius: 999px; background: #292929; overflow: hidden; margin: 13px 0 6px; }
+#planBarFill { display: block; height: 100%; width: 0; background: #ffc107; border-radius: 999px; transition: width .45s ease; }
+.og-plan-action { margin: 8px -16px 0; width: calc(100% + 32px); padding: 13px 16px 15px; border-top: 1px solid #2a2a2a; border-radius: 0 0 20px 20px; color: #ffc107; font-weight: 700; }
+.og-menu-sec { margin: 20px 4px 8px; font-size: .74rem; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: #8f8f8f; }
+.og-menu-card { background: #171717; border: 1px solid #262626; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 22px rgba(0,0,0,.35); }
+.og-menu-item { display: flex; align-items: center; gap: 13px; width: 100%; padding: 15px 16px; border: none; background: transparent; color: #ececec; font-size: 1rem; font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; min-height: 54px; }
+.og-menu-card .og-menu-item + .og-menu-item { border-top: 1px solid #232323; }
+a.og-menu-item:hover, button.og-menu-item:hover { background: #1f1f1f; }
+div.og-menu-item { cursor: default; }
+.og-menu a.og-menu-item::after, .og-menu button.og-menu-item::after { content: ""; width: 8px; height: 8px; border-top: 2px solid #838383; border-right: 2px solid #838383; transform: rotate(45deg); margin-left: auto; flex: 0 0 auto; }
+.og-menu .og-menu-item.og-nochev::after { content: none; }
+.og-mi { width: 24px; display: grid; place-items: center; flex: 0 0 auto; color: #ffc107; }
+.og-mi svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.og-row-state { margin-left: auto; color: #ffc107; font-weight: 700; }
+.og-menu-card .og-loc-menunote { padding: 0 16px 12px 53px; }
+.og-menu-foot { margin-top: auto; color: #8a8a8a; font-size: .78rem; text-align: center; padding-top: 16px; line-height: 1.5; }
+.og-menu-foot a { color: #bdbdbd; }
 .og-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6vh 20px 8px; }
 .og-empty[hidden] { display: none; }
 .og-empty-avatar { width: 84px; height: 84px; }
@@ -2147,6 +2189,31 @@ fetch('/customize/reset', { method: 'POST', credentials: 'same-origin' })
 .catch(function () { say('That glitched — try again.'); });
 });
 load();
+})();</script>
+    <script id="og-menu2-js">(function () {
+var $ = function (id) { return document.getElementById(id); };
+var top = $('ogTopName'), mine = $('menuName');
+function syncName() { if (top && mine) mine.textContent = top.textContent; }
+if (top && window.MutationObserver) new MutationObserver(syncName).observe(top, { childList: true, characterData: true, subtree: true });
+syncName();
+var cz = $('menuCustomizeBtn');
+if (cz) cz.addEventListener('click', function () {
+var m = $('sideMenu'), s = $('menuScrim');
+if (m) { m.classList.remove('open'); m.setAttribute('aria-hidden', 'true'); }
+if (s) s.hidden = true;
+var ava = document.querySelector('.og-top-ava');
+if (ava) ava.click();
+});
+var ts = $('tokenStatus'), fill = $('planBarFill'), FREE_TOTAL = 25000;
+function syncBar() {
+if (!ts || !fill) return;
+var t = ts.textContent || '';
+var m = t.replace(/,/g, '').match(/(\d+)\s+free tokens left/);
+if (m) { var left = Math.max(0, Math.min(FREE_TOTAL, parseInt(m[1], 10))); fill.style.width = ((FREE_TOTAL - left) / FREE_TOTAL * 100) + '%'; }
+else if (t.indexOf('unlimited') !== -1) fill.style.width = '100%';
+}
+if (ts && window.MutationObserver) new MutationObserver(syncBar).observe(ts, { childList: true, characterData: true, subtree: true });
+syncBar();
 })();</script>
 </body>
 </html>
