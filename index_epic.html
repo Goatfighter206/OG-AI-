@@ -1,326 +1,410 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OG-AI Agent - The Realest AI in the Game 🔥</title>
-    <link rel="stylesheet" href="/static/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Rubik+Spray+Paint&family=Permanent+Marker&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OG-AI Agent - The Realest AI in the Game 🔥</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Rubik+Spray+Paint&family=Permanent+Marker&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
 <body>
     
-    <div class="animated-bg">
+<div class="animated-bg">
         
-        <div class="energy-orb orb-1"></div>
-        <div class="energy-orb orb-2"></div>
-        <div class="energy-orb orb-3"></div>
-        <div class="energy-orb orb-4"></div>
-        <div class="energy-orb orb-5"></div>
-    </div>
+<div class="energy-orb orb-1"></div>
+<div class="energy-orb orb-2"></div>
+<div class="energy-orb orb-3"></div>
+<div class="energy-orb orb-4"></div>
+<div class="energy-orb orb-5"></div>
+</div>
 
     
-    <div id="effects-container"></div>
+<div id="effects-container"></div>
 
     
-    <header class="og-topbar">
-        <button id="menuBtn" class="og-circle-btn" type="button" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
-        <a id="proPill" class="og-pro-pill" href="/pro">✦ Upgrade</a>
-        <button id="newChatBtn" class="og-circle-btn" type="button" aria-label="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
-    </header>
+<header class="og-topbar">
+<button id="menuBtn" class="og-circle-btn" type="button" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
+<button id="newChatBtn" class="og-circle-btn" type="button" aria-label="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+</header>
 
     
-    <div id="menuScrim" class="og-scrim" hidden></div>
-    <aside id="sideMenu" class="og-menu" aria-hidden="true">
-        <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
-        <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
-        <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></symbol>
-        <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
-        <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
-        <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
-        <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
-        <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
-        <symbol id="i-pin" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
-        <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
-        <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
-        <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
-        </defs></svg>
-        <div class="og-menu-head">
-            <span class="og-menu-ava"><img class="og-avatar-sm" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video class="og-avatar-video-sm" muted loop playsinline preload="none" hidden></video></span>
-            <div class="og-menu-title">
-                <div><span id="menuName">OG</span> <span class="age-badge">18+</span></div>
-                <div class="og-menu-status"><span class="status-indicator"></span> <span id="status-text">Online &amp; Ready</span></div>
-            </div>
-            <button id="menuClose" class="og-circle-btn og-circle-sm" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
-        </div>
-        <div class="og-menu-body">
-        <section class="og-plan-card">
-            <p id="tierStatusMenu" class="og-plan-name"></p>
-            <p id="tokenStatusMenu" class="og-plan-usage"></p>
-            <div class="og-plan-bar"><span id="planBarFill"></span></div>
-            <a class="og-menu-item og-plan-action" id="menuPlanBtn" href="/pro"><span class="og-mi">✦</span> <span id="menuPlanText">Upgrade — see plans</span></a>
-        </section>
-        <h3 class="og-menu-sec">Chat</h3>
-        <nav class="og-menu-card">
-            <button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi"><svg><use href="#i-pencil"/></svg></span> New chat</button>
-            <button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi"><svg><use href="#i-share"/></svg></span> Share conversation</button>
-            <button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi"><svg><use href="#i-trash"/></svg></span> Clear chat</button>
-        </nav>
-        <h3 class="og-menu-sec">Tools</h3>
-        <nav class="og-menu-card">
-            <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi"><svg><use href="#i-clip"/></svg></span> Upload a file</button>
-            <button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-folder"/></svg></span> My file locker</button>
-            <button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-globe"/></svg></span> OG's browser — live view</button>
-            <button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
-            <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
-        </nav>
-        <h3 class="og-menu-sec">Connect accounts</h3>
-        <nav class="og-menu-card">
-            <a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Google</a>
-            <div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuGoogleEmail"></span></div>
-            <button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Google</button>
-            <a class="og-menu-item" id="menuSpotifyBtn" href="/auth/spotify" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Spotify</a>
-            <div class="og-menu-item" id="menuSpotifyInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuSpotifyName"></span></div>
-            <button class="og-menu-item" id="menuSpotifyDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Spotify</button>
-            <a class="og-menu-item" id="menuGithubBtn" href="/auth/github" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect GitHub</a>
-            <div class="og-menu-item" id="menuGithubInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuGithubName"></span></div>
-            <button class="og-menu-item" id="menuGithubDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect GitHub</button>
-            <a class="og-menu-item" id="menuYoutubeBtn" href="/auth/youtube" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect YouTube</a>
-            <div class="og-menu-item" id="menuYoutubeInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuYoutubeName"></span></div>
-            <button class="og-menu-item" id="menuYoutubeDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect YouTube</button>
-            <a class="og-menu-item" id="menuDiscordBtn" href="/auth/discord" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Discord</a>
-            <div class="og-menu-item" id="menuDiscordInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuDiscordName"></span></div>
-            <button class="og-menu-item" id="menuDiscordDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Discord</button>
-            <a class="og-menu-item" id="menuTwitchBtn" href="/auth/twitch" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Twitch</a>
-            <div class="og-menu-item" id="menuTwitchInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuTwitchName"></span></div>
-            <button class="og-menu-item" id="menuTwitchDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Twitch</button>
-            <a class="og-menu-item" id="menuRedditBtn" href="/auth/reddit" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Reddit</a>
-            <div class="og-menu-item" id="menuRedditInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuRedditName"></span></div>
-            <button class="og-menu-item" id="menuRedditDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Reddit</button>
-            <button class="og-menu-item" id="menuPlaidBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect bank (Plaid)</button>
-            <div class="og-menu-item" id="menuPlaidInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuPlaidName"></span></div>
-            <button class="og-menu-item" id="menuPlaidDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect bank</button>
-            <a class="og-menu-item" id="menuCoinbaseBtn" href="/auth/coinbase" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Coinbase (trading)</a>
-            <div class="og-menu-item" id="menuCoinbaseInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuCoinbaseName"></span></div>
-            <button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Coinbase</button>
-        </nav>
-        </div>
-        <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
-    </aside>
+<div id="menuScrim" class="og-scrim" hidden></div>
+<aside id="sideMenu" class="og-menu" aria-hidden="true">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-pencil" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+<symbol id="i-clip" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+<symbol id="i-power" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
+</defs></svg>
+<div class="og-menu-head">
+<span class="og-menu-ava"><img class="og-avatar-sm" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video class="og-avatar-video-sm" muted loop playsinline preload="none" hidden></video></span>
+<div class="og-menu-title">
+<div><span id="menuName">OG</span> <span class="age-badge">18+</span></div>
+<div class="og-menu-status"><span class="status-indicator"></span> <span id="status-text">Online &amp; Ready</span></div>
+</div>
+<button id="menuClose" class="og-circle-btn og-circle-sm" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+</div>
+<div class="og-menu-body">
+<section class="og-plan-card">
+<p id="tierStatusMenu" class="og-plan-name"></p>
+<p id="tokenStatusMenu" class="og-plan-usage"></p>
+<div class="og-plan-bar"><span id="planBarFill"></span></div>
+<a class="og-menu-item og-plan-action" id="menuPlanBtn" href="/pro"><span class="og-mi">✦</span> <span id="menuPlanText">Upgrade — see plans</span></a>
+</section>
+<h3 class="og-menu-sec" id="menuAccountSec" hidden>Account</h3>
+<nav class="og-menu-card" id="menuAccountCard" hidden>
+<div class="og-menu-item og-nochev"><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuAccountEmail"></span></div>
+<button class="og-menu-item" id="menuSignOutBtn" type="button"><span class="og-mi"><svg><use href="#i-power"/></svg></span> Sign out</button>
+</nav>
+<h3 class="og-menu-sec">Chat</h3>
+<nav class="og-menu-card">
+<button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi"><svg><use href="#i-pencil"/></svg></span> New chat</button>
+<button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi"><svg><use href="#i-share"/></svg></span> Share conversation</button>
+<button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi"><svg><use href="#i-trash"/></svg></span> Clear chat</button>
+</nav>
+<h3 class="og-menu-sec">Tools</h3>
+<nav class="og-menu-card">
+<button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi"><svg><use href="#i-clip"/></svg></span> Upload a file</button>
+<button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-folder"/></svg></span> My file locker</button>
+<button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-globe"/></svg></span> OG's browser — live view</button>
+<button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
+<p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
+</nav>
+<h3 class="og-menu-sec">Connect accounts</h3>
+<nav class="og-menu-card">
+<a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Google</a>
+<div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuGoogleEmail"></span></div>
+<button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Google</button>
+<a class="og-menu-item" id="menuSpotifyBtn" href="/auth/spotify" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Spotify</a>
+<div class="og-menu-item" id="menuSpotifyInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuSpotifyName"></span></div>
+<button class="og-menu-item" id="menuSpotifyDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Spotify</button>
+<a class="og-menu-item" id="menuGithubBtn" href="/auth/github" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect GitHub</a>
+<div class="og-menu-item" id="menuGithubInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuGithubName"></span></div>
+<button class="og-menu-item" id="menuGithubDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect GitHub</button>
+<a class="og-menu-item" id="menuYoutubeBtn" href="/auth/youtube" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect YouTube</a>
+<div class="og-menu-item" id="menuYoutubeInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuYoutubeName"></span></div>
+<button class="og-menu-item" id="menuYoutubeDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect YouTube</button>
+<a class="og-menu-item" id="menuDiscordBtn" href="/auth/discord" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Discord</a>
+<div class="og-menu-item" id="menuDiscordInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuDiscordName"></span></div>
+<button class="og-menu-item" id="menuDiscordDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Discord</button>
+<a class="og-menu-item" id="menuTwitchBtn" href="/auth/twitch" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Twitch</a>
+<div class="og-menu-item" id="menuTwitchInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuTwitchName"></span></div>
+<button class="og-menu-item" id="menuTwitchDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Twitch</button>
+<a class="og-menu-item" id="menuRedditBtn" href="/auth/reddit" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Reddit</a>
+<div class="og-menu-item" id="menuRedditInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuRedditName"></span></div>
+<button class="og-menu-item" id="menuRedditDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Reddit</button>
+<button class="og-menu-item" id="menuPlaidBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect bank (Plaid)</button>
+<div class="og-menu-item" id="menuPlaidInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuPlaidName"></span></div>
+<button class="og-menu-item" id="menuPlaidDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect bank</button>
+<a class="og-menu-item" id="menuCoinbaseBtn" href="/auth/coinbase" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Coinbase (trading)</a>
+<div class="og-menu-item" id="menuCoinbaseInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuCoinbaseName"></span></div>
+<button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Coinbase</button>
+</nav>
+</div>
+<div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
+</aside>
 
     
-    <div id="ageGate" class="age-gate" hidden>
-        <div class="age-gate-card">
-            <div class="age-badge-big">18+</div>
-            <h2>Adults Only</h2>
-            <p>OG is an 18+ AI — profane, uncensored, and strictly for adults.
-               Confirm you're of legal age to come in.</p>
-            <div id="ageGatePrompt">
-                <button class="age-gate-btn" id="ageGateEnter">I am 18 or older — Enter 🔥</button>
-                <button class="age-gate-btn secondary" id="ageGateDecline">I'm under 18</button>
-            </div>
-            <div id="ageGateDeclined" hidden>
-                <p>🚫 Sorry, fam — OG is strictly 18+. Come back when you're legal.</p>
-            </div>
-        </div>
-    </div>
+<div id="ageGate" class="age-gate" hidden>
+<div class="age-gate-card og-auth-card">
+<div class="age-badge-big">18+</div>
+<h2>OG is 18+ only</h2>
+<p>Sign in — or create your account — to talk to OG. OG is profane,
+               uncensored, and strictly for adults.</p>
+<div id="authMain">
+<form id="authSigninForm" class="og-auth-form">
+<label>Email
+<input id="authSigninEmail" type="email" autocomplete="email" required>
+</label>
+<label>Password
+<input id="authSigninPassword" type="password" autocomplete="current-password" required>
+</label>
+<label class="og-auth-remember"><input id="authRemember" type="checkbox" checked> Remember me</label>
+<p class="og-auth-error" id="authSigninError" hidden></p>
+<button class="age-gate-btn" id="authSigninBtn" type="submit">Sign in</button>
+<p class="og-auth-linkrow"><a href="#" id="authForgotLink">Forgot password?</a></p>
+</form>
+<div class="og-auth-divider">New to OG?</div>
+<form id="authSignupForm" class="og-auth-form">
+<label>Email
+<input id="authSignupEmail" type="email" autocomplete="email" required>
+</label>
+<label>Password
+<input id="authSignupPassword" type="password" autocomplete="new-password" required>
+</label>
+<label>Date of birth
+<input id="authDob" type="date" required>
+</label>
+<p class="og-auth-note">OG is 18+ only — if you're under 18, you can't create an account.</p>
+<label class="og-auth-remember"><input id="authSignupRemember" type="checkbox" checked> Remember me</label>
+<p class="og-auth-error" id="authSignupError" hidden></p>
+<button class="age-gate-btn" id="authSignupBtn" type="submit">Create account</button>
+</form>
+</div>
+<div id="authForgot" hidden>
+<form id="authForgotForm" class="og-auth-form">
+<label>Email
+<input id="authForgotEmail" type="email" autocomplete="email" required>
+</label>
+<p class="og-auth-note" id="authForgotNote" hidden></p>
+<button class="age-gate-btn" id="authForgotBtn" type="submit">Send reset link</button>
+<p class="og-auth-linkrow"><a href="#" id="authBackLink">Back to sign in</a></p>
+</form>
+</div>
+<div id="authReset" hidden>
+<form id="authResetForm" class="og-auth-form">
+<label>New password
+<input id="authResetPassword" type="password" autocomplete="new-password" required>
+</label>
+<p class="og-auth-error" id="authResetError" hidden></p>
+<button class="age-gate-btn" id="authResetBtn" type="submit">Set new password</button>
+</form>
+<p class="og-auth-note" id="authResetNote" hidden></p>
+<p class="og-auth-linkrow" id="authResetBackRow" hidden><a href="#" id="authResetBackLink">Back to sign in</a></p>
+</div>
+</div>
+</div>
 
     
-    <div id="profileScrim" class="og-profile-scrim" hidden></div>
-    <div id="ogProfile" class="og-profile" hidden role="dialog" aria-modal="true" aria-label="OG profile">
-        <div class="og-profile-top">
-            <button id="profileCloseBtn" class="og-circle-btn" type="button" aria-label="Close profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
-            <button id="profileShareBtn" class="og-circle-btn" type="button" aria-label="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
-        </div>
-        <span class="og-profile-ava"><img class="og-avatar og-profile-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogProfileVideo" muted loop playsinline preload="none" hidden></video></span>
-        <div class="og-profile-name" id="ogProfileName">OG</div>
-        <span class="og-task-pill" id="ogTaskPillProfile">Online &amp; Ready</span>
-    </div>
+    <style id="og-auth-css">.og-auth-card{text-align:left;max-height:92vh;overflow-y:auto}.og-auth-card h2,.og-auth-card .age-badge-big{text-align:center}.og-auth-card>p{text-align:center}.og-auth-form{margin-top:14px}.og-auth-form label{display:block;color:#ccc;font-size:.92em;margin-top:10px}.og-auth-form input[type="email"],.og-auth-form input[type="password"],.og-auth-form input[type="date"]{display:block;width:100%;margin-top:5px;padding:11px 12px;border-radius:10px;border:1px solid #444;background:#0d0d0d;color:#f2f2f2;font:inherit;box-sizing:border-box}.og-auth-form input:focus{border-color:#ffc107;outline:none}.og-auth-remember{display:flex!important;align-items:center;gap:8px;cursor:pointer}.og-auth-remember input{width:18px;height:18px;accent-color:#ffc107}.og-auth-error{color:#ff7b72;line-height:1.45;margin:10px 0 0}.og-auth-note{color:#bbb;line-height:1.45;margin:10px 0 0;font-size:.92em}.og-auth-divider{text-align:center;color:#888;margin:20px 0 2px;font-size:.9em}.og-auth-linkrow{text-align:center;margin:12px 0 0}.og-auth-linkrow a{color:#ffc107}</style>
+    <script id="og-auth-js">(function () {
+function $(id) { return document.getElementById(id); }
+var gate = $('ageGate'), restored = false;
+var resetToken = null;
+try { resetToken = new URLSearchParams(location.search).get('reset'); } catch (e) { }
+function showErr(id, msg) { var el = $(id); if (!el) return; el.textContent = msg || ''; el.hidden = !msg; }
+function setAccount(email) {
+var sec = $('menuAccountSec'), card = $('menuAccountCard'), em = $('menuAccountEmail');
+if (sec) sec.hidden = !email;
+if (card) card.hidden = !email;
+if (em && email) em.textContent = 'Signed in as ' + email;
+}
+function enterApp(email) {
+gate.hidden = true;
+setAccount(email);
+if (!restored) {
+restored = true;
+if (typeof restoreConversation === 'function') restoreConversation();
+}
+}
+function showWall(view) {
+gate.hidden = false;
+setAccount(null);
+$('authMain').hidden = view !== 'main';
+$('authForgot').hidden = view !== 'forgot';
+$('authReset').hidden = view !== 'reset';
+}
+function checkMe() {
+return fetch('/auth/me').then(function (r) { return r.json(); }).then(function (d) {
+if (d && d.signed_in) enterApp(d.email);
+else showWall(resetToken ? 'reset' : 'main');
+}).catch(function () { showWall(resetToken ? 'reset' : 'main'); });
+}
+function postForm(path, payload, errId, btn) {
+if (btn) btn.disabled = true;
+showErr(errId, '');
+return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+.then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
+.then(function (res) {
+if (btn) btn.disabled = false;
+if (res.d && res.d.ok) return res.d;
+showErr(errId, (res.d && res.d.error) || "That didn't work — check your details and try again.");
+return null;
+}).catch(function () {
+if (btn) btn.disabled = false;
+showErr(errId, "Connection hiccup — try that again.");
+return null;
+});
+}
+var sf = $('authSigninForm');
+if (sf) sf.addEventListener('submit', function (e) {
+e.preventDefault();
+postForm('/auth/login', { email: $('authSigninEmail').value, password: $('authSigninPassword').value, remember: $('authRemember').checked }, 'authSigninError', $('authSigninBtn'))
+.then(function (d) { if (d) checkMe(); });
+});
+var uf = $('authSignupForm');
+if (uf) uf.addEventListener('submit', function (e) {
+e.preventDefault();
+postForm('/auth/signup', { email: $('authSignupEmail').value, password: $('authSignupPassword').value, dob: $('authDob').value, remember: $('authSignupRemember').checked }, 'authSignupError', $('authSignupBtn'))
+.then(function (d) { if (d) checkMe(); });
+});
+var fl = $('authForgotLink');
+if (fl) fl.addEventListener('click', function (e) { e.preventDefault(); showWall('forgot'); });
+var bl = $('authBackLink');
+if (bl) bl.addEventListener('click', function (e) { e.preventDefault(); showWall('main'); });
+var ff = $('authForgotForm');
+if (ff) ff.addEventListener('submit', function (e) {
+e.preventDefault();
+var btn = $('authForgotBtn');
+if (btn) btn.disabled = true;
+function done(msg) {
+if (btn) btn.disabled = false;
+var note = $('authForgotNote');
+if (note) { note.textContent = msg || 'If that email has an account, a reset link is on its way.'; note.hidden = false; }
+}
+fetch('/auth/forgot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: $('authForgotEmail').value }) })
+.then(function (r) { return r.json(); })
+.then(function (d) { done(d && d.message); })
+.catch(function () { done(''); });
+});
+var rf = $('authResetForm');
+if (rf) rf.addEventListener('submit', function (e) {
+e.preventDefault();
+postForm('/auth/reset', { token: resetToken || '', password: $('authResetPassword').value }, 'authResetError', $('authResetBtn'))
+.then(function (d) {
+if (!d) return;
+rf.hidden = true;
+var note = $('authResetNote');
+if (note) { note.textContent = 'Password set — sign in with your new password.'; note.hidden = false; }
+var row = $('authResetBackRow');
+if (row) row.hidden = false;
+});
+});
+var rb = $('authResetBackLink');
+if (rb) rb.addEventListener('click', function (e) {
+e.preventDefault();
+try { history.replaceState(null, '', location.pathname); } catch (err) { }
+resetToken = null;
+showWall('main');
+});
+var so = $('menuSignOutBtn');
+if (so) so.addEventListener('click', function () {
+fetch('/auth/logout', { method: 'POST' }).then(function () { location.reload(); }).catch(function () { location.reload(); });
+});
+window.ogAuthCheck = checkMe;
+if (resetToken) showWall('reset');
+checkMe();
+})();</script>
 
-    <div class="chat-wrapper">
-        <div class="chat-container">
+<div id="profileScrim" class="og-profile-scrim" hidden></div>
+<div id="ogProfile" class="og-profile" hidden role="dialog" aria-modal="true" aria-label="OG profile">
+<div class="og-profile-top">
+<button id="profileCloseBtn" class="og-circle-btn" type="button" aria-label="Close profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+<button id="profileShareBtn" class="og-circle-btn" type="button" aria-label="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+</div>
+<span class="og-profile-ava"><img class="og-avatar og-profile-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogProfileVideo" muted loop playsinline preload="none" hidden></video></span>
+<div class="og-profile-name" id="ogProfileName">OG</div>
+<span class="og-task-pill" id="ogTaskPillProfile">Online &amp; Ready</span>
+</div>
+
+<div class="chat-wrapper">
+<div class="chat-container">
             
-            <div id="ogTopAvatarBar" class="og-top-avatar-bar">
-                <span class="og-top-ava"><img class="og-avatar og-top-avatar-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogTopAvatarVideo" muted loop playsinline preload="none" hidden></video></span>
-                <span class="og-top-name" id="ogTopName">OG</span>
-                <span class="og-task-pill" id="ogTaskPillTop">Online &amp; Ready</span>
-            </div>
-            <div id="emptyState" class="og-empty" hidden>
-                <span class="og-ava-wrap"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
-                <h2 class="og-empty-name">OG-AI <span class="age-badge">18+</span></h2>
-                <p class="og-empty-tag">The realest AI in the game 🔥<br>Talk to him, get code, ask anything.</p>
-                <div class="og-rows">
-                    <button class="starter-chip og-row" type="button" data-prompt="Yo OG, what's good?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> Talk to OG</button>
-                    <button class="starter-chip og-row" type="button" data-prompt="Write me a Python script that renames files in bulk"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span> Have OG write code</button>
-                    <button class="starter-chip og-row" type="button" data-prompt="Explain Bitcoin like I'm five"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Ask OG anything</button>
-                    <button class="starter-chip og-row" type="button" data-prompt="Search the web: what are the top news headlines today?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span> Search the web</button>
-                    <button class="starter-chip og-row" type="button" data-prompt="Make me a Unity game"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.62 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.62-6.58-.685-7.258A4 4 0 0 0 17.32 5z"/></svg></span> 🎮 Make me a Unity game</button>
-                    <button class="starter-chip og-row" type="button" data-prompt="Make me a story video about a haunted lighthouse keeper"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20M7 4v5M17 4v5M10 12.5l5 2.5-5 2.5z"/></svg></span> 🎬 Make a story video</button>
-                    <button class="starter-chip og-row" type="button" data-prompt="Make me a song about a night-shift welder who never gives up"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span> 🎵 Make me a song</button>
-                </div>
-            </div>
-            <span id="welcome-time" hidden></span>
+<div id="ogTopAvatarBar" class="og-top-avatar-bar">
+<span class="og-top-ava"><img class="og-avatar og-top-avatar-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogTopAvatarVideo" muted loop playsinline preload="none" hidden></video></span>
+<span class="og-top-name" id="ogTopName">OG</span>
+<span class="og-task-pill" id="ogTaskPillTop">Online &amp; Ready</span>
+</div>
+<div id="emptyState" class="og-empty" hidden>
+<span class="og-ava-wrap"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
+<h2 class="og-empty-name">OG-AI <span class="age-badge">18+</span></h2>
+<p class="og-empty-tag">The realest AI in the game 🔥<br>Talk to him, get code, ask anything.</p>
+<div class="og-rows">
+<button class="starter-chip og-row" type="button" data-prompt="Yo OG, what's good?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> Talk to OG</button>
+<button class="starter-chip og-row" type="button" data-prompt="Write me a Python script that renames files in bulk"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span> Have OG write code</button>
+<button class="starter-chip og-row" type="button" data-prompt="Explain Bitcoin like I'm five"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Ask OG anything</button>
+<button class="starter-chip og-row" type="button" data-prompt="Search the web: what are the top news headlines today?"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg></span> Search the web</button>
+<button class="starter-chip og-row" type="button" data-prompt="Make me a Unity game"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.62 9.42 2 14.46 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.54-.62-6.58-.685-7.258A4 4 0 0 0 17.32 5z"/></svg></span> 🎮 Make me a Unity game</button>
+<button class="starter-chip og-row" type="button" data-prompt="Make me a story video about a haunted lighthouse keeper"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20M7 4v5M17 4v5M10 12.5l5 2.5-5 2.5z"/></svg></span> 🎬 Make a story video</button>
+<button class="starter-chip og-row" type="button" data-prompt="Make me a song about a night-shift welder who never gives up"><span class="og-row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span> 🎵 Make me a song</button>
+</div>
+</div>
+<span id="welcome-time" hidden></span>
 
             
-            <div class="messages-area" id="messagesArea"></div>
+<div class="messages-area" id="messagesArea"></div>
 
             
-            <div id="browserPanel" class="og-browser-panel" hidden>
-                <button id="browserCloseBtn" class="og-browser-x" type="button" aria-label="Close window" title="Close window">✕</button>
-                <div class="og-browser-view" id="browserView">
-                    <div class="og-browser-face" id="browserViewFace">🖼 Getting the picture…</div>
-                    <iframe id="browserFrame" title="OG browser — live view"></iframe>
-                    <img id="browserShot" alt="OG browser — still view" hidden>
-                </div>
-                <p id="browserShotNote" class="og-browser-note" hidden></p>
-                <div class="og-browser-actions" id="browserActions" hidden>
-                    <button id="browserEndTaskBtn" type="button" title="End task" aria-label="End task">End task</button>
-                    <button id="browserTakeBtn" type="button" title="Take control" aria-label="Take control">Take control</button>
-                    <button id="browserHandBtn" type="button" hidden title="Hand back" aria-label="Hand back">Hand back</button>
-                </div>
-                <button id="browserOpenBtn" class="og-browser-open" type="button">Open browser</button>
-            </div>
+<div id="browserPanel" class="og-browser-panel" hidden>
+<button id="browserCloseBtn" class="og-browser-x" type="button" aria-label="Close window" title="Close window">✕</button>
+<div class="og-browser-view" id="browserView">
+<div class="og-browser-face" id="browserViewFace">🖼 Getting the picture…</div>
+<iframe id="browserFrame" title="OG browser — live view"></iframe>
+<img id="browserShot" alt="OG browser — still view" hidden>
+</div>
+<p id="browserShotNote" class="og-browser-note" hidden></p>
+<div class="og-browser-actions" id="browserActions" hidden>
+<button id="browserEndTaskBtn" type="button" title="End task" aria-label="End task">End task</button>
+<button id="browserTakeBtn" type="button" title="Take control" aria-label="Take control">Take control</button>
+<button id="browserHandBtn" type="button" hidden title="Hand back" aria-label="Hand back">Hand back</button>
+</div>
+<button id="browserOpenBtn" class="og-browser-open" type="button">Open browser</button>
+</div>
 
             
-            <div id="approveCard" class="og-approve-card" hidden>
-                <div class="og-approve-head">⚠️ <span id="approveTitle">OG is waiting on you</span></div>
-                <p id="approveDesc" class="og-approve-desc"></p>
-                <blockquote id="approveText" class="og-approve-text" hidden></blockquote>
-                <p id="approveExp" class="og-approve-exp"></p>
-                <div class="og-approve-btns">
-                    <button id="approveYesBtn" type="button">✓ Approve</button>
-                    <button id="approveNoBtn" type="button">✕ Decline</button>
-                </div>
-                <p id="approveOutcome" class="og-approve-outcome" hidden></p>
-            </div>
+<div id="approveCard" class="og-approve-card" hidden>
+<div class="og-approve-head">⚠️ <span id="approveTitle">OG is waiting on you</span></div>
+<p id="approveDesc" class="og-approve-desc"></p>
+<blockquote id="approveText" class="og-approve-text" hidden></blockquote>
+<p id="approveExp" class="og-approve-exp"></p>
+<div class="og-approve-btns">
+<button id="approveYesBtn" type="button">✓ Approve</button>
+<button id="approveNoBtn" type="button">✕ Decline</button>
+</div>
+<p id="approveOutcome" class="og-approve-outcome" hidden></p>
+</div>
 
             
-            <div id="videoCard" class="og-approve-card" hidden>
-                <div class="og-approve-head">🎬 <span id="videoCardTitle">Story video — ready when you are</span></div>
-                <p id="videoDesc" class="og-approve-desc"></p>
-                <p id="videoExp" class="og-approve-exp"></p>
-                <div class="og-approve-btns">
-                    <button id="videoYesBtn" type="button">✓ Make the video</button>
-                    <button id="videoNoBtn" type="button">✕ Scrap it</button>
-                </div>
-                <p id="videoOutcome" class="og-approve-outcome" hidden></p>
-            </div>
+<div id="videoCard" class="og-approve-card" hidden>
+<div class="og-approve-head">🎬 <span id="videoCardTitle">Story video — ready when you are</span></div>
+<p id="videoDesc" class="og-approve-desc"></p>
+<p id="videoExp" class="og-approve-exp"></p>
+<div class="og-approve-btns">
+<button id="videoYesBtn" type="button">✓ Make the video</button>
+<button id="videoNoBtn" type="button">✕ Scrap it</button>
+</div>
+<p id="videoOutcome" class="og-approve-outcome" hidden></p>
+</div>
 
-            <div id="songCard" class="og-approve-card" hidden>
-                <div class="og-approve-head">🎵 <span id="songCardTitle">Song — ready when you are</span></div>
-                <p id="songDesc" class="og-approve-desc"></p>
-                <p id="songLyrics" class="og-approve-text" hidden></p>
-                <p id="songExp" class="og-approve-exp"></p>
-                <div class="og-approve-btns">
-                    <button id="songYesBtn" type="button">✓ Sing it</button>
-                    <button id="songNoBtn" type="button">✕ Scrap it</button>
-                </div>
-                <p id="songOutcome" class="og-approve-outcome" hidden></p>
-            </div>
+<div id="songCard" class="og-approve-card" hidden>
+<div class="og-approve-head">🎵 <span id="songCardTitle">Song — ready when you are</span></div>
+<p id="songDesc" class="og-approve-desc"></p>
+<p id="songLyrics" class="og-approve-text" hidden></p>
+<p id="songExp" class="og-approve-exp"></p>
+<div class="og-approve-btns">
+<button id="songYesBtn" type="button">✓ Sing it</button>
+<button id="songNoBtn" type="button">✕ Scrap it</button>
+</div>
+<p id="songOutcome" class="og-approve-outcome" hidden></p>
+</div>
 
             
-            <div class="input-area">
-                <div id="fileChip" class="og-file-chip" hidden><span class="og-file-chip-icon">📎</span><span id="fileChipName" class="og-file-chip-name"></span><button id="fileChipRemove" class="og-file-chip-x" type="button" aria-label="Remove attached file">✕</button></div>
-                <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" hidden>
-                <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
-                <input type="file" id="picInput" accept="image/*" hidden>
-                <div id="plusSheet" class="og-plus-sheet" hidden><div class="og-ps-head"><span class="og-ps-title">Add</span><button id="plusCloseBtn" class="og-ps-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div><div class="og-ps-tiles"><button id="plusCamBtn" class="og-ps-tile" type="button"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>Camera</span></button><button id="plusPicBtn" class="og-ps-tile" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Picture</span></button></div><div class="og-ps-card"><button id="plusFileBtn" class="og-ps-row" type="button"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span>Add files</span></button><button id="plusMenuBtn" class="og-ps-row" type="button"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg><span>All actions</span></button></div></div>
-                <div id="attachPreview" class="og-attach-preview" hidden><img id="attachThumb" alt="Picture ready to send"><span id="attachName" class="og-attach-name"></span><button id="attachRemove" class="og-file-chip-x" type="button" aria-label="Remove picture">✕</button></div>
-                <div class="input-wrapper">
-                    <button id="plusBtn" class="og-plus-btn" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-                    <input
+<div class="input-area">
+<div id="fileChip" class="og-file-chip" hidden><span class="og-file-chip-icon">📎</span><span id="fileChipName" class="og-file-chip-name"></span><button id="fileChipRemove" class="og-file-chip-x" type="button" aria-label="Remove attached file">✕</button></div>
+<input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt" hidden>
+<input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+<input type="file" id="picInput" accept="image/*" hidden>
+<div id="plusSheet" class="og-plus-sheet" hidden><div class="og-ps-head"><span class="og-ps-title">Add</span><button id="plusCloseBtn" class="og-ps-x" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div><div class="og-ps-tiles"><button id="plusCamBtn" class="og-ps-tile" type="button"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>Camera</span></button><button id="plusPicBtn" class="og-ps-tile" type="button"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Picture</span></button></div><div class="og-ps-card"><button id="plusFileBtn" class="og-ps-row" type="button"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg><span>Add files</span></button><button id="plusMenuBtn" class="og-ps-row" type="button"><svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg><span>All actions</span></button></div></div>
+<div id="attachPreview" class="og-attach-preview" hidden><img id="attachThumb" alt="Picture ready to send"><span id="attachName" class="og-attach-name"></span><button id="attachRemove" class="og-file-chip-x" type="button" aria-label="Remove picture">✕</button></div>
+<div class="input-wrapper">
+<button id="plusBtn" class="og-plus-btn" type="button" aria-label="More actions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+<input
                         type="text"
                         id="messageInput"
                         placeholder="Ask OG…"
                         autocomplete="off"
                     />
-                    <button class="voice-btn" id="voiceBtn" type="button" title="Talk to OG - he talks back" aria-label="Talk to OG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
-                    <button class="send-btn" id="sendBtn" type="button" aria-label="Send message"></button>
-                </div>
-                <p id="ogStatusLine" class="og-status-line" aria-live="polite">Online &amp; Ready</p>
-                <p id="tokenStatus" class="og-token-line"></p>
+<button class="voice-btn" id="voiceBtn" type="button" title="Talk to OG - he talks back" aria-label="Talk to OG"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+<button class="send-btn" id="sendBtn" type="button" aria-label="Send message"></button>
+</div>
+<p id="ogStatusLine" class="og-status-line" aria-live="polite">Online &amp; Ready</p>
+<p id="tokenStatus" class="og-token-line"></p>
                 
-                <button class="send-btn og-legacy-btn" id="clearBtn" type="button" hidden>Clear 🗑️</button>
-                <button class="send-btn og-legacy-btn" id="shareBtn" type="button" hidden>Share 📤</button>
-            </div>
-            <div class="age-footer">🔞 OG AI is an 18+ AI — adults only. · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
-        </div>
-    </div>
+<button class="send-btn og-legacy-btn" id="clearBtn" type="button" hidden>Clear 🗑️</button>
+<button class="send-btn og-legacy-btn" id="shareBtn" type="button" hidden>Share 📤</button>
+</div>
+<div class="age-footer">🔞 OG AI is an 18+ AI — adults only. · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
+</div>
+</div>
 
-    <style id="og-restyle-css">.og-topbar { flex: 0 0 auto; width: 100%; max-width: 880px; margin: 0 auto; padding: 10px 14px 2px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.og-circle-btn { width: 42px; height: 42px; border-radius: 50%; background: #1b1b1b; border: 1px solid #333; color: #e8e8e8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
-.og-circle-btn svg { width: 21px; height: 21px; }
-.og-circle-btn:hover { border-color: rgba(255,193,7,.7); color: #ffc107; }
-.og-circle-sm { width: 34px; height: 34px; }
-.og-circle-sm svg { width: 16px; height: 16px; }
-.og-pro-pill { display: inline-block; padding: 9px 22px; border-radius: 999px; border: 1px solid rgba(255,193,7,.75); background: rgba(255,193,7,.10); color: #ffc107; font-weight: 700; font-size: 1rem; text-decoration: none; letter-spacing: .2px; }
-.og-pro-pill:hover { background: rgba(255,193,7,.20); }
-.og-pro-pill.is-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
-.og-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9000; }
-.og-scrim[hidden] { display: none; }
-.og-menu { position: fixed; top: 0; left: 0; height: 100vh; height: 100dvh; width: min(320px, 86vw); background: #0c0c0c; border-right: 1px solid #2b2b2b; z-index: 9001; transform: translateX(-105%); transition: transform .25s ease; display: flex; flex-direction: column; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(0,0,0,.5); }
-.og-menu.open { transform: translateX(0); }
-.og-menu [hidden] { display: none !important; }
-.og-menu-head { display: flex; align-items: center; gap: 12px; padding: 0 2px 14px; }
-.og-menu-ava { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; border: 1.5px solid rgba(255,193,7,.65); flex: 0 0 auto; }
-.og-menu-title { flex: 1 1 auto; min-width: 0; color: #f2f2f2; font-weight: 700; font-size: 1.12rem; }
-.og-menu .age-badge { font-size: .62em; }
-.og-menu-status { font-weight: 400; font-size: .8rem; color: #a8a8a8; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.og-menu-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding-bottom: 4px; }
-.og-plan-card { background: linear-gradient(165deg, #1d1d1d, #131313); border: 1px solid rgba(255,193,7,.38); border-radius: 20px; padding: 16px 16px 4px; box-shadow: 0 10px 26px rgba(0,0,0,.45); }
-.og-plan-name { margin: 0; font-size: 1.32rem; font-weight: 700; color: #f5f5f5; min-height: 1.15em; line-height: 1.2; }
-.og-plan-usage { margin: 5px 0 0; font-size: .92rem; color: #bcbcbc; min-height: 1.1em; }
-.og-plan-bar { height: 6px; border-radius: 999px; background: #292929; overflow: hidden; margin: 13px 0 6px; }
-#planBarFill { display: block; height: 100%; width: 0; background: #ffc107; border-radius: 999px; transition: width .45s ease; }
-.og-plan-action { margin: 8px -16px 0; width: calc(100% + 32px); padding: 13px 16px 15px; border-top: 1px solid #2a2a2a; border-radius: 0 0 20px 20px; color: #ffc107; font-weight: 700; }
-.og-menu-sec { margin: 20px 4px 8px; font-size: .74rem; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: #8f8f8f; }
-.og-menu-card { background: #171717; border: 1px solid #262626; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 22px rgba(0,0,0,.35); }
-.og-menu-item { display: flex; align-items: center; gap: 13px; width: 100%; padding: 15px 16px; border: none; background: transparent; color: #ececec; font-size: 1rem; font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; min-height: 54px; }
-.og-menu-card .og-menu-item + .og-menu-item { border-top: 1px solid #232323; }
-a.og-menu-item:hover, button.og-menu-item:hover { background: #1f1f1f; }
-div.og-menu-item { cursor: default; }
-.og-menu a.og-menu-item::after, .og-menu button.og-menu-item::after { content: ""; width: 8px; height: 8px; border-top: 2px solid #838383; border-right: 2px solid #838383; transform: rotate(45deg); margin-left: auto; flex: 0 0 auto; }
-.og-menu .og-menu-item.og-nochev::after { content: none; }
-.og-mi { width: 24px; display: grid; place-items: center; flex: 0 0 auto; color: #ffc107; }
-.og-mi svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.og-row-state { margin-left: auto; color: #ffc107; font-weight: 700; }
-.og-menu-card .og-loc-menunote { padding: 0 16px 12px 53px; }
-.og-menu-foot { margin-top: auto; color: #8a8a8a; font-size: .78rem; text-align: center; padding-top: 16px; line-height: 1.5; }
-.og-menu-foot a { color: #bdbdbd; }
-.og-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6vh 20px 8px; }
-.og-empty[hidden] { display: none; }
-.og-empty-avatar { width: 84px; height: 84px; }
-.og-empty-name { margin: 14px 0 4px; font-size: 1.5rem; color: #f5f5f5; font-weight: 700; letter-spacing: .3px; }
-.og-empty .age-badge { font-size: .6em; }
-.og-empty-tag { color: #a8a8a8; margin: 2px 0 0; line-height: 1.5; }
-.og-rows { width: 100%; max-width: 540px; margin-top: 30px; display: flex; flex-direction: column; }
-.og-row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 8px; background: transparent; border: none; border-bottom: 1px solid #1f1f1f; color: #ececec; font-size: 1.02rem; font-family: inherit; text-align: left; cursor: pointer; }
-.og-row:first-child { border-top: 1px solid #1f1f1f; }
-.og-row:hover { color: #ffc107; background: rgba(255,193,7,.10); }
-.og-row-ico { width: 22px; height: 22px; color: #bdbdbd; flex: 0 0 auto; display: grid; place-items: center; }
-.og-row-ico svg { width: 21px; height: 21px; }
-.og-row:hover .og-row-ico { color: #ffc107; }
-.input-wrapper { flex-direction: row; flex-wrap: nowrap; }
-.og-plus-btn { width: 38px; height: 38px; border-radius: 50%; border: none; background: transparent; color: #d8d8d8; display: grid; place-items: center; cursor: pointer; padding: 0; flex: 0 0 auto; }
-.og-plus-btn svg { width: 22px; height: 22px; }
-.og-plus-btn:hover { color: #ffc107; }
-#messageInput { flex: 1 1 auto; min-width: 0; }
-.input-wrapper #voiceBtn { width: 40px; height: 40px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: transparent; border: 1px solid #3a3a3a; color: #e8e8e8; display: grid; place-items: center; padding: 0; }
-.input-wrapper #voiceBtn svg { width: 20px; height: 20px; }
-.input-wrapper #voiceBtn:hover { transform: none; border-color: rgba(255,193,7,.7); color: #ffc107; box-shadow: none; }
-.input-wrapper #voiceBtn.recording, .input-wrapper #voiceBtn.speaking { background: rgba(255,193,7,.16); border-color: #ffc107; color: #ffc107; box-shadow: 0 0 0 3px rgba(255,193,7,.25), 0 0 16px rgba(255,193,7,.45); }
-.input-wrapper #sendBtn { width: 42px; height: 42px; min-height: 0; flex: 0 0 auto; border-radius: 50%; background: linear-gradient(135deg, #ffc107, #ff8f00); border: none; color: #111; display: grid; place-items: center; padding: 0; cursor: pointer; }
-.input-wrapper #sendBtn svg { width: 20px; height: 20px; }
-.input-wrapper #sendBtn:hover { transform: none; box-shadow: 0 0 0 3px rgba(255,193,7,.25); }
-.og-token-line { text-align: center; font-size: .82rem; color: #ffc107; min-height: 1em; margin: 8px 0 0; }
-.og-legacy-btn { display: none !important; }
-@media (max-width: 768px) {
-.og-topbar { padding: 8px 10px 0; }
-.input-wrapper { flex-direction: row; flex-wrap: nowrap; border-radius: 26px; gap: 4px; }
-#messageInput { flex: 1 1 auto; order: 0; padding: 8px 6px; }
-.input-wrapper #voiceBtn { flex: 0 0 auto; width: 40px; min-height: 0; }
-.input-wrapper #sendBtn { flex: 0 0 auto; width: 42px; min-height: 0; }
-.og-empty { padding-top: 4vh; }
-}</style>
+    <style id="og-restyle-css">.og-topbar{flex:0 0 auto;width:100%;max-width:880px;margin:0 auto;padding:10px 14px 2px;display:flex;align-items:center;justify-content:space-between;gap:12px}.og-circle-btn{width:42px;height:42px;border-radius:50%;background:#1b1b1b;border:1px solid #333;color:#e8e8e8;display:grid;place-items:center;cursor:pointer;padding:0;flex:0 0 auto}.og-circle-btn svg{width:21px;height:21px}.og-circle-btn:hover{border-color:rgba(255,193,7,.7);color:#ffc107}.og-circle-sm{width:34px;height:34px}.og-circle-sm svg{width:16px;height:16px}.og-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000}.og-scrim[hidden]{display:none}.og-menu{position:fixed;top:0;left:0;height:100vh;height:100dvh;width:min(320px,86vw);background:#0c0c0c;border-right:1px solid #2b2b2b;z-index:9001;transform:translateX(-105%);transition:transform .25s ease;display:flex;flex-direction:column;padding:18px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:12px 0 32px rgba(0,0,0,.5)}.og-menu.open{transform:translateX(0)}.og-menu [hidden]{display:none!important}.og-menu-head{display:flex;align-items:center;gap:12px;padding:0 2px 14px}.og-menu-ava{width:44px;height:44px;border-radius:50%;overflow:hidden;border:1.5px solid rgba(255,193,7,.65);flex:0 0 auto}.og-menu-title{flex:1 1 auto;min-width:0;color:#f2f2f2;font-weight:700;font-size:1.12rem}.og-menu .age-badge{font-size:.62em}.og-menu-status{font-weight:400;font-size:.8rem;color:#a8a8a8;display:flex;align-items:center;gap:6px;margin-top:2px}.og-menu-body{flex:1 1 auto;overflow-y:auto;min-height:0;padding-bottom:4px}.og-plan-card{background:linear-gradient(165deg,#1d1d1d,#131313);border:1px solid rgba(255,193,7,.38);border-radius:20px;padding:16px 16px 4px;box-shadow:0 10px 26px rgba(0,0,0,.45)}.og-plan-name{margin:0;font-size:1.32rem;font-weight:700;color:#f5f5f5;min-height:1.15em;line-height:1.2}.og-plan-usage{margin:5px 0 0;font-size:.92rem;color:#bcbcbc;min-height:1.1em}.og-plan-bar{height:6px;border-radius:999px;background:#292929;overflow:hidden;margin:13px 0 6px}#planBarFill{display:block;height:100%;width:0;background:#ffc107;border-radius:999px;transition:width .45s ease}.og-plan-action{margin:8px -16px 0;width:calc(100% + 32px);padding:13px 16px 15px;border-top:1px solid #2a2a2a;border-radius:0 0 20px 20px;color:#ffc107;font-weight:700}.og-menu-sec{margin:20px 4px 8px;font-size:.74rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#8f8f8f}.og-menu-card{background:#171717;border:1px solid #262626;border-radius:20px;overflow:hidden;box-shadow:0 8px 22px rgba(0,0,0,.35)}.og-menu-item{display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px;border:none;background:transparent;color:#ececec;font-size:1rem;font-family:inherit;text-align:left;text-decoration:none;cursor:pointer;min-height:54px}.og-menu-card .og-menu-item + .og-menu-item{border-top:1px solid #232323}a.og-menu-item:hover,button.og-menu-item:hover{background:#1f1f1f}div.og-menu-item{cursor:default}.og-menu a.og-menu-item::after,.og-menu button.og-menu-item::after{content:"";width:8px;height:8px;border-top:2px solid #838383;border-right:2px solid #838383;transform:rotate(45deg);margin-left:auto;flex:0 0 auto}.og-menu .og-menu-item.og-nochev::after{content:none}.og-mi{width:24px;display:grid;place-items:center;flex:0 0 auto;color:#ffc107}.og-mi svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.og-row-state{margin-left:auto;color:#ffc107;font-weight:700}.og-menu-card .og-loc-menunote{padding:0 16px 12px 53px}.og-menu-foot{margin-top:auto;color:#8a8a8a;font-size:.78rem;text-align:center;padding-top:16px;line-height:1.5}.og-menu-foot a{color:#bdbdbd}.og-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6vh 20px 8px}.og-empty[hidden]{display:none}.og-empty-avatar{width:84px;height:84px}.og-empty-name{margin:14px 0 4px;font-size:1.5rem;color:#f5f5f5;font-weight:700;letter-spacing:.3px}.og-empty .age-badge{font-size:.6em}.og-empty-tag{color:#a8a8a8;margin:2px 0 0;line-height:1.5}.og-rows{width:100%;max-width:540px;margin-top:30px;display:flex;flex-direction:column}.og-row{display:flex;align-items:center;gap:14px;width:100%;padding:14px 8px;background:transparent;border:none;border-bottom:1px solid #1f1f1f;color:#ececec;font-size:1.02rem;font-family:inherit;text-align:left;cursor:pointer}.og-row:first-child{border-top:1px solid #1f1f1f}.og-row:hover{color:#ffc107;background:rgba(255,193,7,.10)}.og-row-ico{width:22px;height:22px;color:#bdbdbd;flex:0 0 auto;display:grid;place-items:center}.og-row-ico svg{width:21px;height:21px}.og-row:hover .og-row-ico{color:#ffc107}.input-wrapper{flex-direction:row;flex-wrap:nowrap}.og-plus-btn{width:38px;height:38px;border-radius:50%;border:none;background:transparent;color:#d8d8d8;display:grid;place-items:center;cursor:pointer;padding:0;flex:0 0 auto}.og-plus-btn svg{width:22px;height:22px}.og-plus-btn:hover{color:#ffc107}#messageInput{flex:1 1 auto;min-width:0}.input-wrapper #voiceBtn{width:40px;height:40px;min-height:0;flex:0 0 auto;border-radius:50%;background:transparent;border:1px solid #3a3a3a;color:#e8e8e8;display:grid;place-items:center;padding:0}.input-wrapper #voiceBtn svg{width:20px;height:20px}.input-wrapper #voiceBtn:hover{transform:none;border-color:rgba(255,193,7,.7);color:#ffc107;box-shadow:none}.input-wrapper #voiceBtn.recording,.input-wrapper #voiceBtn.speaking{background:rgba(255,193,7,.16);border-color:#ffc107;color:#ffc107;box-shadow:0 0 0 3px rgba(255,193,7,.25),0 0 16px rgba(255,193,7,.45)}.input-wrapper #sendBtn{width:42px;height:42px;min-height:0;flex:0 0 auto;border-radius:50%;background:linear-gradient(135deg,#ffc107,#ff8f00);border:none;color:#111;display:grid;place-items:center;padding:0;cursor:pointer}.input-wrapper #sendBtn svg{width:20px;height:20px}.input-wrapper #sendBtn:hover{transform:none;box-shadow:0 0 0 3px rgba(255,193,7,.25)}.og-token-line{text-align:center;font-size:.82rem;color:#ffc107;min-height:1em;margin:8px 0 0}.og-legacy-btn{display:none!important}@media (max-width:768px){.og-topbar{padding:8px 10px 0}.input-wrapper{flex-direction:row;flex-wrap:nowrap;border-radius:26px;gap:4px}#messageInput{flex:1 1 auto;order:0;padding:8px 6px}.input-wrapper #voiceBtn{flex:0 0 auto;width:40px;min-height:0}.input-wrapper #sendBtn{flex:0 0 auto;width:42px;min-height:0}.og-empty{padding-top:4vh}}</style>
 
     <script>const API_URL = window.location.origin;
 const OG_AVATAR = '/avatar/poster.webp';
@@ -356,7 +440,6 @@ initSpeech();
 setInterval(createFireParticle, 200);
 setInterval(createSmokeParticle, 1000);
 document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
-initAgeGate();
 });
 function primeSpeech() {
 if (!synthesis) return;
@@ -468,27 +551,7 @@ stopSpeaking();
 updateStatus('Voice chat OFF');
 }
 });
-function ageConfirmed() {
-return document.cookie.split('; ').some(c => c === 'ogai_age_ok=1');
-}
-function initAgeGate() {
-const gate = document.getElementById('ageGate');
-if (ageConfirmed()) {
-gate.hidden = true;
-restoreConversation();
-return;
-}
-gate.hidden = false;
-document.getElementById('ageGateEnter').addEventListener('click', () => {
-document.cookie = 'ogai_age_ok=1; max-age=31536000; path=/; SameSite=Lax';
-gate.hidden = true;
-restoreConversation();
-});
-document.getElementById('ageGateDecline').addEventListener('click', () => {
-document.getElementById('ageGatePrompt').hidden = true;
-document.getElementById('ageGateDeclined').hidden = false;
-});
-}
+
 function updateTokenStatus(left) {
 const el = document.getElementById('tokenStatus');
 if (!el) return;
@@ -1023,12 +1086,11 @@ $('menuShareBtn').addEventListener('click', function () { closeMenu(); delegate(
 $('menuClearBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
 $('menuNewBtn').addEventListener('click', function () { closeMenu(); delegate('clearBtn'); });
 $('newChatBtn').addEventListener('click', function () { delegate('clearBtn'); });
-var pill = $('proPill'), mirror = $('tokenStatusMenu'), ts = $('tokenStatus');
+var mirror = $('tokenStatusMenu'), ts = $('tokenStatus');
 function syncToken() {
 if (!ts) return;
 var text = ts.textContent || '';
 if (mirror) mirror.textContent = text;
-if (pill && /Pro — unlimited/.test(text)) { pill.textContent = '💎 Pro'; pill.classList.add('is-pro'); }
 }
 if (ts && window.MutationObserver) new MutationObserver(syncToken).observe(ts, { childList: true, characterData: true, subtree: true });
 syncToken();
@@ -1210,11 +1272,7 @@ fetch('/plaid/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
 });
 refresh();
 })();</script>
-    <style id="og-image-css">.og-gen-image { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 14px; margin: 10px 0 6px; border: 1px solid rgba(255, 193, 7, .35); }
-.og-img-download { display: inline-block; margin: 2px 0 4px; color: #ffc107; font-weight: 600; text-decoration: none; }
-.og-img-download:hover { text-decoration: underline; }
-.og-drawing-pulse { animation: ogDrawingPulse 1.1s ease-in-out infinite; }
-@keyframes ogDrawingPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }</style>
+    <style id="og-image-css">.og-gen-image{display:block;width:100%;max-width:420px;height:auto;border-radius:14px;margin:10px 0 6px;border:1px solid rgba(255,193,7,.35)}.og-img-download{display:inline-block;margin:2px 0 4px;color:#ffc107;font-weight:600;text-decoration:none}.og-img-download:hover{text-decoration:underline}.og-drawing-pulse{animation:ogDrawingPulse 1.1s ease-in-out infinite}@keyframes ogDrawingPulse{0%,100%{opacity:.4}50%{opacity:1}}</style>
     <script id="og-image-js">(function () {
 var DENY = /\b(draw\s+(an?\s+)?(conclusion|attention|breath|blood)|draw\s+(near|closer)|draw\s+the\s+(curtains?|blinds?))\b/i;
 var VERB_ART = /\b(draw|paint|sketch|illustrate|render)\b/i;
@@ -1306,36 +1364,7 @@ setTimeout(function () { setMood(''); }, 620);
 }
 }
 })();</script>
-    <style id="og-file-css">.og-file-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 12px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 999px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
-.og-file-chip[hidden] { display: none; }
-.og-file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.og-file-chip-x { flex: 0 0 auto; width: 22px; height: 22px; border: none; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #f2f2f2; cursor: pointer; line-height: 1; }
-.og-file-chip-x:hover { background: rgba(255, 255, 255, .25); }
-.og-plus-sheet { margin: 0 0 8px; padding: 14px; border: 1px solid rgba(255,193,7,.35); border-radius: 20px; background: #121212; }
-.og-plus-sheet[hidden] { display: none; }
-.og-plus-sheet svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.og-ps-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; }
-.og-ps-title { font-size: 1.05rem; font-weight: 700; color: #f5f5f5; }
-.og-ps-x { width: 30px; height: 30px; border: none; border-radius: 50%; background: rgba(255,255,255,.08); color: #d8d8d8; display: grid; place-items: center; cursor: pointer; padding: 0; }
-.og-ps-x svg { width: 15px; height: 15px; }
-.og-ps-tiles { display: flex; gap: 10px; margin: 0 0 12px; }
-.og-ps-tile { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 88px; border: 1px solid rgba(255,193,7,.3); border-radius: 16px; background: #1b1b1b; color: #f2f2f2; font-size: .92rem; font-family: inherit; cursor: pointer; padding: 12px 6px; }
-.og-ps-tile svg { width: 30px; height: 30px; color: #ffc107; }
-.og-ps-tile:hover { background: rgba(255,193,7,.14); }
-.og-ps-card { border: 1px solid rgba(255,193,7,.3); border-radius: 16px; background: #1b1b1b; overflow: hidden; }
-.og-ps-row { display: flex; align-items: center; gap: 14px; width: 100%; border: none; background: transparent; color: #f2f2f2; font-size: 1.05rem; font-family: inherit; text-align: left; padding: 15px 16px; cursor: pointer; }
-.og-ps-row + .og-ps-row { border-top: 1px solid rgba(255,255,255,.09); }
-.og-ps-row svg { width: 24px; height: 24px; flex: 0 0 auto; color: #ffc107; }
-.og-ps-row:hover { background: rgba(255,193,7,.12); }
-.og-attach-preview { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0 0 8px; padding: 6px 8px 6px 6px; border: 1px solid rgba(255, 193, 7, .55); border-radius: 12px; background: rgba(255, 193, 7, .08); color: #f2f2f2; font-size: .88rem; }
-.og-attach-preview[hidden] { display: none; }
-.og-attach-preview img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; display: block; }
-.og-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.og-msg-img { display: block; max-width: 240px; max-height: 240px; border-radius: 10px; margin: 0 0 6px; }
-.og-ava-wrap { position: relative; display: inline-block; line-height: 0; }
-.og-ava-wrap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.og-menu-ava { position: relative; }
-.og-menu-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }</style>
+    <style id="og-file-css">.og-file-chip{display:inline-flex;align-items:center;gap:8px;max-width:100%;margin:0 0 8px;padding:6px 8px 6px 12px;border:1px solid rgba(255,193,7,.55);border-radius:999px;background:rgba(255,193,7,.08);color:#f2f2f2;font-size:.88rem}.og-file-chip[hidden]{display:none}.og-file-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.og-file-chip-x{flex:0 0 auto;width:22px;height:22px;border:none;border-radius:50%;background:rgba(255,255,255,.12);color:#f2f2f2;cursor:pointer;line-height:1}.og-file-chip-x:hover{background:rgba(255,255,255,.25)}.og-plus-sheet{margin:0 0 8px;padding:14px;border:1px solid rgba(255,193,7,.35);border-radius:20px;background:#121212}.og-plus-sheet[hidden]{display:none}.og-plus-sheet svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.og-ps-head{display:flex;align-items:center;justify-content:space-between;margin:0 0 12px}.og-ps-title{font-size:1.05rem;font-weight:700;color:#f5f5f5}.og-ps-x{width:30px;height:30px;border:none;border-radius:50%;background:rgba(255,255,255,.08);color:#d8d8d8;display:grid;place-items:center;cursor:pointer;padding:0}.og-ps-x svg{width:15px;height:15px}.og-ps-tiles{display:flex;gap:10px;margin:0 0 12px}.og-ps-tile{flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:88px;border:1px solid rgba(255,193,7,.3);border-radius:16px;background:#1b1b1b;color:#f2f2f2;font-size:.92rem;font-family:inherit;cursor:pointer;padding:12px 6px}.og-ps-tile svg{width:30px;height:30px;color:#ffc107}.og-ps-tile:hover{background:rgba(255,193,7,.14)}.og-ps-card{border:1px solid rgba(255,193,7,.3);border-radius:16px;background:#1b1b1b;overflow:hidden}.og-ps-row{display:flex;align-items:center;gap:14px;width:100%;border:none;background:transparent;color:#f2f2f2;font-size:1.05rem;font-family:inherit;text-align:left;padding:15px 16px;cursor:pointer}.og-ps-row + .og-ps-row{border-top:1px solid rgba(255,255,255,.09)}.og-ps-row svg{width:24px;height:24px;flex:0 0 auto;color:#ffc107}.og-ps-row:hover{background:rgba(255,193,7,.12)}.og-attach-preview{display:inline-flex;align-items:center;gap:8px;max-width:100%;margin:0 0 8px;padding:6px 8px 6px 6px;border:1px solid rgba(255,193,7,.55);border-radius:12px;background:rgba(255,193,7,.08);color:#f2f2f2;font-size:.88rem}.og-attach-preview[hidden]{display:none}.og-attach-preview img{width:44px;height:44px;object-fit:cover;border-radius:8px;display:block}.og-attach-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.og-msg-img{display:block;max-width:240px;max-height:240px;border-radius:10px;margin:0 0 6px}.og-ava-wrap{position:relative;display:inline-block;line-height:0}.og-ava-wrap video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}.og-menu-ava{position:relative}.og-menu-ava video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}</style>
     <script id="og-file-js">(function () {
 function $(id) { return document.getElementById(id); }
 var chip = $('fileChip'), chipName = $('fileChipName'),
@@ -1435,14 +1464,9 @@ if (chip && window.MutationObserver) new MutationObserver(refresh).observe(chip,
 refresh();
 })();</script>
 
-    <style id="og-tiers-css">.og-pro-pill.tier-standard { border-color: rgba(255,193,7,.75); background: rgba(255,193,7,.12); color: #ffc107; }
-.og-pro-pill.tier-pro { border-color: #3a3a3a; background: #1b1b1b; color: #e8e8e8; }
-.og-pro-pill.tier-blue { border-color: #2f7bff; background: rgba(47,123,255,.14); color: #8dbcff; box-shadow: 0 0 12px rgba(47,123,255,.35); }
-.og-pro-pill.tier-blackout { border-color: #ffc107; background: linear-gradient(160deg,#000,#241a02); color: #ffc107; box-shadow: 0 0 16px rgba(255,193,7,.5); font-weight: 800; letter-spacing: .3px; }</style>
     <script id="og-tiers-js">(function () {
 var BADGE = { standard: '⭐ Standard', pro: '💎 Pro', blue: '💙 Blue', blackout: '🖤 Blackout' };
 var tier = null;
-var pill = document.getElementById('proPill');
 var ts = document.getElementById('tokenStatus');
 var planLine = document.getElementById('tierStatusMenu');
 var planText = document.getElementById('menuPlanText');
@@ -1450,11 +1474,9 @@ function applyTier() {
 if (!tier) return;
 if (planLine) planLine.textContent = 'Plan: ' + (BADGE[tier] || 'Free');
 if (tier === 'free') {
-if (pill) { pill.textContent = '✦ Upgrade'; pill.className = 'og-pro-pill'; }
 if (planText) planText.textContent = 'Upgrade — see plans';
 return;
 }
-if (pill) { pill.textContent = BADGE[tier]; pill.className = 'og-pro-pill tier-' + tier; }
 if (planText) planText.textContent = 'Change plan';
 if (ts && (ts.textContent || '').indexOf('free tokens left') === -1) {
 var want = BADGE[tier] + ' — unlimited';
@@ -1472,15 +1494,7 @@ if (tier && tier !== 'free' && ts.textContent === '💎 Pro — unlimited' && ti
 })();</script>
 
 
-    <style id="og-nearme-css">.og-loc-prompt { margin: 10px auto; max-width: 92%; background: rgba(255, 193, 7, .07); border: 1px solid rgba(255, 193, 7, .45); border-radius: 14px; padding: 12px 14px; }
-.og-loc-text { line-height: 1.45; }
-.og-loc-btns { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
-.og-loc-yes { background: #ffc107; color: #111; border: none; border-radius: 999px; padding: 8px 18px; font-weight: 700; font-family: inherit; cursor: pointer; }
-.og-loc-yes:disabled { opacity: .55; cursor: default; }
-.og-loc-no { background: transparent; color: #ffc107; border: 1px solid rgba(255, 193, 7, .5); border-radius: 999px; padding: 8px 18px; font-family: inherit; cursor: pointer; }
-.og-loc-no:disabled { opacity: .55; cursor: default; }
-.og-loc-note { text-align: center; opacity: .85; font-size: .92em; padding: 6px 12px; }
-.og-loc-menunote { font-size: .8em; color: #999; line-height: 1.45; margin: 0; padding: 2px 12px 8px 44px; }</style>
+    <style id="og-nearme-css">.og-loc-prompt{margin:10px auto;max-width:92%;background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.45);border-radius:14px;padding:12px 14px}.og-loc-text{line-height:1.45}.og-loc-btns{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}.og-loc-yes{background:#ffc107;color:#111;border:none;border-radius:999px;padding:8px 18px;font-weight:700;font-family:inherit;cursor:pointer}.og-loc-yes:disabled{opacity:.55;cursor:default}.og-loc-no{background:transparent;color:#ffc107;border:1px solid rgba(255,193,7,.5);border-radius:999px;padding:8px 18px;font-family:inherit;cursor:pointer}.og-loc-no:disabled{opacity:.55;cursor:default}.og-loc-note{text-align:center;opacity:.85;font-size:.92em;padding:6px 12px}.og-loc-menunote{font-size:.8em;color:#999;line-height:1.45;margin:0;padding:2px 12px 8px 44px}</style>
     <script id="og-nearme-js">(function () {
 var PREF_KEY = 'ogai_loc_nearme';
 var NEARME = /\b(near\s+(me|here)|around\s+(me|here)|from\s+here|my\s+location|closest\s+to\s+me|nearest\s+to\s+me)\b/i;
@@ -1598,60 +1612,8 @@ offerLocationPrompt(msg);
 return r2;
 };
 })();</script>
-    <style id="og-browser-css">.og-browser-panel { flex: 0 0 auto; position: relative; width: 54%; min-width: 205px; max-width: 320px; margin: 6px 12px 10px auto; border: 1px solid rgba(255,193,7,.5); border-radius: 16px; overflow: hidden; background: #101010; box-shadow: 0 12px 32px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.45); }
-.og-browser-x { position: absolute; top: 6px; right: 6px; z-index: 6; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 1px solid rgba(255,193,7,.65); background: rgba(8,8,8,.8); color: #ffc107; font-size: .95rem; font-weight: 700; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; }
-.og-browser-x:hover { background: rgba(255,193,7,.28); }
-.og-browser-open { display: block; width: calc(100% - 16px); margin: 8px; padding: 9px 12px; border-radius: 999px; border: 1px solid rgba(0,0,0,.15); background: #f4f1ea; color: #141414; font-size: .9rem; font-weight: 600; cursor: pointer; font-family: inherit; }
-.og-browser-open:hover { background: #ffffff; }
-.og-browser-open[hidden] { display: none !important; }
-.og-browser-panel.og-panel-open { width: 100%; max-width: none; margin: 6px 0 10px; }
-.og-browser-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px; }
-.og-browser-actions[hidden] { display: none !important; }
-.og-browser-actions button { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 6px 12px; font-size: .8rem; cursor: pointer; font-family: inherit; white-space: nowrap; }
-.og-browser-actions button:hover { background: rgba(255,193,7,.18); }
-.og-browser-actions [hidden] { display: none !important; }
-#browserEndTaskBtn { border-color: rgba(255,110,110,.55); color: #ff9d9d; }
-#browserTakeBtn, #browserHandBtn { margin-left: auto; }
-.og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; background: radial-gradient(120% 130% at 50% 0%, #1d1d1d 0%, #121212 55%, #0b0b0b 100%); }
-.og-browser-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 18px; color: #d9ba55; font-size: .88rem; letter-spacing: .02em; pointer-events: none; }
-.og-browser-view.og-view-live .og-browser-face { display: none; }
-#browserFrame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: transparent; }
-#browserShot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: transparent; }
-.og-browser-note { margin: 0; padding: 6px 12px; color: #e8c95a; font-size: .8rem; background: rgba(255,193,7,.06); }
-@media (max-width: 768px) {
-.og-browser-view { max-height: 40vh; }
-}
-.og-approve-card { flex: 0 0 auto; margin: 0 12px 8px; border: 2px solid #ffc107; border-radius: 14px; background: linear-gradient(180deg, #1d1703, #121212); padding: 12px 14px; color: #f2f2f2; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
-.og-approve-head { font-weight: 700; color: #ffc107; font-size: .95rem; }
-.og-approve-desc { margin: 8px 0 0; font-size: .9rem; }
-.og-approve-text { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid #ffc107; background: rgba(255,255,255,.05); font-size: .9rem; white-space: pre-wrap; word-break: break-word; }
-.og-approve-exp { margin: 8px 0 0; color: #bbb; font-size: .78rem; }
-.og-approve-btns { display: flex; gap: 8px; margin-top: 10px; }
-.og-approve-btns button { border-radius: 999px; padding: 8px 18px; font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit; }
-#approveYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
-#approveNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
-#videoYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
-#videoNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
-#songYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
-#songNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
-.og-song-done audio { width: 100%; display: block; margin-top: 8px; }
-.og-video-done video { width: 100%; border-radius: 12px; background: #000; display: block; margin-top: 8px; }
-.og-video-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.og-video-actions a, .og-video-actions button { border-radius: 999px; padding: 7px 14px; font-size: .85rem; font-weight: 700; cursor: pointer; font-family: inherit; text-decoration: none; border: 1px solid #ffc107; background: rgba(255,193,7,.12); color: #ffc107; }
-.og-approve-btns button:disabled { opacity: .5; cursor: default; }
-.og-approve-outcome { margin: 10px 0 0; font-size: .85rem; color: #d8d8d8; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
-@media (max-width: 768px) {
-.og-approve-card { margin: 0 8px 8px; }
-}
-.og-browser-panel.og-panel-full { position: fixed; inset: 0; width: 100dvw; height: 100dvh; min-width: 0; max-width: none; margin: 0; border: 0; border-radius: 0; z-index: 9000; display: flex; flex-direction: column; background: #0b0b0b; }
-.og-browser-panel.og-panel-full .og-browser-actions { order: -1; flex: 0 0 auto; padding: 6px 8px; background: #101010; border-bottom: 1px solid rgba(255,193,7,.35); }
-.og-browser-panel.og-panel-full .og-browser-view { flex: 1 1 auto; min-height: 0; aspect-ratio: auto; max-height: none; }
-.og-browser-panel.og-panel-full .og-browser-note { flex: 0 0 auto; }
-.og-browser-panel.og-panel-full .og-browser-x { display: none; }
-.og-browser-panel.og-panel-full #browserTakeBtn { display: none !important; }</style>
-    <style id="og-autoscroll-css">html, body { height: 100%; }
-body { height: 100dvh; overflow: hidden; }
-#messagesArea { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }</style>
+    <style id="og-browser-css">.og-browser-panel{flex:0 0 auto;position:relative;width:54%;min-width:205px;max-width:320px;margin:6px 12px 10px auto;border:1px solid rgba(255,193,7,.5);border-radius:16px;overflow:hidden;background:#101010;box-shadow:0 12px 32px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.45)}.og-browser-x{position:absolute;top:6px;right:6px;z-index:6;width:30px;height:30px;padding:0;border-radius:50%;border:1px solid rgba(255,193,7,.65);background:rgba(8,8,8,.8);color:#ffc107;font-size:.95rem;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit}.og-browser-x:hover{background:rgba(255,193,7,.28)}.og-browser-open{display:block;width:calc(100% - 16px);margin:8px;padding:9px 12px;border-radius:999px;border:1px solid rgba(0,0,0,.15);background:#f4f1ea;color:#141414;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit}.og-browser-open:hover{background:#ffffff}.og-browser-open[hidden]{display:none!important}.og-browser-panel.og-panel-open{width:100%;max-width:none;margin:6px 0 10px}.og-browser-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px}.og-browser-actions[hidden]{display:none!important}.og-browser-actions button{border:1px solid rgba(255,193,7,.5);background:#1b1b1b;color:#ffc107;border-radius:999px;padding:6px 12px;font-size:.8rem;cursor:pointer;font-family:inherit;white-space:nowrap}.og-browser-actions button:hover{background:rgba(255,193,7,.18)}.og-browser-actions [hidden]{display:none!important}#browserEndTaskBtn{border-color:rgba(255,110,110,.55);color:#ff9d9d}#browserTakeBtn,#browserHandBtn{margin-left:auto}.og-browser-view{position:relative;width:100%;aspect-ratio:16 / 10;background:radial-gradient(120% 130% at 50% 0%,#1d1d1d 0%,#121212 55%,#0b0b0b 100%)}.og-browser-face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 18px;color:#d9ba55;font-size:.88rem;letter-spacing:.02em;pointer-events:none}.og-browser-view.og-view-live .og-browser-face{display:none}#browserFrame{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent}#browserShot{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:transparent}.og-browser-note{margin:0;padding:6px 12px;color:#e8c95a;font-size:.8rem;background:rgba(255,193,7,.06)}@media (max-width:768px){.og-browser-view{max-height:40vh}}.og-approve-card{flex:0 0 auto;margin:0 12px 8px;border:2px solid #ffc107;border-radius:14px;background:linear-gradient(180deg,#1d1703,#121212);padding:12px 14px;color:#f2f2f2;box-shadow:0 6px 24px rgba(0,0,0,.5)}.og-approve-head{font-weight:700;color:#ffc107;font-size:.95rem}.og-approve-desc{margin:8px 0 0;font-size:.9rem}.og-approve-text{margin:8px 0 0;padding:8px 12px;border-left:3px solid #ffc107;background:rgba(255,255,255,.05);font-size:.9rem;white-space:pre-wrap;word-break:break-word}.og-approve-exp{margin:8px 0 0;color:#bbb;font-size:.78rem}.og-approve-btns{display:flex;gap:8px;margin-top:10px}.og-approve-btns button{border-radius:999px;padding:8px 18px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit}#approveYesBtn{border:1px solid #ffc107;background:#ffc107;color:#151515}#approveNoBtn{border:1px solid rgba(255,120,120,.7);background:transparent;color:#ff9c9c}#videoYesBtn{border:1px solid #ffc107;background:#ffc107;color:#151515}#videoNoBtn{border:1px solid rgba(255,120,120,.7);background:transparent;color:#ff9c9c}#songYesBtn{border:1px solid #ffc107;background:#ffc107;color:#151515}#songNoBtn{border:1px solid rgba(255,120,120,.7);background:transparent;color:#ff9c9c}.og-song-done audio{width:100%;display:block;margin-top:8px}.og-video-done video{width:100%;border-radius:12px;background:#000;display:block;margin-top:8px}.og-video-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.og-video-actions a,.og-video-actions button{border-radius:999px;padding:7px 14px;font-size:.85rem;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;border:1px solid #ffc107;background:rgba(255,193,7,.12);color:#ffc107}.og-approve-btns button:disabled{opacity:.5;cursor:default}.og-approve-outcome{margin:10px 0 0;font-size:.85rem;color:#d8d8d8;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow-y:auto}@media (max-width:768px){.og-approve-card{margin:0 8px 8px}}.og-browser-panel.og-panel-full{position:fixed;inset:0;width:100dvw;height:100dvh;min-width:0;max-width:none;margin:0;border:0;border-radius:0;z-index:9000;display:flex;flex-direction:column;background:#0b0b0b}.og-browser-panel.og-panel-full .og-browser-actions{order:-1;flex:0 0 auto;padding:6px 8px;background:#101010;border-bottom:1px solid rgba(255,193,7,.35)}.og-browser-panel.og-panel-full .og-browser-view{flex:1 1 auto;min-height:0;aspect-ratio:auto;max-height:none}.og-browser-panel.og-panel-full .og-browser-note{flex:0 0 auto}.og-browser-panel.og-panel-full .og-browser-x{display:none}.og-browser-panel.og-panel-full #browserTakeBtn{display:none!important}</style>
+    <style id="og-autoscroll-css">html,body{height:100%}body{height:100dvh;overflow:hidden}#messagesArea{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}</style>
     <script id="og-browser-js">(function () {
 function $(id) { return document.getElementById(id); }
 var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
@@ -2069,12 +2031,7 @@ obs.observe(area, { childList: true, subtree: true });
 setTimeout(function () { obs.disconnect(); }, 20000);
 }).catch(function () {});
 })();</script>
-    <style id="og-topavatar-css">.og-top-avatar-bar { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; padding: 8px 12px 4px; }
-.og-top-ava { position: relative; width: 84px; height: 84px; border-radius: 50%; overflow: hidden; border: 2px solid #ffc107; box-shadow: 0 0 14px rgba(255,193,7,.35); flex: 0 0 auto; line-height: 0; background: #111; }
-.og-top-ava img.og-avatar { width: 100%; height: 100%; border: 0; box-shadow: none; border-radius: 50%; object-fit: cover; display: block; }
-.og-top-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.og-top-name { margin-top: 4px; font-size: .95rem; font-weight: 700; letter-spacing: .4px; color: #f5f5f5; line-height: 1.15; }
-@media (prefers-reduced-motion: reduce) { .og-top-ava video { display: none !important; } }</style>
+    <style id="og-topavatar-css">.og-top-avatar-bar{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding:8px 12px 4px}.og-top-ava{position:relative;width:84px;height:84px;border-radius:50%;overflow:hidden;border:2px solid #ffc107;box-shadow:0 0 14px rgba(255,193,7,.35);flex:0 0 auto;line-height:0;background:#111}.og-top-ava img.og-avatar{width:100%;height:100%;border:0;box-shadow:none;border-radius:50%;object-fit:cover;display:block}.og-top-ava video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}.og-top-name{margin-top:4px;font-size:.95rem;font-weight:700;letter-spacing:.4px;color:#f5f5f5;line-height:1.15}@media (prefers-reduced-motion:reduce){.og-top-ava video{display:none!important}}</style>
     <script id="og-avatar-js">(function () {
 var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 var vids = [];
@@ -2143,19 +2100,7 @@ else if (t.indexOf('unlimited') !== -1) fill.style.width = '100%';
 if (ts && window.MutationObserver) new MutationObserver(syncBar).observe(ts, { childList: true, characterData: true, subtree: true });
 syncBar();
 })();</script>
-    <style id="og-profile-css">.og-task-pill { margin-top: 6px; padding: 3px 11px; border-radius: 999px; background: #1b1b1b; border: 1px solid rgba(255,193,7,.45); color: #ffd54f; font-size: .78rem; font-weight: 600; letter-spacing: .2px; line-height: 1.35; white-space: nowrap; }
-.og-profile-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 8000; }
-.og-profile { position: fixed; inset: 0; z-index: 8001; background: radial-gradient(120% 90% at 50% 0%, #171307 0%, #0b0b0b 55%); display: flex; flex-direction: column; align-items: center; padding: calc(14px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); overflow-y: auto; }
-.og-profile[hidden] { display: none !important; }
-.og-profile-top { width: 100%; display: flex; justify-content: space-between; align-items: center; flex: 0 0 auto; }
-.og-profile-ava { position: relative; width: 140px; height: 140px; border-radius: 50%; overflow: hidden; border: 3px solid #ffc107; box-shadow: 0 0 22px rgba(255,193,7,.4); margin-top: 6vh; flex: 0 0 auto; line-height: 0; background: #111; }
-.og-profile-ava img.og-avatar { width: 100%; height: 100%; border: 0; box-shadow: none; border-radius: 50%; object-fit: cover; display: block; }
-.og-profile-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-.og-profile-name { margin-top: 16px; font-size: 2rem; font-weight: 800; letter-spacing: .5px; color: #f5f5f5; line-height: 1.1; }
-.og-profile .og-task-pill { margin-top: 10px; font-size: .85rem; padding: 4px 13px; }
-.og-top-ava { cursor: pointer; }
-.og-ava-wrap { cursor: pointer; }
-@media (prefers-reduced-motion: reduce) { .og-profile-ava video { display: none !important; } }</style>
+    <style id="og-profile-css">.og-task-pill{margin-top:6px;padding:3px 11px;border-radius:999px;background:#1b1b1b;border:1px solid rgba(255,193,7,.45);color:#ffd54f;font-size:.78rem;font-weight:600;letter-spacing:.2px;line-height:1.35;white-space:nowrap}.og-profile-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8000}.og-profile{position:fixed;inset:0;z-index:8001;background:radial-gradient(120% 90% at 50% 0%,#171307 0%,#0b0b0b 55%);display:flex;flex-direction:column;align-items:center;padding:calc(14px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));overflow-y:auto}.og-profile[hidden]{display:none!important}.og-profile-top{width:100%;display:flex;justify-content:space-between;align-items:center;flex:0 0 auto}.og-profile-ava{position:relative;width:140px;height:140px;border-radius:50%;overflow:hidden;border:3px solid #ffc107;box-shadow:0 0 22px rgba(255,193,7,.4);margin-top:6vh;flex:0 0 auto;line-height:0;background:#111}.og-profile-ava img.og-avatar{width:100%;height:100%;border:0;box-shadow:none;border-radius:50%;object-fit:cover;display:block}.og-profile-ava video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}.og-profile-name{margin-top:16px;font-size:2rem;font-weight:800;letter-spacing:.5px;color:#f5f5f5;line-height:1.1}.og-profile .og-task-pill{margin-top:10px;font-size:.85rem;padding:4px 13px}.og-top-ava{cursor:pointer}.og-ava-wrap{cursor:pointer}@media (prefers-reduced-motion:reduce){.og-profile-ava video{display:none!important}}</style>
     <script id="og-profile-js">(function () {
 var $ = function (id) { return document.getElementById(id); };
 var scrim = $('profileScrim'), panel = $('ogProfile');
