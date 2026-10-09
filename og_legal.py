@@ -63,6 +63,11 @@ pick your conversation back up between visits.</li>
 your storage locker, it stays there until you delete it.</li>
 <li><strong>Usage counters.</strong> Per-day counts (messages, images,
 lookups, and similar) used to run the free and paid plan limits.</li>
+<li><strong>A browser profile ID.</strong> If you use OG&rsquo;s
+browser, OG stores the ID of your saved browser profile (held by
+Steel) so your log-ins there can be kept between visits, as
+described below. Nothing else about the profile is stored by
+OG.</li>
 </ul>
 <p>You can clear your chat memory at any time with the Clear chat /
 reset option, and you can delete locker files at any time.</p>
@@ -96,6 +101,36 @@ the AI model so OG can answer you). No human reads your connected
 data except with your consent, to keep the service secure, to provide
 support you asked for, or as required by law.</p>
 
+<h2>OG&rsquo;s browser, saved log-ins, and watches</h2>
+<p>OG can operate a real cloud web browser (provided by Steel) that
+you watch live and can take over at any time. If you log into a
+website inside that browser, you always type your own log-in
+yourself &mdash; OG never sees, types, or stores your password.</p>
+<ul>
+<li><strong>Saved log-ins.</strong> By default, a log-in you make in
+OG&rsquo;s browser is kept in a saved browser profile held by
+Steel, so you don&rsquo;t have to sign in again on your next visit.
+On OG&rsquo;s own server, the only thing stored is that
+profile&rsquo;s ID &mdash; never a password and never the profile&rsquo;s
+contents. A saved log-in lasts until you tell OG &ldquo;forget my
+logins&rdquo; (which deletes the Steel profile and stops any watches
+that depended on it), you log out of that site, the site expires the
+log-in itself, or the log-in sits unused for about 30 days. Closing
+OG&rsquo;s browser is not logging out: the browser itself fully
+shuts down between tasks, and the saved profile is what lets it
+reopen already logged in.</li>
+<li><strong>Watches.</strong> You can ask OG to check Facebook
+Marketplace for items while you&rsquo;re away. Those checks are
+read-only (searches and listings only), run on a schedule set by
+your plan, and draw from a separate daily background-time budget.
+OG never messages a seller, buys anything, or posts on its own
+&mdash; matches are shown to you in chat, and messaging a seller
+always goes through the usual draft-and-approve flow with your
+explicit yes first. If Facebook asks for a fresh log-in, the watch
+pauses itself and tells you; OG never answers identity checks for
+you.</li>
+</ul>
+
 <h2>How answers are made (AI processing)</h2>
 <p>To answer you, your messages &mdash; and data you ask OG to fetch,
 such as an email you ask OG to read &mdash; are sent to AI model
@@ -110,7 +145,8 @@ subscription is active so your plan can be switched on.</p>
 <h2>Who else receives data</h2>
 <p>Only the service providers needed to run OG &mdash; hosting
 (Render), the database and file-storage providers, Stripe (payments),
-and OpenAI (AI answers) &mdash; and anyone we must share with to
+OpenAI (AI answers), and Steel (the cloud browser and its saved
+log-in profiles) &mdash; and anyone we must share with to
 comply with the law. We never sell personal data. Ever.</p>
 
 <h2>How long things are kept, and your choices</h2>
