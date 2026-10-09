@@ -182,9 +182,15 @@ def _run_ffmpeg(args: List[str], timeout: int = 1200) -> None:
     exe = _ffmpeg_exe()
     if not exe:
         raise RuntimeError("ffmpeg unavailable")
-    proc = subprocess.run([exe, "-hide_banner", "-loglevel", "error",
-                           "-y"] + args,
-                          capture_output=True, text=True, timeout=timeout)
+    cmd = [exe, "-hide_banner", "-loglevel", "error", "-y"] + args
+    # Renders are background work on a small shared instance:
+    # deprioritize them so the site itself stays responsive
+    # while a video cooks (observed live: brief 503s mid-stitch).
+    nice = shutil.which("nice")
+    if nice:
+        cmd = [nice, "-n", "10"] + cmd
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          timeout=timeout)
     if proc.returncode != 0:
         raise RuntimeError(
             f"ffmpeg failed: {(proc.stderr or '')[-400:]}")
@@ -426,16 +432,18 @@ def _store_latest_for_owner(owner: str) -> Optional[Dict]:
                 cands.append(json.loads(row[0]))
         except Exception as e:
             logger.warning(f"Video job DB scan failed: {e}")
-    else:
-        try:
-            path = _json_store_path()
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f) or {}
-                cands.extend(v for v in data.values()
-                             if v.get("owner") == owner)
-        except Exception as e:
-            logger.warning(f"Video job JSON scan failed: {e}")
+    # The JSON file is also consulted on a DB miss: _store_put
+    # falls back to it whenever a DB write fails, so a record can
+    # legitimately live there even with the DB configured.
+    try:
+        path = _json_store_path()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+            cands.extend(v for v in data.values()
+                         if v.get("owner") == owner)
+    except Exception as e:
+        logger.warning(f"Video job JSON scan failed: {e}")
     for rec in cands:
         if best is None or float(rec.get("updated", 0)) \
                 > float(best.get("updated", 0)):
@@ -518,6 +526,15 @@ def parse_story(text: str) -> Optional[Dict]:
             title = m.group(1).strip().strip("*").strip()
             body_start = i + 1
             break
+        # The served text may carry an interjection before the
+        # TITLE marker (the register pass works the whole reply);
+        # take whatever follows the marker on that line.
+        j = line.upper().rfind("TITLE:")
+        if j >= 0 and len(line) - (j + 6) >= 2:
+            title = line[j + 6:].strip().strip("*").strip()
+            body_start = i + 1
+            break
+    title = title.strip().strip('"“”').strip()
     body = "\n".join(lines[body_start:])
     heads = [m for m in
              (_SCENE_RE.match(l) for l in body.splitlines()) if m]
@@ -545,7 +562,7 @@ def parse_story(text: str) -> Optional[Dict]:
         return None
     if not title:
         for line in lines[:4]:
-            cand = _clean_text(line)
+            cand = _clean_text(line).strip('"“”').strip()
             if cand and len(cand) <= 80 and \
                     not _SCENE_RE.match(line):
                 title = cand
@@ -1094,7 +1111,11 @@ def _render_segment(img: str, wav: str, dur: float, out: str,
     """One scene segment: the picture centered (slow Ken Burns
     zoom) over its own blurred, darkened stretch-fill; the
     scene's narration as the audio; duration = narration
-    duration exactly."""
+    duration exactly. Encoder is ultrafast/crf22 on purpose:
+    the live instance throttles hard under sustained CPU (a
+    veryfast render of a ~3-min video stitched for over an
+    hour in the first live proof) — for a narrated slideshow
+    the speed matters more than the last compression gains."""
     job_dir = os.path.dirname(out)
     bg = os.path.join(job_dir, "bg-" + os.path.basename(out) + ".png")
     _run_ffmpeg(["-i", img, "-vf",
@@ -1121,8 +1142,8 @@ def _render_segment(img: str, wav: str, dur: float, out: str,
                  "-i", wav, "-filter_complex", graph,
                  "-map", maps[0], "-map", "2:a",
                  "-t", f"{dur:.3f}", "-r", str(_FPS),
-                 "-c:v", "libx264", "-preset", "veryfast",
-                 "-crf", "20", "-c:a", "aac", "-b:a", "128k",
+                 "-c:v", "libx264", "-preset", "ultrafast",
+                 "-crf", "22", "-c:a", "aac", "-b:a", "128k",
                  "-ar", "44100", "-ac", "2", out],
                 timeout=1800)
     try:
