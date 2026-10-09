@@ -76,6 +76,11 @@ _DEFAULT_CAPS = {
     "order":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "trade":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "browser_min": {"free": 0, "standard": 0,  "pro": 0,   "blue": 60,   "blackout": 600},
+    # Round 29 (OG Watch): marketplace watch slots per visitor, and
+    # the separate daily BACKGROUND-minute budget those scheduled
+    # checks draw from (never the interactive browser_min above).
+    "fbwatch":   {"free": 0,    "standard": 1,   "pro": 3,   "blue": 5,    "blackout": 10},
+    "watch_min": {"free": 0,    "standard": 8,   "pro": 32,  "blue": 60,   "blackout": 96},
     "upload_mb": {"free": 8,  "standard": 8,   "pro": 25,  "blue": 25,   "blackout": 25},
 }
 
