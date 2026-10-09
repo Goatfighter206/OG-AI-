@@ -104,11 +104,23 @@
         <div class="chat-container">
             
             <div id="ogTopAvatarBar" class="og-top-avatar-bar">
-                <span class="og-top-ava"><img class="og-avatar og-top-avatar-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogTopAvatarVideo" muted loop playsinline preload="none" hidden></video></span>
-                <span class="og-top-name">OG</span>
+                <span class="og-top-ava" title="Tap to customize"><img class="og-avatar og-top-avatar-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogTopAvatarVideo" muted loop playsinline preload="none" hidden></video></span>
+                <span class="og-top-name" id="ogTopName">OG</span>
+            </div>
+            <div id="customSheet" class="og-custom-sheet" hidden>
+                <div class="og-custom-card">
+                    <div class="og-custom-head"><span>Make him yours</span><button id="customCloseBtn" type="button" aria-label="Close">✕</button></div>
+                    <label class="og-custom-label" for="customNameInput">His name</label>
+                    <div class="og-custom-row"><input type="text" id="customNameInput" maxlength="24" autocomplete="off" placeholder="OG"><button id="customNameSave" type="button">Save name</button></div>
+                    <label class="og-custom-label">His picture</label>
+                    <div class="og-custom-row"><button id="customAvatarDefaultBtn" type="button">Default OG</button><button id="customAvatarUploadBtn" type="button">Upload a picture</button><input type="file" id="customAvatarInput" accept="image/png,image/jpeg,image/webp" hidden></div>
+                    <p class="og-custom-note">A picture you upload stays a still photo — his moving clips come back when you switch back to the default.</p>
+                    <p id="customStatus" class="og-custom-status" hidden></p>
+                    <button id="customResetBtn" class="og-custom-reset" type="button">Reset everything</button>
+                </div>
             </div>
             <div id="emptyState" class="og-empty" hidden>
-                <span class="og-ava-wrap"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
+                <span class="og-ava-wrap" title="Tap to customize"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
                 <h2 class="og-empty-name">OG-AI <span class="age-badge">18+</span></h2>
                 <p class="og-empty-tag">The realest AI in the game 🔥<br>Talk to him, get code, ask anything.</p>
                 <div class="og-rows">
@@ -2056,6 +2068,85 @@ else if (state === 'talking' || state === 'listening' || state === '') ogSetAvat
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { ogSetAvatar('connecting'); });
 else ogSetAvatar('connecting');
+})();</script>
+    <style id="og-customize-css">.og-top-ava, .og-ava-wrap { cursor: pointer; }
+.og-custom-sheet { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; justify-content: center; }
+.og-custom-sheet[hidden] { display: none; }
+.og-custom-card { background: #141414; border: 1px solid rgba(255,193,7,.55); border-bottom: 0; border-radius: 18px 18px 0 0; width: 100%; max-width: 520px; max-height: 86dvh; overflow-y: auto; padding: 14px 16px 20px; color: #f2f2f2; box-shadow: 0 -8px 32px rgba(0,0,0,.6); }
+.og-custom-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 1.05rem; margin-bottom: 4px; }
+.og-custom-head button { background: none; border: 0; color: #f2f2f2; font-size: 1.1rem; cursor: pointer; padding: 4px 8px; font-family: inherit; }
+.og-custom-label { display: block; font-size: .82rem; font-weight: 700; letter-spacing: .4px; color: #ffc107; margin: 12px 0 6px; }
+.og-custom-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.og-custom-row input[type="text"] { flex: 1 1 140px; background: #1b1b1b; border: 1px solid rgba(255,193,7,.4); border-radius: 999px; padding: 9px 14px; color: #f2f2f2; font-family: inherit; font-size: .95rem; }
+.og-custom-row button, .og-custom-reset { border: 1px solid rgba(255,193,7,.55); background: #1b1b1b; color: #f2f2f2; border-radius: 999px; padding: 9px 14px; font-size: .9rem; cursor: pointer; font-family: inherit; }
+.og-custom-row button:hover { background: rgba(255,193,7,.18); }
+.og-custom-note { font-size: .82rem; color: #bbb; margin: 10px 0 0; line-height: 1.4; }
+.og-custom-status { font-size: .88rem; color: #ffc107; margin: 10px 0 0; }
+.og-custom-reset { margin-top: 14px; border-color: rgba(255,120,120,.5); }</style>
+    <script id="og-customize-js">(function () {
+var sheet = document.getElementById('customSheet');
+if (!sheet) return;
+var nameEl = document.getElementById('ogTopName');
+var nameInput = document.getElementById('customNameInput');
+var statusEl = document.getElementById('customStatus');
+var fileInput = document.getElementById('customAvatarInput');
+var state = { name: 'OG', avatar: 'default', pictures: false };
+var origSetAvatar = window.ogSetAvatar || null;
+function say(msg) { if (!statusEl) return; statusEl.hidden = !msg; statusEl.textContent = msg || ''; }
+function avatarImgs() { return document.querySelectorAll('img.og-avatar, img.og-avatar-sm'); }
+function avatarVids() { return document.querySelectorAll('#ogTopAvatarVideo, #ogAvatarVideo, .og-menu-ava video'); }
+function applyName() { if (nameEl) nameEl.textContent = state.name; if (nameInput) nameInput.value = state.name; }
+function applyAvatar() {
+if (state.avatar === 'custom') {
+var url = '/customize/avatar?v=' + Date.now();
+avatarImgs().forEach(function (i) { i.src = url; i.style.visibility = ''; });
+avatarVids().forEach(function (v) { v.hidden = true; if (v.pause) v.pause(); });
+if (origSetAvatar) window.ogSetAvatar = function () {};
+} else {
+avatarImgs().forEach(function (i) { i.src = '/avatar/poster.webp'; });
+if (origSetAvatar) { window.ogSetAvatar = origSetAvatar; origSetAvatar('idle'); }
+}
+}
+function apply() { applyName(); applyAvatar(); }
+function load() {
+fetch('/customize', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (p) {
+if (p && p.ok) { state.name = p.name || 'OG'; state.avatar = p.avatar || 'default'; state.pictures = !!p.pictures; apply(); }
+}).catch(function () {});
+}
+function openSheet() { sheet.hidden = false; say(''); if (nameInput) nameInput.value = state.name; }
+function closeSheet() { sheet.hidden = true; }
+document.querySelectorAll('.og-top-ava, .og-ava-wrap').forEach(function (el) { el.addEventListener('click', openSheet); });
+document.getElementById('customCloseBtn').addEventListener('click', closeSheet);
+sheet.addEventListener('click', function (e) { if (e.target === sheet) closeSheet(); });
+document.getElementById('customNameSave').addEventListener('click', function () {
+var name = ((nameInput && nameInput.value) || '').trim();
+fetch('/customize/name', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) })
+.then(function (r) { return r.json().then(function (p) { return { ok: r.ok, p: p }; }); })
+.then(function (res) { if (res.ok && res.p.ok) { state.name = res.p.name; applyName(); say('Name saved.'); } else say((res.p && res.p.response) || "That name won't fly."); })
+.catch(function () { say('Save glitched — try again.'); });
+});
+document.getElementById('customAvatarUploadBtn').addEventListener('click', function () { if (fileInput) fileInput.click(); });
+if (fileInput) fileInput.addEventListener('change', function () {
+var f = fileInput.files && fileInput.files[0]; if (!f) return;
+var fd = new FormData(); fd.append('file', f);
+say('Sliding your picture up…');
+fetch('/customize/avatar', { method: 'POST', credentials: 'same-origin', body: fd })
+.then(function (r) { return r.json().then(function (p) { return { ok: r.ok, p: p }; }); })
+.then(function (res) { if (res.ok && res.p.ok) { state.avatar = 'custom'; applyAvatar(); say('New picture is live — a still photo, same OG.'); } else say((res.p && res.p.response) || "That picture won't fly."); })
+.catch(function () { say('Upload glitched — try again.'); });
+fileInput.value = '';
+});
+document.getElementById('customAvatarDefaultBtn').addEventListener('click', function () {
+fetch('/customize/avatar/default', { method: 'POST', credentials: 'same-origin' })
+.then(function (r) { return r.json(); }).then(function (p) { if (p && p.ok) { state.avatar = 'default'; applyAvatar(); say('Back to the original OG — clips and all.'); } })
+.catch(function () { say('That glitched — try again.'); });
+});
+document.getElementById('customResetBtn').addEventListener('click', function () {
+fetch('/customize/reset', { method: 'POST', credentials: 'same-origin' })
+.then(function (r) { return r.json(); }).then(function (p) { if (p && p.ok) { state.name = p.name || 'OG'; state.avatar = 'default'; apply(); say("All reset — he's just OG again."); } })
+.catch(function () { say('That glitched — try again.'); });
+});
+load();
 })();</script>
 </body>
 </html>
