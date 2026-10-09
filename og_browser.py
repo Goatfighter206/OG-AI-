@@ -69,9 +69,29 @@ module's pending is waiting (never steals an approval).
 
 The Steel REST calls funnel through _steel_api and CDP through
 _cdp_connect, so the r23 suite stubs exactly those two seams.
+
+ROUND 27 (Brent's live phone test, 2026-10-09): (1) AUTO-OPEN —
+naming a site (bare name, account ask, posting ask) STARTS the
+session and navigates in the same turn; the YES/NO proposal to
+start is gone. The approval gate now guards ONLY commit actions,
+exactly as before. (2) POSTING — a post ask parks its text as a
+session post-intent; once the visitor has logged in themselves
+(take control -> hand back), OG types the EXACT words into the
+site's composer as a draft, shows site + exact text, and clicks
+Post only on YES, confirming from a fresh page read. OG never
+suggests creating an account at a login wall. (3) APPROVAL CARD —
+/browser/status carries the visitor's parked commit action and
+/browser/approve + /browser/decline resolve it from an on-page
+card: one gate, two front doors (chat YES still works), first
+resolution wins, expiry and owner isolation enforced server-side.
+(4) STILL VIEW — Steel's REST screenshot endpoint renders a URL
+fresh (not the live session), so the panel's no-WebRTC fallback
+is a still captured over the session's own CDP connection
+(/browser/screenshot); refused while the visitor drives.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import math
@@ -86,7 +106,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 logger = logging.getLogger(__name__)
 
@@ -497,6 +517,28 @@ def _viewer_url(steel_id: str) -> str:
     return ""
 
 
+def _capture_shot(rec: Dict) -> bytes:
+    """A still of the session's current page, over the session's
+    own CDP connection (Round 27 WS1 fallback view). Steel's REST
+    screenshot endpoint renders a URL in a FRESH browser — useless
+    for a live, possibly logged-in session — so the still comes
+    from Page.captureScreenshot on the session itself. Raises
+    _DriveError on any failure; callers surface it honestly."""
+    cdp = _cdp_connect(rec)
+    try:
+        _attach_page(cdp)
+        cdp.call("Page.enable")
+        res = cdp.call("Page.captureScreenshot",
+                       {"format": "jpeg", "quality": 55,
+                        "fromSurface": True})
+        data = res.get("data") or ""
+        if not data:
+            raise _DriveError("the screenshot came back empty")
+        return base64.b64decode(data)
+    finally:
+        cdp.close()
+
+
 # --- Raw CDP driver (websockets ships with uvicorn[standard]) -----------------
 
 
@@ -604,10 +646,12 @@ _SNAPSHOT_JS = r"""
   } catch (e) {}
   window.__ogEls = [];
   var nodes = document.querySelectorAll(
-    'a[href],button,input,textarea,select,[role="button"]');
+    'a[href],button,input,textarea,select,[role="button"],'
+    + '[role="textbox"]');
   for (var i = 0; i < nodes.length && out.elements.length < 40; i++) {
     var el = nodes[i], tag = el.tagName.toLowerCase();
     var type = (el.getAttribute('type') || '').toLowerCase();
+    var role = (el.getAttribute('role') || '').toLowerCase();
     if (tag === 'input' && (type === 'hidden' || type === 'password'
         || type === 'file')) continue;
     var r = el.getBoundingClientRect();
@@ -615,7 +659,15 @@ _SNAPSHOT_JS = r"""
     if (st.display === 'none' || st.visibility === 'hidden'
         || (r.width === 0 && r.height === 0)) continue;
     var label = '';
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    if (role === 'textbox') {
+      // A composer (contenteditable): its innerText is the DRAFT
+      // VALUE, which is never read — labels come from attributes
+      // only, same as every other field.
+      label = el.getAttribute('aria-label')
+        || el.getAttribute('data-placeholder')
+        || el.getAttribute('placeholder') || 'Text box';
+    } else if (tag === 'input' || tag === 'textarea'
+        || tag === 'select') {
       label = el.getAttribute('placeholder')
         || el.getAttribute('aria-label') || el.getAttribute('name')
         || type || tag;
@@ -628,6 +680,7 @@ _SNAPSHOT_JS = r"""
     window.__ogEls.push(el);
     out.elements.push({
       i: window.__ogEls.length - 1, tag: tag, type: type,
+      role: role,
       label: String(label).slice(0, 70),
       href: tag === 'a' ? (el.getAttribute('href') || '').slice(0, 200) : '',
       in_form: !!form});
@@ -828,10 +881,12 @@ def _find_element(elements: List[Dict], words: str) -> Dict:
 
 
 def _find_field(elements: List[Dict], words: str) -> Dict:
-    """Resolve a typing target: an input/textarea/select by words,
-    or the page's obvious search/main field when words are empty."""
+    """Resolve a typing target: an input/textarea/select (or a
+    role=textbox composer) by words, or the page's obvious
+    search/main field when words are empty."""
     fields = [el for el in elements
-              if el.get("tag") in ("input", "textarea", "select")]
+              if el.get("tag") in ("input", "textarea", "select")
+              or el.get("role") == "textbox"]
     if not fields:
         return {}
     if words:
@@ -844,6 +899,61 @@ def _find_field(elements: List[Dict], words: str) -> Dict:
         if any(k in hay for k in ("search", "query", "q", "find")):
             return {"el": el}
     return {"el": fields[0]} if len(fields) == 1 else {}
+
+
+_COMPOSER_LABEL_RE = re.compile(
+    r"what'?s on your mind|write something|write a post|"
+    r"create (a )?post|say something|share something|"
+    r"composer|status|post", re.I)
+
+
+def _find_composer(elements: List[Dict]) -> Optional[Dict]:
+    """The page's post composer, if one is visible: a field
+    (input/textarea/select/role=textbox) whose label reads like a
+    post box, else the page's lone role=textbox, else a lone
+    textarea. Generic by label — no site-specific selectors."""
+    fields = [el for el in elements
+              if el.get("tag") in ("input", "textarea", "select")
+              or el.get("role") == "textbox"]
+    if not fields:
+        return None
+    for el in fields:
+        if _COMPOSER_LABEL_RE.search(str(el.get("label") or "")):
+            return el
+    boxes = [el for el in fields if el.get("role") == "textbox"]
+    if len(boxes) == 1:
+        return boxes[0]
+    areas = [el for el in fields if el.get("tag") == "textarea"]
+    if len(areas) == 1:
+        return areas[0]
+    return None
+
+
+_POST_BUTTON_RE = re.compile(
+    r"^(post|publish|share|tweet|send)$", re.I)
+_POST_BUTTON_LOOSE_RE = re.compile(r"\b(post|publish)\b", re.I)
+
+
+def _find_post_button(elements: List[Dict]) -> Optional[Dict]:
+    """The composer's commit button: an exact 'Post' / 'Publish' /
+    'Share' label first, then any button-ish element whose label
+    carries post/publish. Clicking it ALWAYS goes through the
+    approval gate (its label matches the gate verbs by design)."""
+    clickables = [el for el in elements
+                  if el.get("tag") in ("button", "a", "input")
+                  or el.get("role") in ("button", "")]
+    exact = [el for el in clickables
+             if _POST_BUTTON_RE.match(
+                 str(el.get("label") or "").strip())]
+    if len(exact) == 1:
+        return exact[0]
+    if exact:
+        return exact[0]
+    loose = [el for el in clickables
+             if el.get("tag") == "button"
+             and _POST_BUTTON_LOOSE_RE.search(
+                 str(el.get("label") or ""))]
+    return loose[0] if len(loose) == 1 else None
 
 
 # --- Narration (grounded result blocks the persona voices) ---------------------
@@ -897,6 +1007,10 @@ def _login_wall(snap: Dict) -> str:
     return ""
 
 
+_SIGNUP_LABEL_RE = re.compile(
+    r"create (a |new )?account|sign ?up|register", re.I)
+
+
 def _narrate_snapshot(uid: str, snap: Dict, lead: str) -> List[Dict]:
     title = snap.get("title") or "(untitled page)"
     url = snap.get("url") or ""
@@ -905,14 +1019,28 @@ def _narrate_snapshot(uid: str, snap: Dict, lead: str) -> List[Dict]:
     wall = _login_wall(snap)
     if wall:
         lines.append(
-            f"LOGIN WALL: {wall} is showing a log-in page — OG "
-            "can't log in for you and never touches passwords. "
-            "The visitor can take control in the panel and log in "
-            "themselves, or pick a different page. Say exactly "
-            "that; never claim the browser doesn't exist.")
+            f"LOGIN WALL: {wall} is asking for a log-in, and that "
+            "part is the visitor's BY DESIGN: they tap Take control "
+            "in the panel under the chat and log in THEMSELVES — "
+            "OG never sees, types, or stores your password, not "
+            "once, ever. Then they say 'hand back' and OG works "
+            "inside the account. The log-in lasts only while this "
+            "session lives — it dies the second the session ends "
+            "and nothing is saved. The visitor HAS an account: "
+            "NEVER suggest signing up or creating a new account, "
+            "and never click a create-account or sign-up link for "
+            "them. Say exactly that; never claim the browser "
+            "doesn't exist.")
     if text:
         lines.append(f"WHAT'S ON IT: {text}")
     els = snap.get("elements") or []
+    if wall:
+        # Deterministic steering-kill: on a login wall the sign-up
+        # links are not even offered as things OG can act on, so
+        # the voice can never wander onto "create new account".
+        els = [el for el in els
+               if not _SIGNUP_LABEL_RE.search(
+                   str(el.get("label") or ""))]
     shown = []
     for el in els[:18]:
         label = str(el.get("label") or "").strip()
@@ -1083,9 +1211,89 @@ def _resolve_site_url(low: str) -> str:
     """'pull up facebook' -> 'https://facebook.com'; '' if the
     message names no well-known site."""
     m = _SITE_NAME_RE.search(low)
+    if m:
+        return "https://" + _SITE_NAMES[m.group(1).lower()]
+    # "on X" / "to X": the single-letter name only counts glued to
+    # a preposition — a bare "x" anywhere else is not a site ask.
+    if re.search(r"\b(?:on|onto|to|via|open|check)\s+x\b", low) \
+            or "x.com" in low:
+        return "https://twitter.com"
+    return ""
+
+
+# Round 27 (auto-open): account-ish phrasing aimed at a named site
+# is a browsing ask by itself — the task inherently needs the live
+# site ("check my Facebook", "look at my messages on X", "go on
+# Facebook"). Requires a resolved site; never claims on its own.
+_ACCOUNT_RE = re.compile(
+    r"\b(check|look at|open|view|see|read)\s+my\b|\bmy\s+(feed|"
+    r"profile|account|page|timeline|messages|notifications|posts)\b"
+    r"|\b(go|get|hop|jump|log|sign)\s+(on|onto|in|into)\b"
+    r"|\bmessages on\b|\bnotifications on\b", re.I)
+
+# Filler a visitor wraps around a bare site name ("og facebook",
+# "facebook please") — stripped before the bare-mention test.
+_BARE_FILLER = {"og", "yo", "hey", "hi", "please", "pls", "the",
+                "a", "an", "um", "uh", "ok", "okay"}
+
+
+def _is_bare_mention(raw: str, low: str) -> bool:
+    """The message IS a site mention and nothing else: 'Facebook',
+    'facebook.com', 'og — Facebook!' -> True. Any extra content
+    word ('facebook news', 'facebook stock') defeats it."""
+    words = [w.strip(".,!?\"'—-") for w in low.split()]
+    words = [w for w in words if w and w not in _BARE_FILLER]
+    if not words:
+        return False
+    joined = " ".join(words)
+    if joined in _SITE_NAMES:
+        return True
+    token = _extract_url(raw)
+    if token and joined == token.lower().replace(
+            "https://", "").replace("http://", "").rstrip("/"):
+        return True
+    return _resolve_site_url(low) != "" and len(words) == 1
+
+
+# Round 27: posting asks. A post/publish verb plus a site (or a
+# live session to post into) claims the browser: the task needs
+# the live site by construction. "share" counts only with quoted
+# text or an explicit on/to target — plain "share" is too loose.
+_POST_VERB_RE = re.compile(r"\b(post|publish|share)\b", re.I)
+_POST_QUOTED_RE = re.compile(
+    r"(?:post|publish|share)\s+['\"“](.+?)['\"”]", re.I | re.S)
+_POST_ON_RE = re.compile(
+    r"\b(?:post|publish|share)\s+(.+?)\s+(?:on|onto|to)\s+"
+    r"(?:my\s+)?(?:the\s+)?\S+\s*$", re.I | re.S)
+
+
+def _parse_post(raw: str, low: str) -> Optional[Dict]:
+    """{'url', 'text'} for a posting ask, else None. Text is the
+    EXACT words to post: a quoted span, or the words between the
+    verb and 'on/to <site>'. 'post this on my facebook' yields
+    text '' — a placeholder the visitor must fill in word-for-word
+    before anything is drafted."""
+    m = _POST_VERB_RE.search(low)
     if not m:
-        return ""
-    return "https://" + _SITE_NAMES[m.group(1).lower()]
+        return None
+    verb = m.group(1).lower()
+    url = _extract_url(raw) or _resolve_site_url(low)
+    if verb == "share" and not url and not _POST_QUOTED_RE.search(raw):
+        return None
+    if not url and not _BLOCKED_TARGET_RE.search(low):
+        return None
+    text = ""
+    q = _POST_QUOTED_RE.search(raw)
+    if q:
+        text = q.group(1).strip()
+    else:
+        o = _POST_ON_RE.search(raw)
+        if o:
+            cand = o.group(1).strip().strip("'\"")
+            if cand.lower() not in ("this", "that", "it",
+                                    "something", "a post", "a status"):
+                text = cand
+    return {"url": url, "text": text}
 _BROWSER_WORD_RE = re.compile(r"\bbrowser\b", re.I)
 _END_RE = re.compile(
     r"^(stop|end|close|kill|shut down)\b.*\b(browser|session|browsing)\b"
@@ -1128,36 +1336,36 @@ def _extract_url(message: str) -> str:
 
 
 def _is_start_request(message: str, low: str) -> bool:
-    """THE RULE (Round 26, supersedes Round 25's narrower gate).
+    """THE RULE (Round 27, supersedes Round 26's gate).
 
-    A start is claimed when the visitor asks OG to GO somewhere:
-    a navigation verb (open / pull up / put ... up / bring up /
-    show / visit / go to / load / browse / start / use ...) aimed
-    at a SITE reference — a URL token, a well-known site NAME
-    (_SITE_NAMES), or the word "browser" itself. An explicit
-    "browser" mention claims with any start verb, full stop.
+    A start is claimed when the visitor's ask inherently needs
+    the LIVE site — Brent's auto-open rule: no magic phrasing,
+    no proposal step. Claims:
+    - "browser" said out loud + any start verb;
+    - a navigation verb (open / pull up / put ... up / bring up /
+      show / visit / go to / load / browse / start / use ...) aimed
+      at a URL or a well-known site NAME;
+    - a bare site mention that IS the whole message ("Facebook",
+      "facebook.com", "og, facebook please");
+    - an account-ish ask aimed at a named site (check/look at/open
+      MY ..., go/get/log on..., my feed/profile/messages/...):
+      checking your own account cannot be done from a text lookup.
 
     A start is NOT claimed when the visitor asks for CONTENT from
     a site: lookup verbs (check / read / watch / search / what's)
-    never claim, and neither does a navigation verb aimed at
-    content words (headlines, news, weather, scores, prices ... —
-    _CONTENT_MARKER_RE) unless "browser" was said out loud. Those
-    asks belong to the text lookup and must answer in text with no
-    session and no proposal.
+    with no account marker never claim, and neither does a
+    navigation verb aimed at content words (headlines, news,
+    weather, scores, prices ... — _CONTENT_MARKER_RE) unless
+    "browser" was said out loud. Those asks belong to the text
+    lookup and must answer in text with no session.
 
-    History: Round 25 narrowed the gate to "browser + verb, or URL
-    + nav verb" after the old lookup-verb gate hijacked "check the
-    headlines on bbc.com" into a live session that dropped a
-    browser screen into the chat. That narrowing overshot: "pull
-    up Facebook" (no URL token, no "browser") and "put Facebook up
-    on your browser" ("put ... up" was not a verb) claimed NOTHING
-    and the bare model — whose persona knew of no browser — flatly
-    denied having one; "open facebook.com in your browser" claimed
-    but died at _url_gate because facebook.com was missing from
-    the allowlist, and the paraphrased refusal came out as the
-    same false denial. Round 26 keeps the anti-hijack half of
-    Round 25 (content asks stay text) and restores the natural
-    half (go-somewhere asks start the flow)."""
+    History: Round 25 narrowed the gate after a lookup-verb gate
+    hijacked text lookups into live sessions; Round 26 restored
+    natural go-somewhere asks but still made the visitor say YES
+    to a proposal before starting, and Brent's bare/account asks
+    ("Facebook", "check my Facebook") claimed nothing. Round 27
+    keeps the anti-hijack half (content asks stay text) and makes
+    every go-somewhere/account ask START in the same turn."""
     has_browser = bool(_BROWSER_WORD_RE.search(low))
     if has_browser and _NAV_START_RE.search(low):
         return True
@@ -1167,6 +1375,10 @@ def _is_start_request(message: str, low: str) -> bool:
     token = _extract_url(message)
     if token and str(message).strip().rstrip(".,!?)\"'") == token:
         return True  # a bare URL pasted alone means "open this"
+    if _ACCOUNT_RE.search(low):
+        return True
+    if _is_bare_mention(message, low):
+        return True
     if not _NAV_START_RE.search(low):
         return False
     if _CONTENT_MARKER_RE.search(low) and not has_browser:
@@ -1195,6 +1407,20 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
             return {"op": "control", "mode": "og"}
         if _TAKEOVER_RE.search(low):
             return {"op": "control", "mode": "visitor"}
+        # A posting ask inside a live session goes to the posting
+        # flow (navigate first if it names another site).
+        post = _parse_post(raw, low)
+        if post is not None:
+            return {"op": "post", "url": post["url"],
+                    "text": post["text"], "goal": raw}
+        # A parked post-intent with its words ready: "I'm in /
+        # done / ready" after logging in means "draft it now".
+        intent = sess.get("post_intent") or {}
+        if intent.get("text") and re.match(
+                r"^\W*(i'?m (in|logged in|signed in|done|ready)|"
+                r"logged in|signed in|done|ready|go ahead|do it)\b",
+                raw, re.I):
+            return {"op": "postdraft"}
         if _READ_RE.search(low):
             return {"op": "act", "verb": "read"}
         if _BACK_RE.search(low):
@@ -1222,13 +1448,23 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
         if url and (_NAV_VERB_RE.search(low)
                     or raw.strip().rstrip(".,!?)\"'") == url):
             return {"op": "act", "verb": "navigate", "url": url}
+        # Nothing else claimed this message and a post-intent is
+        # parked waiting for its words: this message IS the text.
+        if intent and not intent.get("text"):
+            return {"op": "posttext", "text": raw}
         return None
-    # 3) No live session: a start request becomes a proposal.
+    # 3) No live session: a posting ask starts the browser ON the
+    #    target site; any other start ask starts it too (Round 27
+    #    auto-open — no proposal, no YES needed to begin).
+    post = _parse_post(raw, low)
+    if post is not None:
+        return {"op": "start", "url": post["url"], "goal": raw,
+                "post": post}
     if _is_start_request(raw, low):
         url = _extract_url(raw) or _resolve_site_url(low)
-        return {"op": "propose", "url": url, "goal": raw}
+        return {"op": "start", "url": url, "goal": raw}
     if _BROWSER_WORD_RE.search(low) and _extract_url(raw):
-        return {"op": "propose", "url": _extract_url(raw), "goal": raw}
+        return {"op": "start", "url": _extract_url(raw), "goal": raw}
     return None
 
 
@@ -1257,10 +1493,21 @@ def _plan_math_text(plan: Dict, tier: str) -> str:
             "once ever. This would be that taste.")
 
 
-def _do_propose(uid: str, job: Dict) -> List[Dict]:
+def _do_start(uid: str, job: Dict) -> List[Dict]:
+    """Round 27 AUTO-OPEN: a start ask fires the session and
+    navigates in THIS turn — no proposal, no YES to begin. The
+    refusals are unchanged (dark, hard blocklist, gate, no
+    minutes): those explain themselves plainly and start nothing."""
     if not enabled():
         return _dark_text()
+    url = job.get("url") or ""
+    post = job.get("post") or {}
     if _get_session(uid):
+        # Already live (can happen on a raced claim): go straight
+        # there instead of stacking a second session.
+        if url:
+            return _do_act(uid, {"op": "act", "verb": "navigate",
+                                 "url": url})
         return _result("OG BROWSER", "OG browser — already live",
                        "A browser session is already running — it's "
                        "in the panel under the chat. Keep giving me "
@@ -1269,7 +1516,6 @@ def _do_propose(uid: str, job: Dict) -> List[Dict]:
                        + _session_footer(uid))
     tier = _tier_of_uid(uid)
     plan = _plan_for(uid, tier)
-    url = job.get("url") or ""
     if url:
         ok, reason = _url_gate(url)
         if not ok:
@@ -1293,21 +1539,41 @@ def _do_propose(uid: str, job: Dict) -> List[Dict]:
             + ", and your one free 10-minute taste is already spent. "
             "Browser time rides on Blue (60 minutes/day) and "
             f"Blackout (600 minutes/day): {_pro_url()}")
-    _set_pending(uid, {"kind": "start", "url": url,
-                       "goal": job.get("goal", ""), "mode": plan["mode"],
-                       "budget": plan["budget"]})
-    target = f" First stop: {url}." if url else \
-        " Tell me the first page when we start."
+    pend = {"url": url, "goal": job.get("goal", ""),
+            "post": post or None}
+    out = _start_session(uid, pend)
+    if post:
+        out += _post_kickoff(uid, post, out)
+    return out
+
+
+def _post_kickoff(uid: str, post: Dict,
+                  start_out: List[Dict]) -> List[Dict]:
+    """The posting follow-through right after an auto-open: with
+    the words ready and no login wall in the way, draft at once;
+    at a wall (or with no words yet), park the intent in plain
+    words. The intent itself already lives on the session record
+    (see _start_session)."""
+    text = (post or {}).get("text") or ""
+    walled = any("LOGIN WALL" in (r.get("body") or "")
+                 for r in start_out)
+    if text and not walled:
+        return _attempt_post_draft(uid)
+    if text:
+        return _result(
+            "OG BROWSER", "OG browser — post parked at the wall",
+            "Your post is parked, word for word: "
+            f"\"{text}\" Log in up there (Take control — your "
+            "password never touches me), say 'hand back', and I'll "
+            "put those exact words in the post box and show them "
+            "to you before anything goes up. Nothing is posted "
+            "without your YES.")
     return _result(
-        "OG BROWSER", "OG browser — start a session?",
-        f"I can fire up a REAL browser and drive it for you — you "
-        f"watch it live in the panel under the chat and can take the "
-        f"wheel any time. {_plan_math_text(plan, tier)}{target} "
-        "Read-only moves are free rein; I will NEVER submit a form, "
-        "post, comment, send, or buy anything without stating the "
-        "exact action and getting your YES first. Session data "
-        "(cookies, logins, history) dies the second the session "
-        "ends. Say YES to roll, NO to skip it.")
+        "OG BROWSER", "OG browser — what should it say?",
+        "I'm on the site. Tell me the post word for word — "
+        "exactly what it should say — and I'll draft it in the "
+        "box and show it back before anything goes up. Nothing "
+        "is posted without your YES.")
 
 
 def _start_session(uid: str, pend: Dict) -> List[Dict]:
@@ -1333,7 +1599,19 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
            "started": time.time(), "last_action": time.time(),
            "budget": budget, "mode": plan["mode"], "control": "og",
            "goal": pend.get("goal", ""), "focus": None,
-           "last_url": "", "last_title": "", "taste_counted": False}
+           "last_url": "", "last_title": "", "taste_counted": False,
+           "post_intent": None}
+    post = pend.get("post") or {}
+    if post:
+        host = ""
+        try:
+            host = urllib.parse.urlparse(
+                post.get("url") or "").hostname or ""
+        except Exception:
+            pass
+        rec["post_intent"] = {"text": post.get("text") or "",
+                              "site": host,
+                              "url": post.get("url") or ""}
     # The taste is NOT spent here: it is spent by the first page the
     # visitor actually sees (see _update_rec_from_snap). A session
     # that starts but never lands on a page — Brent's 2026-10-09 live
@@ -1400,7 +1678,37 @@ def _execute_gated(uid: str, pend: Dict) -> List[Dict]:
     run = dict(action)
     if found is not None:
         run["sig"] = _element_signature(found)
-    return _run_action(uid, rec, run, found)
+    out = _run_action(uid, rec, run, found)
+    if pend.get("post_text"):
+        # A post just went through the gate: confirmation is a
+        # FRESH page read, never an assumption. The words visible
+        # on the page = confirmed; anything else gets said plainly.
+        text = pend["post_text"]
+        try:
+            snap3 = _drive(rec, {"do": "read"})
+            page_text = " ".join(
+                str(snap3.get("text") or "").split()).lower()
+            needle = " ".join(str(text).split()).lower()
+            if needle and needle in page_text:
+                out += _result(
+                    "OG BROWSER", "OG browser — post confirmed",
+                    f"Confirmed on a fresh read: your post — "
+                    f"\"{text}\" — is ON the page now.")
+            else:
+                out += _result(
+                    "OG BROWSER", "OG browser — post unconfirmed",
+                    "I clicked it, but I can't see your post text "
+                    "on the page in front of me, so I won't claim "
+                    "it's up: check the feed on "
+                    f"{pend.get('post_site') or 'the site'} — if "
+                    "it's not there, the words are still sitting "
+                    "in the box as a draft.")
+        except _DriveError:
+            out += _result(
+                "OG BROWSER", "OG browser — post unconfirmed",
+                "I clicked it, but the confirmation read glitched "
+                "— check the feed before you trust that it posted.")
+    return out
 
 
 def _do_approve(uid: str) -> List[Dict]:
@@ -1466,9 +1774,15 @@ def _do_control(uid: str, mode: str) -> List[Dict]:
                        "click or read a thing until you say 'hand "
                        "back'. The minutes keep running while you "
                        "drive." + _session_footer(uid))
-    return _result("OG BROWSER", "OG browser — OG driving",
-                   "Got it back. Give me the next move."
-                   + _session_footer(uid))
+    out = _result("OG BROWSER", "OG browser — OG driving",
+                  "Got it back. Give me the next move."
+                  + _session_footer(uid))
+    # Hand-back after a login is the posting flow's starting gun:
+    # a parked post-intent with its words ready drafts itself now.
+    intent = rec.get("post_intent") or {}
+    if intent.get("text"):
+        out += _attempt_post_draft(uid)
+    return out
 
 
 def _gate_or_run(uid: str, rec: Dict, action: Dict, el: Dict,
@@ -1484,8 +1798,15 @@ def _gate_or_run(uid: str, rec: Dict, action: Dict, el: Dict,
     desc = _describe_action(action, el, snap)
     sig = _element_signature(el)
     sig["url"] = snap.get("url", "")
+    host = ""
+    try:
+        host = urllib.parse.urlparse(snap.get("url", "")).hostname or ""
+    except Exception:
+        pass
     _set_pending(uid, {"kind": "action", "action": action, "sig": sig,
-                       "page_url": snap.get("url", ""), "desc": desc})
+                       "page_url": snap.get("url", ""), "desc": desc,
+                       "disp_kind": action.get("do", "click"),
+                       "disp_site": host, "disp_text": ""})
     return _result(
         "OG BROWSER", "OG browser — approval needed",
         f"STOP — approval needed. I am ready to {desc}. Why this "
@@ -1499,9 +1820,9 @@ def _do_act(uid: str, job: Dict) -> List[Dict]:
     rec = _get_session(uid)
     if not rec:
         return _result("OG BROWSER", "OG browser — no session",
-                       "No browser session is running. Ask me to "
-                       "open a page or run a web errand and I'll "
-                       "propose one with the minute math up front.")
+                       "No browser session is running. Name a site "
+                       "— or just say the site — and I'll fire one "
+                       "up and go straight there.")
     if rec.get("control") == "visitor":
         return _result("OG BROWSER", "OG browser — you're driving",
                        "You're at the wheel right now, so my hands "
@@ -1577,10 +1898,172 @@ def _do_act(uid: str, job: Dict) -> List[Dict]:
                    + _session_footer(uid))
 
 
+# --- Posting (Round 27 WS3): draft -> YES -> post, confirmed ----------------
+
+
+def _attempt_post_draft(uid: str) -> List[Dict]:
+    """Drive the parked post-intent to the approval gate: read the
+    page; at a login wall, narrate and keep the intent; with no
+    composer visible, say so honestly; otherwise TYPE the exact
+    words into the composer (a draft — ungated by design), find
+    the Post button, and park THAT click at the gate with the
+    site + exact text stated. Nothing posts here."""
+    rec = _get_session(uid)
+    if not rec:
+        return _result("OG BROWSER", "OG browser — no session",
+                       "No browser session is running, so there's "
+                       "nowhere to draft that post.")
+    intent = rec.get("post_intent") or {}
+    text = intent.get("text") or ""
+    if not text:
+        return _result("OG BROWSER", "OG browser — no words yet",
+                       "That post has no words yet — tell me exactly "
+                       "what it should say, word for word.")
+    if rec.get("control") == "visitor":
+        return _result("OG BROWSER", "OG browser — you're driving",
+                       "You're at the wheel — I can't draft while "
+                       "you drive. Say 'hand back' and I'll put the "
+                       "words in the box." + _session_footer(uid))
+    why = _live_checks(uid, rec)
+    if why and why != "visitor_driving":
+        return _result("OG BROWSER", "OG browser — session ended",
+                       f"Can't draft that post: {why}.")
+    try:
+        snap = _drive(rec, {"do": "read"})
+    except _DriveError as e:
+        return _result("OG BROWSER", "OG browser — glitch",
+                       f"I couldn't read the page to draft that: "
+                       f"{e}." + _session_footer(uid))
+    if _login_wall(snap):
+        return _narrate_snapshot(
+            uid, snap,
+            "Still at the wall — the post stays parked:")
+    composer = _find_composer(snap.get("elements") or [])
+    if not composer:
+        return _narrate_snapshot(
+            uid, snap,
+            "I'm on the page but I don't see a post box on it — "
+            "I typed NOTHING. Here's what's here:")
+    run = {"do": "type", "idx": composer.get("i"), "text": text}
+    run["sig"] = _element_signature(composer)
+    try:
+        _drive(rec, run)
+        snap2 = _drive(rec, {"do": "read"})
+    except _DriveError as e:
+        return _result("OG BROWSER", "OG browser — glitch",
+                       f"The draft typing glitched: {e}. Nothing "
+                       "was posted." + _session_footer(uid))
+    _update_rec_from_snap(uid, rec, snap2)
+    host = urllib.parse.urlparse(
+        snap2.get("url") or "").hostname or "this site"
+    btn = _find_post_button(snap2.get("elements") or [])
+    if not btn:
+        return _result(
+            "OG BROWSER", "OG browser — draft typed, no Post button",
+            f"The words are IN the box on {host}, word for word: "
+            f"\"{text}\" — but I can't see a Post button on this "
+            "view, so nothing can go up from here. Take control "
+            "and press it yourself, or point me at the page where "
+            "the button lives. NOTHING is posted.")
+    sig = _element_signature(btn)
+    sig["url"] = snap2.get("url", "")
+    _set_pending(uid, {
+        "kind": "action",
+        "action": {"do": "click", "idx": btn.get("i")},
+        "sig": sig, "page_url": snap2.get("url", ""),
+        "desc": _describe_action({"do": "click"}, btn, snap2),
+        "post_text": text, "post_site": host,
+        "disp_kind": "post", "disp_text": text, "disp_site": host})
+    rec2 = dict(_get_session(uid) or rec)
+    rec2["post_intent"] = None
+    _set_session(uid, rec2)
+    return _result(
+        "OG BROWSER", "OG browser — post ready, your call",
+        f"DRAFT IS IN — NOT posted. On {host} I typed this into "
+        f"the post box, word for word: \"{text}\" Say YES (or tap "
+        "Approve on the card) and I click "
+        f"'{btn.get('label')}' — exactly that, nothing else — "
+        "then I read the page back and confirm it actually went "
+        "up. Say NO and I drop it cold: nothing gets posted; the "
+        "words just sit in the box until the session ends."
+        + _session_footer(uid))
+
+
+def _do_post(uid: str, job: Dict) -> List[Dict]:
+    """A posting ask inside a live session: navigate first when it
+    names another site, park the intent, then draft (or ask for
+    the words, or stop at the wall — _attempt_post_draft and
+    _post_kickoff narrate each case)."""
+    rec = _get_session(uid)
+    if not rec:
+        return _result("OG BROWSER", "OG browser — no session",
+                       "No browser session is running — name the "
+                       "site and I'll fire one up on it.")
+    out: List[Dict] = []
+    url = job.get("url") or ""
+    if url:
+        def _host_key(h: str) -> str:
+            # facebook.com and www.facebook.com are the same site
+            # for posting purposes — comparing raw hosts bounced a
+            # logged-in www session back to the bare-domain login
+            # page (caught by the r27 suite).
+            return h[4:] if h.startswith("www.") else h
+        cur_host = _host_key(urllib.parse.urlparse(
+            rec.get("last_url") or "").hostname or "")
+        want_host = _host_key(
+            urllib.parse.urlparse(url).hostname or "")
+        if want_host and want_host != cur_host:
+            out += _run_action(uid, rec,
+                               {"do": "navigate", "url": url})
+            rec = _get_session(uid) or rec
+    rec = dict(rec)
+    intent = dict(rec.get("post_intent") or {})
+    if job.get("text"):
+        intent["text"] = job["text"]
+    if url:
+        intent["url"] = url
+        intent["site"] = urllib.parse.urlparse(url).hostname or ""
+    rec["post_intent"] = intent
+    _set_session(uid, rec)
+    if intent.get("text"):
+        if any("LOGIN WALL" in (r.get("body") or "") for r in out):
+            return out + _result(
+                "OG BROWSER", "OG browser — post parked at the wall",
+                "Your post is parked, word for word: "
+                f"\"{intent['text']}\" Log in (Take control), say "
+                "'hand back', and I'll draft it for your YES.")
+        return out + _attempt_post_draft(uid)
+    return out + _result(
+        "OG BROWSER", "OG browser — what should it say?",
+        "Tell me the post word for word — exactly what it should "
+        "say — and I'll draft it in the box and show it back "
+        "before anything goes up. Nothing posts without your YES.")
+
+
+def _do_posttext(uid: str, job: Dict) -> List[Dict]:
+    """The visitor's reply to 'what should it say?' IS the text."""
+    rec = _get_session(uid)
+    if not rec:
+        return _result("OG BROWSER", "OG browser — no session",
+                       "No browser session is running.")
+    rec = dict(rec)
+    intent = dict(rec.get("post_intent") or {})
+    intent["text"] = job.get("text") or ""
+    rec["post_intent"] = intent
+    _set_session(uid, rec)
+    return _attempt_post_draft(uid)
+
+
 def browser_results(job: Dict, message: str, uid: str) -> List[Dict]:
     op = job.get("op")
-    if op == "propose":
-        return _do_propose(uid, job)
+    if op in ("start", "propose"):
+        return _do_start(uid, job)
+    if op == "post":
+        return _do_post(uid, job)
+    if op == "postdraft":
+        return _attempt_post_draft(uid)
+    if op == "posttext":
+        return _do_posttext(uid, job)
     if op == "approve":
         return _do_approve(uid)
     if op == "decline":
@@ -1711,7 +2194,102 @@ def register_browser_routes(app):
             out["page_url"] = rec.get("last_url", "")
             # Fresh from Steel on every poll — never stored anywhere.
             out["viewer_url"] = _viewer_url(rec.get("steel_id", ""))
+        # Round 27: the approval CARD's data. Only the owner's own
+        # pending rides their status (uid cookie scopes it, same
+        # as every route); _get_pending enforces the 10-min expiry.
+        out["pending_action"] = None
+        if uid:
+            pend = _get_pending(uid)
+            if pend and pend.get("kind") == "action":
+                expires = float(pend.get("created", 0)) + _PENDING_TTL
+                site = pend.get("disp_site") or ""
+                if not site and pend.get("page_url"):
+                    try:
+                        site = urllib.parse.urlparse(
+                            pend["page_url"]).hostname or ""
+                    except Exception:
+                        site = ""
+                out["pending_action"] = {
+                    "desc": pend.get("desc", ""),
+                    "kind": pend.get("disp_kind")
+                            or pend.get("kind", ""),
+                    "site": site,
+                    "text": pend.get("post_text")
+                            or pend.get("disp_text") or "",
+                    "expires_at": int(expires),
+                    "minutes_left": max(
+                        0, int(math.ceil((expires - time.time())
+                                         / 60.0))),
+                }
         return out
+
+    @app.get("/browser/screenshot")
+    async def browser_screenshot(request: Request):
+        """The panel's still view: one frame of the visitor's own
+        live session. Owner-only by uid cookie; refused while the
+        visitor drives (OG runs zero actions then, reads included)
+        and when dark / sessionless."""
+        if not enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _route_uid(request)
+        rec = _get_session(uid) if uid else None
+        if not rec:
+            return JSONResponse({"error": "no session"},
+                                status_code=404)
+        if rec.get("control") == "visitor":
+            return JSONResponse(
+                {"error": "you are driving — still view is off"},
+                status_code=409)
+        if _session_minutes_left(rec) <= 0:
+            _end_session(uid, "budget spent")
+            return JSONResponse({"error": "session ended"},
+                                status_code=404)
+        try:
+            data = await asyncio.to_thread(_capture_shot, rec)
+        except _DriveError as e:
+            return JSONResponse({"error": f"screenshot failed: {e}"},
+                                status_code=502)
+        return Response(content=data, media_type="image/jpeg",
+                        headers={"Cache-Control": "no-store"})
+
+    @app.post("/browser/approve")
+    async def browser_approve(request: Request):
+        """The approval CARD's Approve door. Identical server rules
+        to the chat YES (same _do_approve: re-verify, run exactly
+        once); whichever door resolves first wins — the pending is
+        consumed atomically, so the other door finds nothing."""
+        if not enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _route_uid(request)
+        pend = _get_pending(uid) if uid else None
+        if not pend or pend.get("kind") != "action":
+            return {"ok": False,
+                    "error": "no pending action — it expired or "
+                             "was already resolved"}
+        blocks = _do_approve(uid)
+        return {"ok": True,
+                "title": blocks[0].get("title", "") if blocks else "",
+                "body": "\n".join(b.get("body", "") for b in blocks)}
+
+    @app.post("/browser/decline")
+    async def browser_decline(request: Request):
+        """The card's Decline door: cancels the parked action with
+        zero actions taken, same as a chat NO."""
+        if not enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _route_uid(request)
+        pend = _get_pending(uid) if uid else None
+        if not pend or pend.get("kind") != "action":
+            return {"ok": False,
+                    "error": "no pending action — it expired or "
+                             "was already resolved"}
+        blocks = _do_decline(uid)
+        return {"ok": True,
+                "title": blocks[0].get("title", "") if blocks else "",
+                "body": "\n".join(b.get("body", "") for b in blocks)}
 
     @app.post("/browser/control")
     async def browser_control(request: Request):
