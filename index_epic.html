@@ -105,6 +105,7 @@
             
             <div id="ogTopAvatarBar" class="og-top-avatar-bar">
                 <span class="og-top-ava"><img class="og-avatar og-top-avatar-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogTopAvatarVideo" muted loop playsinline preload="none" hidden></video></span>
+                <span class="og-top-name">OG</span>
             </div>
             <div id="emptyState" class="og-empty" hidden>
                 <span class="og-ava-wrap"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
@@ -2001,10 +2002,11 @@ obs.observe(area, { childList: true, subtree: true });
 setTimeout(function () { obs.disconnect(); }, 20000);
 }).catch(function () {});
 })();</script>
-    <style id="og-topavatar-css">.og-top-avatar-bar { flex: 0 0 auto; display: flex; align-items: center; padding: 8px 12px 4px; }
-.og-top-ava { position: relative; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; border: 2px solid #ffc107; box-shadow: 0 0 10px rgba(255,193,7,.35); flex: 0 0 auto; line-height: 0; background: #111; }
+    <style id="og-topavatar-css">.og-top-avatar-bar { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; padding: 8px 12px 4px; }
+.og-top-ava { position: relative; width: 84px; height: 84px; border-radius: 50%; overflow: hidden; border: 2px solid #ffc107; box-shadow: 0 0 14px rgba(255,193,7,.35); flex: 0 0 auto; line-height: 0; background: #111; }
 .og-top-ava img.og-avatar { width: 100%; height: 100%; border: 0; box-shadow: none; border-radius: 50%; object-fit: cover; display: block; }
 .og-top-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.og-top-name { margin-top: 4px; font-size: .95rem; font-weight: 700; letter-spacing: .4px; color: #f5f5f5; line-height: 1.15; }
 @media (prefers-reduced-motion: reduce) { .og-top-ava video { display: none !important; } }</style>
     <script id="og-avatar-js">(function () {
 var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
