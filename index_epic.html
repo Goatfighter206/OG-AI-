@@ -125,12 +125,24 @@
     </div>
 
     
+    <div id="profileScrim" class="og-profile-scrim" hidden></div>
+    <div id="ogProfile" class="og-profile" hidden role="dialog" aria-modal="true" aria-label="OG profile">
+        <div class="og-profile-top">
+            <button id="profileCloseBtn" class="og-circle-btn" type="button" aria-label="Close profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+            <button id="profileShareBtn" class="og-circle-btn" type="button" aria-label="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+        </div>
+        <span class="og-profile-ava"><img class="og-avatar og-profile-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogProfileVideo" muted loop playsinline preload="none" hidden></video></span>
+        <div class="og-profile-name" id="ogProfileName">OG</div>
+        <span class="og-task-pill" id="ogTaskPillProfile">Online &amp; Ready</span>
+    </div>
+
     <div class="chat-wrapper">
         <div class="chat-container">
             
             <div id="ogTopAvatarBar" class="og-top-avatar-bar">
                 <span class="og-top-ava"><img class="og-avatar og-top-avatar-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogTopAvatarVideo" muted loop playsinline preload="none" hidden></video></span>
                 <span class="og-top-name" id="ogTopName">OG</span>
+                <span class="og-task-pill" id="ogTaskPillTop">Online &amp; Ready</span>
             </div>
             <div id="emptyState" class="og-empty" hidden>
                 <span class="og-ava-wrap"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
@@ -2069,9 +2081,11 @@ var vids = [];
 var big = document.getElementById('ogAvatarVideo');
 var small = document.querySelector('.og-menu-ava video');
 var topVid = document.getElementById('ogTopAvatarVideo');
+var profVid = document.getElementById('ogProfileVideo');
 if (big) vids.push(big);
 if (small) vids.push(small);
 if (topVid) vids.push(topVid);
+if (profVid) vids.push(profVid);
 var SRC = { idle: '/avatar/idle.mp4', working: '/avatar/working.mp4', making: '/avatar/hood.mp4', milestone: '/avatar/drinking.mp4', connecting: '/avatar/idle.mp4' };
 var dead = false, cur = '', holdTimer = null;
 function showStills(show) {
@@ -2128,6 +2142,86 @@ else if (t.indexOf('unlimited') !== -1) fill.style.width = '100%';
 }
 if (ts && window.MutationObserver) new MutationObserver(syncBar).observe(ts, { childList: true, characterData: true, subtree: true });
 syncBar();
+})();</script>
+    <style id="og-profile-css">.og-task-pill { margin-top: 6px; padding: 3px 11px; border-radius: 999px; background: #1b1b1b; border: 1px solid rgba(255,193,7,.45); color: #ffd54f; font-size: .78rem; font-weight: 600; letter-spacing: .2px; line-height: 1.35; white-space: nowrap; }
+.og-profile-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 8000; }
+.og-profile { position: fixed; inset: 0; z-index: 8001; background: radial-gradient(120% 90% at 50% 0%, #171307 0%, #0b0b0b 55%); display: flex; flex-direction: column; align-items: center; padding: calc(14px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); overflow-y: auto; }
+.og-profile[hidden] { display: none !important; }
+.og-profile-top { width: 100%; display: flex; justify-content: space-between; align-items: center; flex: 0 0 auto; }
+.og-profile-ava { position: relative; width: 140px; height: 140px; border-radius: 50%; overflow: hidden; border: 3px solid #ffc107; box-shadow: 0 0 22px rgba(255,193,7,.4); margin-top: 6vh; flex: 0 0 auto; line-height: 0; background: #111; }
+.og-profile-ava img.og-avatar { width: 100%; height: 100%; border: 0; box-shadow: none; border-radius: 50%; object-fit: cover; display: block; }
+.og-profile-ava video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.og-profile-name { margin-top: 16px; font-size: 2rem; font-weight: 800; letter-spacing: .5px; color: #f5f5f5; line-height: 1.1; }
+.og-profile .og-task-pill { margin-top: 10px; font-size: .85rem; padding: 4px 13px; }
+.og-top-ava { cursor: pointer; }
+.og-ava-wrap { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .og-profile-ava video { display: none !important; } }</style>
+    <script id="og-profile-js">(function () {
+var $ = function (id) { return document.getElementById(id); };
+var scrim = $('profileScrim'), panel = $('ogProfile');
+function openProfile() { if (scrim) scrim.hidden = false; if (panel) panel.hidden = false; }
+function closeProfile() { if (scrim) scrim.hidden = true; if (panel) panel.hidden = true; }
+window.ogOpenProfile = openProfile;
+var topAva = document.querySelector('.og-top-ava');
+if (topAva) topAva.addEventListener('click', openProfile);
+var wrap = document.querySelector('#emptyState .og-ava-wrap');
+if (wrap) wrap.addEventListener('click', openProfile);
+var closeBtn = $('profileCloseBtn');
+if (closeBtn) closeBtn.addEventListener('click', closeProfile);
+if (scrim) scrim.addEventListener('click', closeProfile);
+var shareBtn = $('profileShareBtn');
+if (shareBtn) shareBtn.addEventListener('click', function () { closeProfile(); if (typeof delegate === 'function') delegate('shareBtn'); });
+var pillTop = $('ogTaskPillTop'), pillProf = $('ogTaskPillProfile');
+var chatBusy = false, browsing = false, browseHost = '', videoBusy = false, songBusy = false, lastText = '';
+function compute() {
+if (videoBusy) return 'Making your video';
+if (songBusy) return 'Making your song';
+if (browsing) return browseHost ? 'Browsing ' + browseHost : 'Browsing';
+if (chatBusy) return 'Thinking…';
+return 'Online & Ready';
+}
+function paint() {
+var t = compute();
+if (t === lastText) return;
+lastText = t;
+if (pillTop) pillTop.textContent = t;
+if (pillProf) pillProf.textContent = t;
+}
+if (typeof setMood === 'function') {
+var prevMood = setMood;
+setMood = function (s) {
+prevMood(s);
+if (s === 'thinking' || s === 'talking') { if (!chatBusy) { chatBusy = true; paint(); } }
+else if (s === '' || s === 'listening') { if (chatBusy) { chatBusy = false; paint(); } }
+};
+}
+function onStatus(kind, st) {
+if (!st) return;
+if (kind === 'browser') {
+browsing = !!(st.enabled && st.active);
+browseHost = '';
+if (browsing && st.page_url) { try { browseHost = new URL(st.page_url).hostname || ''; } catch (e) { } }
+}
+else if (kind === 'video') videoBusy = !!(st.enabled && st.job && ['queued', 'drawing', 'voicing', 'stitching'].indexOf(st.job.state) !== -1);
+else if (kind === 'song') songBusy = !!(st.enabled && st.job && st.job.state === 'generating');
+paint();
+}
+if (window.fetch) {
+var origFetch = window.fetch;
+window.fetch = function (input) {
+var p = origFetch.apply(this, arguments);
+try {
+var url = typeof input === 'string' ? input : (input && input.url) || '';
+var m = url.match(/\/(browser|video|song)\/status/);
+if (m) { var kind = m[1]; p.then(function (r) { try { r.clone().json().then(function (st) { onStatus(kind, st); }).catch(function () { }); } catch (e) { } }).catch(function () { }); }
+} catch (e) { }
+return p;
+};
+['browser', 'video', 'song'].forEach(function (kind) {
+fetch(API_URL + '/' + kind + '/status').then(function (r) { return r.json(); }).then(function (st) { onStatus(kind, st); }).catch(function () { });
+});
+}
+paint();
 })();</script>
 </body>
 </html>
