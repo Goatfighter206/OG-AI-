@@ -470,6 +470,7 @@
             cta.style.cssText = 'text-align: center; padding: 8px 0 2px;';
             cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — unlimited messages</a>';
             document.getElementById('messagesArea').appendChild(cta);
+            ogFollowBottom(false);
         }
 
         // Send a message: token streaming first (OG's words appear the moment
@@ -559,7 +560,7 @@
                     <div class="message-time">${new Date().toLocaleTimeString()}</div>
                 </div>`;
             messagesArea.appendChild(bubble);
-            messagesArea.scrollTop = messagesArea.scrollHeight;
+            ogFollowBottom(false);
             const textEl = bubble.querySelector('.message-text');
             setMood('talking');
             updateStatus('OG is typing...');
@@ -592,7 +593,7 @@
                         if (eventName === 'chunk') {
                             full += payload.text || '';
                             textEl.textContent = full;
-                            messagesArea.scrollTop = messagesArea.scrollHeight;
+                            ogFollowSoon(false);
                         } else if (eventName === 'done') {
                             doneData = payload;
                             reading = false;
@@ -783,8 +784,7 @@
             pre._typer = setInterval(() => {
                 pos = Math.min(full.length, pos + 9);
                 codeEl.textContent = full.slice(0, pos);
-                const area = document.getElementById('messagesArea');
-                area.scrollTop = area.scrollHeight;
+                ogFollowSoon(false);
                 if (pos >= full.length) finishType(pre);
             }, 12);
         }
@@ -794,6 +794,41 @@
             pre.querySelector('code').textContent = decodeURIComponent(pre.dataset.code);
             pre.classList.remove('typing');
         }
+
+        // --- Round 26 P0: auto-follow the newest message ----------------
+        // The view follows new content ONLY while the visitor is near
+        // the bottom (within ~140px) or the message is their own send:
+        // a visitor who scrolled up to re-read is never yanked down,
+        // and following resumes on its own once they're back near the
+        // bottom. ogFollowWanted is tracked from the area's own scroll
+        // events, so programmatic follow-scrolls (which land at the
+        // bottom) keep it true. Every render path routes through
+        // ogFollowBottom / ogFollowSoon below.
+        var ogFollowWanted = true;
+        var ogFollowQueued = false;
+        function ogNearBottom(area) {
+            return area.scrollHeight - area.scrollTop - area.clientHeight < 140;
+        }
+        function ogFollowBottom(force) {
+            var area = document.getElementById('messagesArea');
+            if (!area) return;
+            if (force || ogFollowWanted) area.scrollTop = area.scrollHeight;
+        }
+        function ogFollowSoon(force) {
+            // Streaming chunks: at most one follow per animation frame.
+            if (!(force || ogFollowWanted) || ogFollowQueued) return;
+            ogFollowQueued = true;
+            requestAnimationFrame(function () {
+                ogFollowQueued = false;
+                ogFollowBottom(force);
+            });
+        }
+        (function () {
+            var area = document.getElementById('messagesArea');
+            if (area) area.addEventListener('scroll', function () {
+                ogFollowWanted = ogNearBottom(area);
+            }, { passive: true });
+        })();
 
         function addMessage(role, content, timestamp = null, instant = false) {
             const messagesArea = document.getElementById('messagesArea');
@@ -811,7 +846,7 @@
             `;
 
             messagesArea.appendChild(messageDiv);
-            messagesArea.scrollTop = messagesArea.scrollHeight;
+            ogFollowBottom(role === 'user');
             if (role === 'ai') {
                 const spkBtn = document.createElement('button');
                 spkBtn.type = 'button';
@@ -1353,7 +1388,7 @@
                     '<div class="message-content"><div class="message-text"><span class="og-drawing-pulse">🎨 Drawing that up for you…</span></div>' +
                     '<div class="message-time">' + new Date().toLocaleTimeString() + '</div></div>';
                 area.appendChild(bubble);
-                area.scrollTop = area.scrollHeight;
+                ogFollowBottom(false);
 
                 try {
                     var r = await fetch(API_URL + '/image', {
@@ -1395,6 +1430,9 @@
                 img.className = 'og-gen-image';
                 img.alt = 'OG generated image: ' + (data.prompt || '');
                 img.src = data.image;
+                // The image's height lands after it loads — re-follow
+                // then, or the newest content sits below the fold.
+                img.addEventListener('load', function () { ogFollowBottom(false); });
                 textEl.appendChild(img);
                 var a = document.createElement('a');
                 a.className = 'og-img-download';
@@ -1403,7 +1441,7 @@
                 a.textContent = '⬇ Download image';
                 textEl.appendChild(a);
                 area.appendChild(div);
-                area.scrollTop = area.scrollHeight;
+                ogFollowBottom(false);
                 if (typeof setMood === 'function') {
                     setMood('nod');
                     setTimeout(function () { setMood(''); }, 620);
@@ -1674,7 +1712,7 @@
                 div.className = 'og-loc-note';
                 div.textContent = text;
                 area.appendChild(div);
-                area.scrollTop = area.scrollHeight;
+                ogFollowBottom(false);
             }
 
             // The one-time prompt, rendered in the thread right
@@ -1692,7 +1730,7 @@
                     '<div class="og-loc-btns"><button type="button" class="og-loc-yes">Use my location</button>' +
                     '<button type="button" class="og-loc-no">No thanks</button></div>';
                 area.appendChild(wrap);
-                area.scrollTop = area.scrollHeight;
+                ogFollowBottom(false);
                 wrap.querySelector('.og-loc-no').addEventListener('click', function () { wrap.remove(); });
                 wrap.querySelector('.og-loc-yes').addEventListener('click', async function () {
                     var yes = wrap.querySelector('.og-loc-yes');
@@ -1765,6 +1803,19 @@
             .og-browser-panel { margin: 0 8px 8px; }
             #browserFrame { height: 300px; }
         }
+    </style>
+    <style id="og-autoscroll-css">
+        /* Round 26 P0 (Brent 2026-10-09): the chat never auto-scrolled.
+           styles.css gives body only min-height:100dvh, so the flex
+           column GREW with the conversation and the DOCUMENT scrolled
+           — #messagesArea never overflowed, and every
+           area.scrollTop = area.scrollHeight in the render code was a
+           no-op. Pin the shell to the viewport height so the messages
+           area's overflow-y:auto actually engages; header, browser
+           panel and composer are flex siblings and stay put. */
+        html, body { height: 100%; }
+        body { height: 100dvh; overflow: hidden; }
+        #messagesArea { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
     </style>
     <script id="og-browser-js">
         // Round 23: OG's own browser (ships dark). The menu item and
