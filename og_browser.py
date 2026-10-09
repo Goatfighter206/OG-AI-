@@ -987,7 +987,11 @@ _DECLINE_RE = re.compile(
     r"^\W*(no|nope|nah|cancel|scrap|discard|never ?mind|stop"
     r"|don'?t|do not)\b", re.I)
 _URL_TOKEN_RE = re.compile(
-    r"(?:https?://)?(?:www\.)?[a-z0-9][a-z0-9-]*\.[a-z]{2,}"
+    # Round 26 fix: the host part must allow MULTIPLE labels — the
+    # old single-dot pattern truncated "en.wikipedia.org/wiki/..."
+    # to "en.wikipedia", a bogus host the gate then refused, so
+    # full-URL asks with subdomains never reached the browser.
+    r"(?:https?://)?(?:[a-z0-9][a-z0-9-]*\.)+[a-z]{2,}"
     r"(?:/[^\s<>\"']*)?", re.I)
 # Round 26: the full natural start-verb set (see _is_start_request;
 # supersedes Round 25's _START_VERB_RE).
