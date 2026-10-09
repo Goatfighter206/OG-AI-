@@ -124,24 +124,14 @@
 
             
             <div id="browserPanel" class="og-browser-panel" hidden>
-                <div class="og-browser-bar">
-                    <span id="browserPanelTitle">🌐 OG is browsing</span>
-                    <span id="browserPanelMeta" class="og-browser-meta"></span>
-                    <span class="og-browser-btns">
-                        <a id="browserFullBtn" href="#" target="_blank" rel="noopener" hidden title="Full view" aria-label="Full view">⛶ <span class="og-btn-label">Full view</span></a>
-                        <button id="browserStillBtn" type="button" title="Still / live view" aria-label="Still or live view">🖼 <span class="og-btn-label">Still view</span></button>
-                        <button id="browserTakeBtn" type="button" title="Take control" aria-label="Take control">🕹️ <span class="og-btn-label">Take control</span></button>
-                        <button id="browserHandBtn" type="button" hidden title="Hand back" aria-label="Hand back">🤝 <span class="og-btn-label">Hand back</span></button>
-                        <button id="browserEndBtn" type="button" title="End" aria-label="End">⏹ <span class="og-btn-label">End</span></button>
-                        <button id="browserCloseBtn" type="button" aria-label="End session and close panel" title="End session and close panel">✕</button>
-                    </span>
-                </div>
+                <button id="browserCloseBtn" class="og-browser-x" type="button" aria-label="End session and close panel" title="End session and close panel">✕</button>
                 <div class="og-browser-view" id="browserView">
                     <div class="og-browser-face" id="browserViewFace">🖼 Getting the picture…</div>
                     <iframe id="browserFrame" title="OG browser — live view"></iframe>
                     <img id="browserShot" alt="OG browser — still view" hidden>
                 </div>
                 <p id="browserShotNote" class="og-browser-note" hidden></p>
+                <button id="browserOpenBtn" class="og-browser-open" type="button">Open browser</button>
             </div>
 
             
@@ -1534,19 +1524,12 @@ offerLocationPrompt(msg);
 return r2;
 };
 })();</script>
-    <style id="og-browser-css">.og-browser-panel { flex: 0 0 auto; width: 54%; min-width: 205px; max-width: 320px; margin: 6px auto 10px; border: 1px solid rgba(255,193,7,.5); border-radius: 16px; overflow: hidden; background: #101010; box-shadow: 0 12px 32px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.45); }
-.og-browser-bar { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; padding: 8px 12px; background: rgba(255,193,7,.08); color: #f2f2f2; font-size: .9rem; }
-.og-browser-bar { border-bottom: 1px solid rgba(255,193,7,.28); }
-#browserPanelTitle { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.og-browser-meta { color: #bbb; font-size: .8rem; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.og-browser-btns { margin-left: auto; display: flex; gap: 6px; flex-wrap: nowrap; flex: 0 0 auto; }
-.og-browser-btns button, .og-browser-btns a { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 4px 8px; font-size: .75rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; font-family: inherit; white-space: nowrap; flex: 0 0 auto; }
-#browserCloseBtn { font-weight: 700; }
-.og-browser-btns .og-btn-label { display: none; }
-.og-browser-btns [hidden] { display: none !important; }
-@media (max-width: 560px) { #browserFullBtn .og-btn-label, #browserStillBtn .og-btn-label, #browserTakeBtn .og-btn-label, #browserHandBtn .og-btn-label, #browserEndBtn .og-btn-label { display: none; } .og-browser-bar { gap: 6px; padding: 6px 8px; flex-wrap: wrap; } .og-browser-btns { gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; } .og-browser-btns button, .og-browser-btns a { padding: 4px 8px; font-size: .75rem; } }
-.og-browser-btns button:hover, .og-browser-btns a:hover { background: rgba(255,193,7,.18); }
-.og-browser-btns button:disabled { opacity: .45; cursor: default; }
+    <style id="og-browser-css">.og-browser-panel { flex: 0 0 auto; position: relative; width: 54%; min-width: 205px; max-width: 320px; margin: 6px 12px 10px auto; border: 1px solid rgba(255,193,7,.5); border-radius: 16px; overflow: hidden; background: #101010; box-shadow: 0 12px 32px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.45); }
+.og-browser-x { position: absolute; top: 6px; right: 6px; z-index: 6; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 1px solid rgba(255,193,7,.65); background: rgba(8,8,8,.8); color: #ffc107; font-size: .95rem; font-weight: 700; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; }
+.og-browser-x:hover { background: rgba(255,193,7,.28); }
+.og-browser-open { display: block; width: calc(100% - 16px); margin: 8px; padding: 9px 12px; border-radius: 999px; border: 1px solid rgba(0,0,0,.15); background: #f4f1ea; color: #141414; font-size: .9rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+.og-browser-open:hover { background: #ffffff; }
+.og-browser-open.og-open-driving { background: #ffc107; border-color: rgba(255,193,7,.8); }
 .og-browser-view { position: relative; width: 100%; aspect-ratio: 16 / 10; background: radial-gradient(120% 130% at 50% 0%, #1d1d1d 0%, #121212 55%, #0b0b0b 100%); }
 .og-browser-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 18px; color: #d9ba55; font-size: .88rem; letter-spacing: .02em; pointer-events: none; }
 .og-browser-view.og-view-live .og-browser-face { display: none; }
@@ -1584,11 +1567,8 @@ body { height: 100dvh; overflow: hidden; }
     <script id="og-browser-js">(function () {
 function $(id) { return document.getElementById(id); }
 var menuBtn = $('menuBrowserBtn'), panel = $('browserPanel'),
-frame = $('browserFrame'), viewEl = $('browserView'), title = $('browserPanelTitle'),
-meta = $('browserPanelMeta'), takeBtn = $('browserTakeBtn'),
-handBtn = $('browserHandBtn'), endBtn = $('browserEndBtn'),
-closeBtn = $('browserCloseBtn'),
-fullBtn = $('browserFullBtn'), stillBtn = $('browserStillBtn'),
+frame = $('browserFrame'), viewEl = $('browserView'),
+closeBtn = $('browserCloseBtn'), openBtn = $('browserOpenBtn'),
 shot = $('browserShot'), shotNote = $('browserShotNote'),
 card = $('approveCard'), cardDesc = $('approveDesc'),
 cardText = $('approveText'), cardExp = $('approveExp'),
@@ -1596,6 +1576,7 @@ yesBtn = $('approveYesBtn'), noBtn = $('approveNoBtn'),
 cardOutcome = $('approveOutcome');
 if (!menuBtn || !panel || !frame) return;
 var lastSrc = '', active = false, wasActive = false;
+var driving = false, viewerUrl = '';
 var viewMode = 'live', frameLoaded = false, srcSetAt = 0,
 shotTimer = null, outcomeUntil = 0;
 function sayAi(text) { if (text && typeof addMessage === 'function') addMessage('ai', text); }
@@ -1615,29 +1596,26 @@ if (text) shotNote.textContent = text;
 function loadShot() {
 if (!shot) return;
 viewLive(false);
-shot.onerror = function () { note("Still view couldn't load a picture right now — ⛶ Full view is your reliable window."); };
-shot.onload = function () { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. You can\'t click in this view; use 📺 Live view or ⛶ Full view to drive.' : ''); };
+shot.onerror = function () { note("Still view couldn't load a picture right now — the Open browser button below is your reliable window."); };
+shot.onload = function () { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. You can\'t click in this view; tap Open browser below to drive.' : ''); };
 shot.src = API_URL + '/browser/screenshot?ts=' + Date.now();
 }
 function setMode(mode, auto) {
 viewMode = mode;
-if (!shot || !stillBtn) return;
+if (!shot) return;
 if (mode === 'still') {
 frame.hidden = true; shot.hidden = false;
-stillBtn.innerHTML = '📺 <span class="og-btn-label">Live view</span>';
 loadShot();
 if (shotTimer) clearInterval(shotTimer);
 shotTimer = setInterval(function () { if (viewMode === 'still' && active) loadShot(); }, 5000);
-if (auto) note('The live player didn\'t load in this browser, so here\'s the still view instead — a fresh picture every few seconds. ⛶ Full view opens the live session in a new tab.');
+if (auto) note('The live player didn\'t load in this browser, so here\'s the still view instead — a fresh picture every few seconds. Tap Open browser below to open the live session full-size.');
 } else {
 shot.hidden = true; frame.hidden = false;
 viewLive(frameLoaded);
-stillBtn.innerHTML = '🖼 <span class="og-btn-label">Still view</span>';
 if (shotTimer) { clearInterval(shotTimer); shotTimer = null; }
 note('');
 }
 }
-if (stillBtn) stillBtn.addEventListener('click', function () { setMode(viewMode === 'still' ? 'live' : 'still', false); });
 function showOutcome(text) {
 if (!card || !cardOutcome) return;
 card.hidden = false;
@@ -1677,32 +1655,31 @@ cardExp.textContent = '⏳ Expires in ~' + pa.minutes_left + ' min. You can also
 }
 function refresh() {
 fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
-if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; driving = false; viewerUrl = ''; if (openBtn) { openBtn.textContent = 'Open browser'; openBtn.classList.remove('og-open-driving'); } if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
 menuBtn.hidden = false;
 active = !!st.active;
 renderPending(st.pending_action || null);
-if (!active) { panel.hidden = true; wasActive = false; if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
+if (!active) { panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; if (openBtn) { openBtn.textContent = 'Open browser'; openBtn.classList.remove('og-open-driving'); } if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
 panel.hidden = false;
 if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
 wasActive = true;
 if (window.ogSetAvatar) ogSetAvatar('working', 4000);
-var driving = st.control === 'visitor';
-title.textContent = driving ? "🌐 You're driving" : '🌐 OG is browsing';
-meta.textContent = '⏱ ~' + st.minutes_left + ' min left' + (st.page_title ? ' · ' + st.page_title : '');
-takeBtn.hidden = driving; handBtn.hidden = !driving;
-if (stillBtn) { stillBtn.disabled = driving; stillBtn.title = driving ? 'Still view pauses while you drive — the live view is your window' : ''; }
+driving = st.control === 'visitor';
+if (openBtn) { openBtn.textContent = driving ? '🤝 Hand back' : 'Open browser'; openBtn.classList.toggle('og-open-driving', driving); }
 if (driving && viewMode === 'still') setMode('live', false);
 if (st.viewer_url) {
-if (fullBtn) { fullBtn.hidden = false; fullBtn.href = st.viewer_url; }
+viewerUrl = st.viewer_url;
 if (st.viewer_url !== lastSrc) { frame.src = st.viewer_url; lastSrc = st.viewer_url; frameLoaded = false; viewLive(false); srcSetAt = Date.now(); if (viewMode === 'still') loadShot(); }
 else if (viewMode === 'live' && !frameLoaded && srcSetAt && Date.now() - srcSetAt > 9000) setMode('still', true);
 }
 }).catch(function () {});
 }
-takeBtn.addEventListener('click', function () { post('/browser/control', 'visitor'); });
-handBtn.addEventListener('click', function () { post('/browser/control', 'og'); });
+if (openBtn) openBtn.addEventListener('click', function () {
+if (driving) { post('/browser/control', 'og'); return; }
+if (viewerUrl) window.open(viewerUrl, '_blank', 'noopener');
+post('/browser/control', 'visitor');
+});
 function endSession() { post('/browser/end'); panel.hidden = true; sayAi('⏹ Browser session ended from the panel.'); }
-endBtn.addEventListener('click', endSession);
 if (closeBtn) closeBtn.addEventListener('click', endSession);
 menuBtn.addEventListener('click', function () {
 var close = $('menuClose'); if (close) close.click();
