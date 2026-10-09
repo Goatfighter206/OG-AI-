@@ -1759,6 +1759,12 @@
         .og-browser-btns button { border: 1px solid rgba(255,193,7,.5); background: #1b1b1b; color: #ffc107; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; }
         .og-browser-btns button:hover { background: rgba(255,193,7,.18); }
         #browserFrame { width: 100%; height: 420px; border: 0; display: block; background: #000; }
+        /* Round 26: phone width — the 420px desktop frame buried the
+           live view under the fold; shrink it and widen the panel. */
+        @media (max-width: 768px) {
+            .og-browser-panel { margin: 0 8px 8px; }
+            #browserFrame { height: 300px; }
+        }
     </style>
     <script id="og-browser-js">
         // Round 23: OG's own browser (ships dark). The menu item and
@@ -1781,13 +1787,19 @@
                 var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mode ? { mode: mode } : {}) };
                 return fetch(API_URL + path, opts).then(function () { refresh(); }).catch(function () {});
             }
+            var wasActive = false;
             function refresh() {
                 fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
-                    if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+                    if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
                     menuBtn.hidden = false;
                     active = !!st.active;
-                    if (!active) { panel.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+                    if (!active) { panel.hidden = true; wasActive = false; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
                     panel.hidden = false;
+                    // Round 26: a session that starts from chat must be
+                    // SEEN — scroll the panel into view once, on the
+                    // inactive->active edge only (not every poll).
+                    if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
+                    wasActive = true;
                     var driving = st.control === 'visitor';
                     title.textContent = driving ? "🌐 You're driving" : '🌐 OG is browsing';
                     meta.textContent = '⏱ ~' + st.minutes_left + ' min left' + (st.page_title ? ' · ' + st.page_title : '');
