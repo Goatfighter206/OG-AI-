@@ -23,6 +23,9 @@ psycopg[binary]>=3.1
 python-multipart>=0.0.9
 pypdf>=4.0
 
+# Story videos (Round 28): static ffmpeg binary for server-side assembly
+imageio-ffmpeg>=0.5.1
+
 # QR codes (Round 17): pure-Python QR generation — no external QR API,
 # payloads never leave the server
 segno>=1.5
