@@ -69,6 +69,7 @@ _DEFAULT_CAPS = {
     "tts":     {"free": 60,   "standard": 60,  "pro": 300, "blue": 600,  "blackout": 2000},
     "transcribe": {"free": 3, "standard": 15,  "pro": 50,  "blue": 150,  "blackout": 500},
     "unity":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    "video":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "shortlink": {"free": 5,  "standard": 25,  "pro": 50,  "blue": 100,  "blackout": 500},
     "calorie": {"free": 10,   "standard": 50,  "pro": 100, "blue": 200,  "blackout": 500},
     "watch":   {"free": 3,    "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
