@@ -28,7 +28,10 @@ per day), watch (Round 18 ACTIVE price watches, a count not a
 daily meter), order (Round 19 approved order handoffs per day),
 trade (Round 20 approved trades per day — an execution on the
 visitor's connected Coinbase or a trade-sheet handoff; drafts and
-previews are free). Round 20 also caps the SIZE of one trade:
+previews are free), browser_min (Round 23 OG-browser minutes per
+day: Blue 60, Blackout 600, every other tier 0 — plus the module's
+own once-ever 10-minute free taste). Round 20 also caps the SIZE
+of one trade:
 TRADE_CEILINGS below (env OG_TRADE_CEIL_<TIER> overrides).
 Chat tokens: free is metered by
 OG_FREE_DAILY_TOKENS in app.py; every paid tier is unlimited.
@@ -71,6 +74,7 @@ _DEFAULT_CAPS = {
     "watch":   {"free": 3,    "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
     "order":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "trade":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    "browser_min": {"free": 0, "standard": 0,  "pro": 0,   "blue": 60,   "blackout": 600},
     "upload_mb": {"free": 8,  "standard": 8,   "pro": 25,  "blue": 25,   "blackout": 25},
 }
 
@@ -235,6 +239,7 @@ _FEATURES = {
         "300 images a day",
         "100 uploads a day",
         "50 GB file storage",
+        "OG's own web browser — 60 minutes a day, watch him drive it live",
         "Monitoring pack included when it ships (bank, email, BTC & stock alerts)",
         "Priority speed — your chats jump the line",
     ],
@@ -243,6 +248,7 @@ _FEATURES = {
         "300 uploads a day",
         "100 GB file storage",
         "1,000 lookups a day",
+        "OG's own web browser — 600 minutes a day, ten full hours",
         "Online ordering + trading-on-approval included when they ship",
         "Every future tool — day one, no upsells ever",
     ],
