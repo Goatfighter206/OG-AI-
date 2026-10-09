@@ -127,7 +127,7 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
     """Estimate a model call's TOTAL tokens (prompt + completion)."""
     total = _count_tokens(getattr(agent_instance, "system_prompt", "") or "")
     history = getattr(agent_instance, "conversation_history", []) or []
-    window = [m for m in history[-10:]
+    window = [m for m in history[-30:]
               if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
     reply_counted = False
     for m in window:
@@ -310,6 +310,7 @@ import og_trading as _og_trading
 import og_storage as _og_storage
 # OG browser (Round 23, dark).
 import og_browser as _og_browser
+import og_register as _og_register
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
 
@@ -445,10 +446,7 @@ def _drain_lookup_tokens() -> int:
     return tokens
 
 def _openai_web_lookup(query: str):
-    """One grounded lookup via OpenAI's Responses API web_search tool.
-
-    Returns (answer_text, sources, tokens_used) — sources a list of
-    {"title", "url"} — or None when the route is unavailable or fails."""
+    """One grounded lookup via OpenAI's Responses API web_search tool. Returns (answer_text, sources, tokens_used) or None."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return None
@@ -525,10 +523,7 @@ def _tavily_web_lookup(query: str):
     return answer, sources, 0
 
 def _og_web_search(agent_instance, query: str, num_results: int = 5):
-    """The app-layer search behind the agent's web_search hook:
-    OpenAI lookup first, Tavily second, the agent's built-in
-    DuckDuckGo search last. Returns the agent's own List[Dict]
-    shape ({title, body, href})."""
+    """App-layer search behind web_search: OpenAI lookup first, Tavily second, built-in DuckDuckGo last. Returns List[Dict] ({title, body, href})."""
     uid = _current_uid.get("uid", "")
     if uid and not _consume_lookup(uid):
         logger.info("Web lookup skipped: visitor at daily lookup cap")
@@ -566,9 +561,7 @@ def _og_web_search(agent_instance, query: str, num_results: int = 5):
     return []
 
 def _install_lookup_tools(agent_instance):
-    """Wrap the agent instance's detect_intent + web_search — app layer
-    only — so lookup triggers cover current-events questions and search
-    runs on the OpenAI route."""
+    """Wrap the agent's detect_intent + web_search (app layer only) so lookup triggers cover current-events questions and search runs on the OpenAI route."""
     if getattr(agent_instance, "_og_lookup_installed", False):
         return
     original_detect = getattr(agent_instance, "detect_intent", None)
@@ -694,10 +687,7 @@ def _extract_place(query: str):
     return None
 
 def _geocode(place: str):
-    """Resolve a place name to (lat, lon, name, region) or None.
-    Open-Meteo's geocoder first, Nominatim (OpenStreetMap) as fallback —
-    the two live on different hosts, so one being unreachable from the
-    server doesn't kill the weather tool."""
+    """Place name -> (lat, lon, name, region) or None. Open-Meteo geocoder first, Nominatim fallback (different hosts, so one outage doesn't kill weather)."""
     import urllib.parse
     geo = _fetch_json("https://geocoding-api.open-meteo.com/v1/search?"
                       + urllib.parse.urlencode(
@@ -726,9 +716,7 @@ def _geocode(place: str):
     return None
 
 def _weather_wttr(place: str, key: str):
-    """Weather fallback on wttr.in (it resolves place names itself, on
-    a different host than the Open-Meteo chain). Same return shape as
-    _tool_weather, or None."""
+    """Weather fallback on wttr.in (resolves place names itself, different host than the Open-Meteo chain). Same return shape as _tool_weather, or None."""
     import urllib.parse
     data = _fetch_json("https://wttr.in/" + urllib.parse.quote(place)
                        + "?format=j1")
@@ -853,9 +841,7 @@ _SPORTS_CUE_RE = re.compile(
     r"yesterday|season|next|last|doing|vs|versus)\b", re.IGNORECASE)
 
 def _espn_teams(league_key: str) -> Dict[str, Dict]:
-    """All teams in one ESPN league with alias sets (cached an hour).
-    Aliases come from the display name and mascot name only — bare city
-    names are ambiguous across teams, so they never match a team."""
+    """All teams in one ESPN league with alias sets (cached an hour). Aliases: display + mascot names only — bare city names never match."""
     key = "teams:" + league_key
     hit = _data_cached(key)
     if hit is not None:
@@ -1160,9 +1146,8 @@ def _tool_stocks(query: str):
                              "https://www.nasdaq.com/market-activity"),
                        _DATA_TTL["stocks"])
 
-# --- Round 4: crypto (Coinbase Exchange, CoinGecko fallback) ---
-# alias -> (Coinbase product or None, CoinGecko id, display,
-# needs_context); short aliases need a price-ish context.
+# --- Round 4: crypto (Coinbase, CoinGecko fallback) ---
+# alias -> (product or None, CoinGecko id, display, needs_context).
 _CRYPTO_MAP = {
     "bitcoin": ("BTC-USD", "bitcoin", "Bitcoin (BTC)", False),
     "btc": ("BTC-USD", "bitcoin", "Bitcoin (BTC)", True),
@@ -1345,10 +1330,7 @@ def _tool_news(query: str):
 
 # --- Round 4: router + detect heuristic ---
 def _og_data_tools(query: str):
-    """Round 4 router: try the live data pack for this query. On a hit,
-    return results in the web_search shape; on a miss return None and
-    the caller falls through to the Round 3 lookup chain. Candidates
-    are the visitor's raw message first, then the search query."""
+    """Round 4 router: try the live data pack; on a hit return web_search-shaped results, on a miss return None and the caller falls through to the Round 3 lookup chain."""
     candidates = []
     raw = _current_message.get("text") or ""
     if raw.strip():
@@ -1606,12 +1588,7 @@ def _save_memory_store_db(store: Dict) -> bool:
         return False
 
 def _reset_memory_store():
-    """Start the memory store empty (called when a fresh agent is
-    created): a new agent must not inherit a previous instance's
-    visitor threads. Reset on a from-scratch rebuild — EXCEPT with
-    the Postgres backend active (OG_MEMORY_DB_URL), where the store
-    is deliberately NOT reset.
-    """
+    """Start the memory store empty on fresh agent creation (a new agent must not inherit visitor threads) — EXCEPT with the Postgres backend (OG_MEMORY_DB_URL), where the store is deliberately NOT reset."""
     if MEMORY_DB_URL:
         logger.info("Durable memory backend active — memory store not reset")
         return
@@ -1764,12 +1741,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 agent = None
 
 def get_agent() -> AIAgent:
-    """
-    Get or create the global agent instance.
-
-    Note: This returns a shared instance. For multi-user support, consider
-    implementing session-based agent management.
-    """
+    """The shared agent instance (created on first use)."""
     global agent
     if agent is None:
         # Load config if exists
@@ -1966,13 +1938,7 @@ async def health_check():
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
-    """
-    Streaming twin of the agent's process_message(): same intent,
-    tools, persona, model and parameters — only the delivery changes
-    (each token piece pushed to sink("chunk", text)). A stream
-    failing before any text falls back to full-text generation.
-    Returns (response, tokens).
-    """
+    """Streaming twin of process_message(): same intent, tools, persona, model, parameters — each token piece is pushed to sink("chunk", text); a stream failing before any text falls back to full-text. Returns (response, tokens)."""
     agent = agent_instance
     agent.add_message('user', message)
 
@@ -2030,13 +1996,12 @@ def _generate_reply_streaming(agent_instance, message: str,
 
     provider = getattr(agent, 'ai_provider', None)
 
-    # --- OpenAI: true token streaming — the agent's own _openai_response
-    # request (same prompt/history/model/temp/cap), only stream=True added.
+    # --- OpenAI: true token streaming (same request, stream=True).
     if provider == "openai" and getattr(agent, 'openai_client', None):
         parts = []
         try:
             messages = [{"role": "system", "content": agent.system_prompt}]
-            for msg in agent.conversation_history[-10:]:
+            for msg in agent.conversation_history[-30:]:
                 if msg['role'] in ['user', 'assistant']:
                     messages.append({"role": msg['role'], "content": msg['content']})
             if context:
@@ -2081,7 +2046,7 @@ def _generate_reply_streaming(agent_instance, message: str,
         parts = []
         try:
             messages = []
-            for msg in agent.conversation_history[-10:]:
+            for msg in agent.conversation_history[-30:]:
                 if msg['role'] in ['user', 'assistant']:
                     messages.append({"role": msg['role'], "content": msg['content']})
             if context and messages:
@@ -2126,12 +2091,7 @@ def _generate_reply_streaming(agent_instance, message: str,
 def _stream_chat_worker(agent_instance, uid: str, message: str,
                         speak_response: bool, sink, meter: bool = True,
                         tier: str = "free", coords=None):
-    """
-    Worker-thread body for a streaming /chat request. Mirrors the
-    classic /chat bookkeeping: the visitor's own thread is swapped
-    into the shared agent under the memory lock and saved back in a
-    finally block.
-    """
+    """Streaming /chat worker: mirrors classic /chat bookkeeping — the visitor's thread is swapped into the shared agent under the memory lock and saved back in a finally block."""
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
@@ -2141,8 +2101,14 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         has_learning = hasattr(agent_instance, 'learning_system') \
             and agent_instance.learning_system is not None
         if hasattr(agent_instance, 'detect_intent'):
+            # Round 26: chunks flow through the register sink —
+            # complete sentences are enforced before they're emitted.
+            _reg = _og_register.wrap_sink(sink)
             response, tokens_used = _generate_reply_streaming(
-                agent_instance, message, speak_response, sink)
+                agent_instance, message, speak_response, _reg)
+            _reg.flush()
+            if _reg.text():
+                response = _reg.text()
         else:
             # Agent without streaming internals: its classic full-text reply,
             # delivered whole in a single chunk (never sliced).
@@ -2151,8 +2117,15 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
                     message, speak_response=speak_response)
             except TypeError:
                 response = agent_instance.process_message(message)
+            response = _og_register.enforce_reply(response)
             sink("chunk", response)
             tokens_used = _estimate_call_tokens(agent_instance, response)
+
+        # The saved history carries the enforced reply, same as the
+        # visitor saw it.
+        _hist = agent_instance.conversation_history
+        if _hist and _hist[-1].get("role") == "assistant":
+            _hist[-1]["content"] = response
 
         # Bill the exchange for any web lookup it ran, too.
         tokens_used += _drain_lookup_tokens()
@@ -2244,14 +2217,7 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
 
 @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
 async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
-    """
-    Send a message to the AI agent and receive a response.
-
-    Free visitors get FREE_DAILY_TOKENS tokens per UTC day (tracked
-    by the `ogai_uid` cookie); paid tiers are unmetered. A capped
-    visitor still gets HTTP 200 with an in-persona upgrade reply.
-    With {"stream": true} the reply is Server-Sent Events.
-    """
+    """Send a message to the AI agent. Free visitors get FREE_DAILY_TOKENS tokens per UTC day (ogai_uid cookie); paid tiers unmetered; a capped visitor still gets HTTP 200 with an in-persona upgrade reply. {"stream": true} = Server-Sent Events."""
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -2349,6 +2315,14 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
             report = agent_instance.learning_system.get_intelligence_report()
             result["intelligence"] = report.get("intelligence_level", 1.0)
 
+        # Round 26: per-sentence register enforcement on the FINAL
+        # reply (og_register); the enforced text is also what's
+        # saved into the visitor's history below.
+        result["response"] = _og_register.enforce_reply(response)
+        _hist = agent_instance.conversation_history
+        if _hist and _hist[-1].get("role") == "assistant":
+            _hist[-1]["content"] = result["response"]
+
         return result
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
@@ -2368,12 +2342,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
 
 @app.post("/tts")
 async def text_to_speech(raw_request: Request):
-    """
-    Turn a chat reply into realistic spoken audio (OpenAI TTS).
-
-    Needs OPENAI_API_KEY in the environment; without it, answers 503
-    and the web page uses the visitor's device voice instead.
-    """
+    """Chat reply -> spoken audio (OpenAI TTS). Needs OPENAI_API_KEY; without it, 503 and the page uses the device voice."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="AI voice not configured")
@@ -2407,13 +2376,7 @@ async def text_to_speech(raw_request: Request):
 
 @app.post("/image")
 async def generate_image(raw_request: Request):
-    """
-    Generate ONE image for a visitor (Round 5).
-
-    Body: {"prompt": "<chat message or bare picture prompt>"}.
-    Every expected outcome answers 200 JSON (success / cap upsell /
-    lab-down) so the page can render an in-persona bubble.
-    """
+    """Generate ONE image for a visitor (Round 5). Body: {"prompt": ...}. Every expected outcome answers 200 JSON (success / cap upsell / lab-down)."""
     get_agent()  # instantiate first: its creation resets the file store
     uid = raw_request.cookies.get("ogai_uid")
     fresh_uid = False
@@ -2592,12 +2555,7 @@ _og_legal.register_legal_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
-    """
-    Stripe webhook: grant a Pro entitlement on
-    checkout.session.completed. Inert unless OG_WEBHOOK_ENABLED=true
-    and STRIPE_WEBHOOK_SECRET is set (404 while disabled). The buyer
-    is client_reference_id (the ogai_uid); signature verified first.
-    """
+    """Stripe webhook: grant a Pro entitlement on checkout.session.completed. Inert unless OG_WEBHOOK_ENABLED=true and STRIPE_WEBHOOK_SECRET set (404 while disabled). Buyer = client_reference_id (ogai_uid); signature verified first."""
     if not WEBHOOK_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
     if not STRIPE_WEBHOOK_SECRET:
@@ -2628,11 +2586,7 @@ async def stripe_webhook(raw_request: Request):
 
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(key: str = ""):
-    """
-    Owner-only scorecard: visitors, messages, cap hits, Pro clicks and
-    post-payment landings — today and since counting started. Locked
-    unless OG_STATS_TOKEN is set and passed as ?key=.
-    """
+    """Owner-only stats page (token-gated)."""
     if not STATS_TOKEN or key != STATS_TOKEN:
         raise HTTPException(status_code=401, detail="Owner key required")
     with _usage_lock:
@@ -2695,13 +2649,7 @@ the server and reset if the service gets rebuilt from scratch.</p>
 
 @app.get("/history", response_model=HistoryResponse)
 async def get_history(raw_request: Request):
-    """
-    Get the requesting visitor's own conversation history.
-
-    Keyed by the `ogai_uid` cookie — a visitor only ever sees their own
-    thread, never anyone else's. Visitors without a cookie (they have not
-    chatted yet) get an empty history.
-    """
+    """The requesting visitor's own conversation history, keyed by the ogai_uid cookie — never anyone else's. No cookie = empty history."""
     get_agent()  # a fresh agent instance starts with a fresh memory store
     try:
         uid = raw_request.cookies.get("ogai_uid")
@@ -2814,23 +2762,14 @@ async def manual_improvement():
 
 @app.post("/clear", response_model=StatusResponse)
 async def clear_history(raw_request: Request):
-    """
-    Clear the conversation history (Flask API backward compatibility alias for /reset).
-
-    Returns:
-        StatusResponse confirming the clear
-    """
+    """Clear the conversation history (backward-compat alias for /reset)."""
     return await reset_conversation(raw_request)
 
 # --- Google account connect routes (Round 3, dark until enabled) ---
 
 @app.get("/auth/google")
 async def google_auth_start(raw_request: Request):
-    """
-    Begin Google connect: bounce the visitor to Google's own consent page.
-    Answers 404 while the feature is dark (keys not set), so nothing about
-    it is discoverable on the live site until Brent enables it.
-    """
+    """Begin Google connect: bounce the visitor to Google's consent page. 404 while the feature is dark."""
     if not GOOGLE_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
     from urllib.parse import urlencode
@@ -2862,12 +2801,7 @@ async def google_auth_start(raw_request: Request):
 @app.get("/auth/google/callback")
 async def google_auth_callback(raw_request: Request, code: str = "",
                                state: str = "", error: str = ""):
-    """
-    Google sends the visitor back here with a code. The signed state tells
-    us which visitor this is; the code is exchanged for tokens and the
-    connection is stored under their uid. Any failure lands back on
-    the chat with ?google=failed — no error page.
-    """
+    """Google returns the visitor with a code; the signed state names the visitor, the code is exchanged for tokens stored under their uid. Any failure lands back on chat with ?google=failed."""
     if not GOOGLE_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
     uid = _google_uid_from_state(state)
