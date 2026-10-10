@@ -1344,7 +1344,7 @@ refresh();
 })();</script>
 
 <script id="og-tiers-js">(function () {
-var BADGE = { standard: '⭐ Standard', pro: '💎 Pro', blue: '💙 Blue', blackout: '🖤 Blackout' };
+var BADGE = { red: '🔴 Red', standard: '⭐ Standard', pro: '💎 Pro', blue: '💙 Blue', blackout: '🖤 Blackout' };
 var tier = null;
 var ts = document.getElementById('tokenStatus');
 var planLine = document.getElementById('tierStatusMenu');
@@ -1981,6 +1981,8 @@ else if (t.indexOf('weekly pool') !== -1) fill.style.width = '100%';
 }
 if (ts && window.MutationObserver) new MutationObserver(syncBar).observe(ts, { childList: true, characterData: true, subtree: true });
 syncBar();
+// R58: FREE_TOTAL comes from the grid payload (GET /tiers).
+if (window.fetch) fetch('/tiers').then(r => r.ok ? r.json() : null).then(d => { var f = d && d.tiers ? d.tiers.find(t => t.tier === 'free') : null; if (f && f.chat_tokens_week) { FREE_TOTAL = f.chat_tokens_week; syncBar(); } }).catch(() => {});
 })();</script>
 <style id="og-profile-css">.og-task-pill{margin-top:6px;padding:3px 11px;border-radius:999px;background:#1b1b1b;border:1px solid rgba(255,193,7,.45);color:#ffd54f;font-size:.78rem;font-weight:600;letter-spacing:.2px;line-height:1.35;white-space:nowrap}.og-profile-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8000}.og-profile{position:fixed;inset:0;z-index:8001;background:radial-gradient(120% 90% at 50% 0%,#171307 0%,#0b0b0b 55%);display:flex;flex-direction:column;align-items:center;padding:calc(14px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));overflow-y:auto}.og-profile[hidden]{display:none!important}.og-profile-top{width:100%;display:flex;justify-content:space-between;align-items:center;flex:0 0 auto}.og-profile-ava{position:relative;width:140px;height:140px;border-radius:50%;overflow:hidden;border:3px solid #ffc107;box-shadow:0 0 22px rgba(255,193,7,.4);margin-top:6vh;flex:0 0 auto;line-height:0;background:#111}.og-profile-ava img.og-avatar{width:100%;height:100%;border:0;box-shadow:none;border-radius:50%;object-fit:cover;display:block}.og-profile-ava video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}.og-profile-name{margin-top:16px;font-size:2rem;font-weight:800;letter-spacing:.5px;color:#f5f5f5;line-height:1.1}.og-profile .og-task-pill{margin-top:10px;font-size:.85rem;padding:4px 13px}.og-top-ava{cursor:pointer}.og-ava-wrap{cursor:pointer}@media (prefers-reduced-motion:reduce){.og-profile-ava video{display:none!important}}</style>
 <script id="og-profile-js">(function () {
