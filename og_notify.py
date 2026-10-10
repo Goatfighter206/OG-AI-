@@ -166,6 +166,34 @@ def _put(key: str, value):
         _save_file_store(store)
 
 
+def _del(key: str):
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _db_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM og_notify_data WHERE key=%s",
+                        (key,))
+                conn.commit()
+            return
+        except Exception as e:
+            logger.warning(f"Notify DB delete failed, using file: {e}")
+    with _store_lock:
+        store = _load_file_store()
+        store.pop(key, None)
+        _save_file_store(store)
+
+
+def purge_uid(uid: str):
+    """Account deletion (Round 36, og_store_ready): every
+    notification record, pref and push subscription this
+    uid owns. Other uids' keys are never touched."""
+    if not uid:
+        return
+    for prefix in ("items:", "prefs:", "subs:"):
+        _del(prefix + uid)
+
+
 # --- Records ---------------------------------------------------------------------
 
 
