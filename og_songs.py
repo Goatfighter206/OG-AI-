@@ -403,6 +403,48 @@ def _store_latest_for_owner(owner: str) -> Optional[Dict]:
     return best
 
 
+def list_jobs_for_owner(uid: str) -> List[Dict]:
+    """All of the visitor's OWN song jobs, newest first
+    (Library). Read-only: the same mem + DB + JSON scan
+    _store_latest_for_owner does, but every record comes back
+    (deduped by id) instead of only the latest. Retention is
+    NOT re-decided here — the caller passes each record
+    through _job_view, which already hides stale/gone jobs
+    exactly the way /song/status does."""
+    owner = _key(uid)
+    found: Dict[str, Dict] = {}
+    with _jobs_lock:
+        for r in _jobs_mem.values():
+            if r.get("owner") == owner:
+                found[r["id"]] = dict(r)
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _db_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT data FROM og_song_jobs WHERE owner"
+                        " = %s", (owner,))
+                    rows = cur.fetchall()
+            for row in rows:
+                rec = json.loads(row[0])
+                found[rec["id"]] = rec
+        except Exception as e:
+            logger.warning(f"Song job DB list failed: {e}")
+    try:
+        path = _json_store_path()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+            for v in data.values():
+                if v.get("owner") == owner:
+                    found[v["id"]] = v
+    except Exception as e:
+        logger.warning(f"Song job JSON list failed: {e}")
+    return sorted(found.values(),
+                  key=lambda r: float(r.get("created", 0)),
+                  reverse=True)
+
+
 def _active_job(uid: str) -> Optional[Dict]:
     rec = _store_latest_for_owner(_key(uid))
     if rec and rec.get("state") in ("queued", "generating"):
