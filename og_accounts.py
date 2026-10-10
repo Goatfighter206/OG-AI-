@@ -491,14 +491,15 @@ def gate_enabled() -> bool:
 # SPECIAL-HANDLING: /pro + /pro/success (buyer flow — the guest
 # landing is handled in og_tiers), the OAuth callbacks (they
 # authenticate by signed state naming the uid and must survive
-# the cross-site return hop), /stats + /reports (owner-key auth
-# in their handlers), and /s/<code> shortlinks (a bearer link is
+# the cross-site return hop), /stats + /reports + /system/check
+# (owner-key auth in their handlers), and /s/<code> shortlinks (a bearer link is
 # its audience by design).
 PUBLIC_PATHS = frozenset({
     "/", "/static",
     "/auth/signup", "/auth/login", "/auth/logout", "/auth/me",
     "/auth/forgot", "/auth/reset",
     "/privacy", "/terms", "/health",
+    "/system/check",
     "/stripe/webhook",
     "/avatar/poster.webp",
     "/pro", "/pro/success",
