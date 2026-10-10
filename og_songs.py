@@ -1383,7 +1383,9 @@ def _run_job(job_id: str, uid: str) -> None:
                     f"\"{rec.get('title', '')}\"",
                     f"\"{rec.get('title', '')}\" — "
                     f"{rec.get('style', '')}; a real sung "
-                    f"track, ready to play.")
+                    f"track, ready to play.",
+                    target={"view": "library", "kind": "song",
+                            "id": job_id})
             except Exception:
                 pass
     except _ProviderError as e:
