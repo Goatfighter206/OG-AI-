@@ -37,6 +37,7 @@
 <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
 <symbol id="i-pin" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></symbol>
 <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
 <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
 </defs></svg>
@@ -71,6 +72,7 @@
 <button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi"><svg><use href="#i-clip"/></svg></span> Upload a file</button>
 <button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-folder"/></svg></span> My file locker</button>
 <button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-globe"/></svg></span> OG's browser — live view</button>
+<button class="og-menu-item" id="menuLibraryBtn" type="button"><span class="og-mi"><svg><use href="#i-grid"/></svg></span> Library</button>
 <button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
 <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
 </nav>
@@ -2053,9 +2055,29 @@ paint();
 </div>
 </div>
 
+<div id="libraryScrim" class="og-library-scrim" hidden></div>
+<section id="ogLibrary" class="og-library" hidden role="dialog" aria-modal="true" aria-label="Library">
+<div class="og-library-top"><button id="libraryCloseBtn" class="og-circle-btn" type="button" aria-label="Close library"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><h2>Library</h2></div>
+<div class="og-library-scroll">
+<p id="libraryStorageLine" class="og-library-storage" hidden></p>
+<div class="og-library-tabs" role="tablist" aria-label="Library filters">
+<button class="og-library-tab is-on" id="libraryTabAll" type="button" data-kind="all">All</button>
+<button class="og-library-tab" id="libraryTabVideos" type="button" data-kind="video">Videos</button>
+<button class="og-library-tab" id="libraryTabSongs" type="button" data-kind="song">Songs</button>
+<button class="og-library-tab" id="libraryTabImages" type="button" data-kind="image">Images</button>
+<button class="og-library-tab" id="libraryTabFiles" type="button" data-kind="file">Files</button>
+<button class="og-library-tab" id="libraryTabProjects" type="button" data-kind="project">Projects</button>
+</div>
+<div id="libraryList" class="og-library-list"></div>
+<p id="libraryEmpty" class="og-library-empty">Nothing here yet — ask OG to make you a story video.</p>
+</div>
+</section>
+
 <link rel="stylesheet" href="/static/og_notify.css">
 <link rel="stylesheet" href="/static/og_connections.css">
+<link rel="stylesheet" href="/static/og_library.css">
 <script src="/static/og_notify.js"></script>
 <script src="/static/og_connections.js"></script>
+<script src="/static/og_library.js"></script>
 </body>
 </html>
