@@ -1076,6 +1076,15 @@ def _run_visitor_checks(uid: str, due: list, watches: list) -> int:
                 f"Watch check: Steel session create failed: {e}")
     if sess is None:
         logger.warning("Watch check: Steel handed no session")
+        try:
+            import og_fixqueue as _fq
+            _fq.record_problem(
+                uid, "watch", "watch:spinup", "watch-spinup",
+                "Watch checks can't start a browser session",
+                "The browser service handed back no session, so "
+                "this round of watch checks never ran.")
+        except Exception:
+            pass
         return 0
     new_pid = str(sess.get("profileId") or "")
     if new_pid:
@@ -1097,6 +1106,17 @@ def _run_visitor_checks(uid: str, due: list, watches: list) -> int:
                 _check_one(rec, uid, w, alerts, has_fb)
             except Exception as e:
                 logger.warning(f"Watch check failed for a watch: {e}")
+                try:
+                    import og_fixqueue as _fq
+                    _fq.record_problem(
+                        uid, "watch",
+                        f"watch:{w.get('id') or 'unknown'}",
+                        "watch-check", "A watch check is failing",
+                        f"Checking the watch for "
+                        f"{_criteria_text(w)} ran into a problem: "
+                        f"{type(e).__name__}: {e}")
+                except Exception:
+                    pass
             w["last_check"] = _now_iso()
             w["checks"] = int(w.get("checks") or 0) + 1
             done += 1
