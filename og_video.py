@@ -494,6 +494,50 @@ def list_jobs_for_owner(uid: str) -> List[Dict]:
                   reverse=True)
 
 
+def purge_owner(uid: str):
+    """Account deletion (Round 36, og_store_ready): every
+    video job this visitor owns — the in-memory cache, the
+    DB rows, the JSON fallback and the build dirs — plus
+    any pending draft. Other owners' jobs never touched."""
+    if not uid:
+        return
+    _clear_pending(uid)
+    owner = _key(uid)
+    ids = [r["id"] for r in list_jobs_for_owner(uid)]
+    if ids:
+        with _jobs_lock:
+            for jid in ids:
+                _jobs_mem.pop(jid, None)
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _db_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM og_video_jobs WHERE owner = %s",
+                        (owner,))
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Video job DB purge failed: {e}")
+    try:
+        path = _json_store_path()
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+            kept = {k: v for k, v in data.items()
+                    if v.get("owner") != owner}
+            if len(kept) != len(data):
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(kept, f)
+    except Exception as e:
+        logger.warning(f"Video job JSON purge failed: {e}")
+    for jid in ids:
+        try:
+            shutil.rmtree(os.path.join(STORE_DIR, jid),
+                          ignore_errors=True)
+        except Exception:
+            pass
+
+
 def _active_job(uid: str) -> Optional[Dict]:
     rec = _store_latest_for_owner(_key(uid))
     if rec and rec.get("state") in (
