@@ -835,6 +835,14 @@ def run_check(trigger: str = "scheduled") -> dict:
                            report["summary"])
         except Exception as e:
             logger.warning(f"Selfcheck notify failed: {e}")
+    # Round 53: every non-ok finding becomes a problem in the
+    # fix-approval queue (diagnosis + a prepared proposal; the
+    # fix itself still needs the owner's approval there).
+    try:
+        import og_fixqueue as _fq
+        _fq.ingest_report(report)
+    except Exception as e:
+        logger.warning(f"Fixqueue ingest hook failed: {e}")
     return report
 
 
