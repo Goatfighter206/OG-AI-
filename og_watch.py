@@ -310,12 +310,15 @@ def _mark_delivered(uid: str, alert_ids: set):
             for a in alerts:
                 if a.get("id") in alert_ids and a.get(
                         "kind") in ("match", "drop"):
+                    _tgt = {"view": "watch"}
+                    if a.get("watch_id"):
+                        _tgt["id"] = a["watch_id"]
                     _notify.record(
                         uid, "watch_match",
                         "Watch price drop"
                         if a.get("kind") == "drop"
                         else "Watch match",
-                        a.get("text", ""))
+                        a.get("text", ""), target=_tgt)
         except Exception:
             pass
 
