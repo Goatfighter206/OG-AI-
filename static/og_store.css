@@ -1,0 +1,28 @@
+/* OG store readiness (Round 36): Report button + Delete
+   account view. Same black-and-gold language as og_notify. */
+.og-report-wrap{display:block;margin-top:4px}
+.og-report-btn{background:none;border:none;padding:2px 4px;color:#8f8f8f;font-size:.78rem;font-family:inherit;cursor:pointer}
+.og-report-btn:hover{color:#ffc107;text-decoration:underline}
+.og-report-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+.og-report-form[hidden]{display:none!important}
+.og-report-input{flex:1 1 220px;background:#171717;border:1px solid #2c2c2c;border-radius:10px;color:#f2f2f2;padding:8px 10px;font-size:.85rem;font-family:inherit}
+.og-report-input:focus{outline:none;border-color:rgba(255,193,7,.6)}
+.og-report-send{background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.55);color:#ffc107;border-radius:10px;padding:8px 12px;font-size:.85rem;font-weight:700;font-family:inherit;cursor:pointer}
+.og-report-send:disabled{opacity:.5;cursor:default}
+.og-report-cancel{background:none;border:none;color:#a8a8a8;font-size:.85rem;font-family:inherit;cursor:pointer;padding:8px 4px}
+.og-report-status{color:#bcbcbc;font-size:.82rem}
+.og-report-done{color:#8f8f8f;font-size:.8rem}
+.og-delete-row{color:#e5484d!important}
+.og-delete-scrim{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:8200;display:grid;place-items:center;padding:18px}
+.og-delete-panel{background:#0c0c0c;border:1px solid rgba(255,193,7,.38);border-radius:20px;max-width:420px;width:100%;padding:22px;box-shadow:0 18px 48px rgba(0,0,0,.6)}
+.og-delete-title{color:#f5f5f5;font-size:1.25rem;margin:0 0 10px}
+.og-delete-body{color:#bcbcbc;line-height:1.55;font-size:.95rem;margin:0 0 16px}
+.og-delete-label{display:block;color:#8f8f8f;font-size:.8rem;font-weight:700;letter-spacing:.4px;margin:0 0 6px}
+.og-delete-input{width:100%;box-sizing:border-box;background:#171717;border:1px solid #2c2c2c;border-radius:12px;color:#f2f2f2;padding:12px;font-size:1rem;font-family:inherit;margin:0 0 12px}
+.og-delete-input:focus{outline:none;border-color:rgba(255,193,7,.6)}
+.og-delete-error{color:#e5484d;font-size:.9rem;line-height:1.45;margin:0 0 12px}
+.og-delete-error[hidden]{display:none!important}
+.og-delete-btn{width:100%;background:#b3261e;border:1px solid #e5484d;color:#fff;border-radius:14px;padding:13px;font-size:1rem;font-weight:700;font-family:inherit;cursor:pointer}
+.og-delete-btn:disabled{opacity:.55;cursor:default}
+.og-delete-cancel{width:100%;background:none;border:none;color:#a8a8a8;font-size:.95rem;font-family:inherit;cursor:pointer;padding:12px 0 2px}
+.og-deleted-line{color:#ffc107;text-align:center;font-size:1rem;padding:14px 10px 0;margin:0}
