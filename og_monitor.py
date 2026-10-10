@@ -654,6 +654,9 @@ _DIGEST_RES = (
     r"\bmy digest\b", r"\bgive me my digest\b", r"\bwhat'?s new for me\b",
     r"\bcatch me up\b", r"\bmy (morning )?briefing\b",
     r"\bwhat'?s new with me\b",
+    # Round 40: the natural ways to ask for the same thing.
+    r"\bwhat did i miss\b", r"\bbrief me\b",
+    r"^\s*what'?s new( today| tonight)?\s*\??\s*$",
 )
 _UNDO_RE = re.compile(
     r"\bundo\b|\bremove (the )?last\b|\bdelete (the )?last\b", re.I)
@@ -661,14 +664,24 @@ _TODAY_RES = (
     r"\bwhat did i eat\b", r"\bwhat have i eaten\b",
     r"\bmy calories\b", r"\bcalories today\b", r"\bcalorie count\b",
     r"\bmy food log\b", r"\bfood log\b", r"\bmy calorie log\b",
+    # Round 40: the natural report questions ("how many calories
+    # have I had today?" matched nothing — the words are there but
+    # never contiguous).
+    r"\bhow many calories\b", r"\bcalories (have|did) i\b",
+    r"\bcalories so far\b", r"\bmy calorie total\b",
+    r"\bcalorie total\b",
 )
+_ADD_LOG_RE = re.compile(
+    r"\badd\s+(.+?)\s+to my (?:food|calorie) log\b", re.I)
 _LOG_RES = (
-    re.compile(r"^\s*log\s*[:\-]?\s+(.+)$", re.I),
+    re.compile(r"^\s*(?:please\s+)?log\s*[:\-]?\s+(.+)$", re.I),
     re.compile(r"\bi (?:just )?ate\s+(.+)$", re.I),
-    re.compile(r"\badd\s+(.+?)\s+to my (?:food|calorie) log\b", re.I),
+    _ADD_LOG_RE,
+    re.compile(r"^\s*ate\s+(.+)$", re.I),
 )
 _HAD_RE = re.compile(
-    r"\bi had\s+(.+?)(?:\s+for\s+(?:breakfast|lunch|dinner|snack))?\s*$",
+    r"\bi (?:just )?had\s+(.+?)"
+    r"(?:\s+for\s+(?:breakfast|lunch|dinner|snack))?\s*$",
     re.I)
 _HAD_REJECT = ("question", "dream", "feeling", "thought", "idea",
                "chance", "look", "problem", "bad", "good", "great",
@@ -720,6 +733,16 @@ def parse_monitor_intent(message: str) -> Optional[Dict]:
             return {"kind": "digest"}
     if _UNDO_RE.search(low):
         return {"kind": "cal_undo"}
+    # Round 40: "add a burrito to my food log" is a LOG ask, but
+    # the report patterns ("food log") claimed it first and the
+    # food was never logged. The add-to-log shape is checked
+    # before the report shapes.
+    m = _ADD_LOG_RE.search(text)
+    if m:
+        food = m.group(1).strip().strip(".")
+        if food and len(food) <= 300:
+            return {"kind": "log_cal", "food": food,
+                    "message": text}
     for pattern in _TODAY_RES:
         if re.search(pattern, low):
             return {"kind": "cal_today"}
@@ -772,7 +795,8 @@ def parse_monitor_intent(message: str) -> Optional[Dict]:
         if m:
             food = m.group(1).strip().strip(".")
             first = food.lower().split(" ")[0] if food else ""
-            if first in ("in", "into", "on", "off", "out", "back"):
+            if first in ("in", "into", "on", "off", "out", "back",
+                         "at"):
                 continue  # "log in to my account" is not food
             if food and len(food) <= 300:
                 return {"kind": "log_cal", "food": food,
