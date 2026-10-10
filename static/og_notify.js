@@ -8,7 +8,7 @@ if (!bell) return;
 buildPrefs();
 var emailBox = $('notifyPrefEmail'), pushBox = $('notifyPrefPush'),
 pushMsg = $('notifyPushMsg');
-var ICONS = { watch_match: '👀', price_alert: '📈', video_done: '🎬', song_done: '🎵', storage_warning: '⚠️', notice: '🔔' };
+var ICONS = { watch_match: '👀', price_alert: '📈', video_done: '🎬', song_done: '🎵', storage_warning: '⚠️', notice: '🔔', approval_needed: '✋', signin_needed: '🔑' };
 var lastItems = [];
 function buildPrefs() {
 // The preferences section is built here (not in the page
