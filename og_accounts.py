@@ -489,7 +489,9 @@ def gate_enabled() -> bool:
 # (its signature is its auth), and OG's own avatar media (no
 # user data; public cache headers by design).
 # SPECIAL-HANDLING: /pro + /pro/success (buyer flow — the guest
-# landing is handled in og_tiers), the OAuth callbacks (they
+# landing is handled in og_tiers), /tiers (Round 58: the public
+# commercial grid — pricing info only, no user data, same
+# posture as /pro), the OAuth callbacks (they
 # authenticate by signed state naming the uid and must survive
 # the cross-site return hop), /stats + /reports + /system/check
 # (owner-key auth in their handlers), and /s/<code> shortlinks (a bearer link is
@@ -502,7 +504,7 @@ PUBLIC_PATHS = frozenset({
     "/system/check",
     "/stripe/webhook",
     "/avatar/poster.webp",
-    "/pro", "/pro/success",
+    "/pro", "/pro/success", "/tiers",
     "/stats", "/reports",
     "/auth/google/callback", "/auth/discord/callback",
     "/auth/github/callback", "/auth/reddit/callback",
