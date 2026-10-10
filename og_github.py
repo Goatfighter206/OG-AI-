@@ -1175,6 +1175,8 @@ def run_python_checks(files: Dict, changed_paths, timeout: int =
         for path, blob in files.items():
             if not _safe_rel(path):
                 continue
+            if isinstance(blob, str):
+                blob = blob.encode("utf-8", "replace")
             dest = os.path.join(tmp, path)
             parent = os.path.dirname(dest)
             if parent:
