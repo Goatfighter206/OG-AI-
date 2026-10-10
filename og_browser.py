@@ -583,6 +583,107 @@ def _clear_pending(uid: str):
         _pending_by_uid.pop(uid, None)
 
 
+# --- Round 49: the always-allow list -------------------------------------------
+# The owner's approval-fatigue fix: sites the visitor has said
+# "always allow this site" for skip the approval park. Durable,
+# per-visitor, in the SAME usage store as sessions/pendings —
+# one "browser_allow:<uid>" record, {"hosts": {host: {"added":
+# date}}}. Hosts are _norm_host'd on record and on check, and
+# matching is exact-host (this site means this site). The list
+# waives the ASK only: execution still runs _execute_gated's
+# re-verification, _url_gate/_BLOCKED_SUFFIXES still refuse
+# navigations (a blocked host can never be recorded, and never
+# matches even if force-written into the store), login walls
+# still stop at hand-back, and no other module's gate (trading,
+# ordering, GitHub, code edits) reads this list at all.
+
+_ALLOW_KEY_PREFIX = "browser_allow:"
+
+
+def _allowed_hosts(uid: str) -> Dict[str, Dict]:
+    if not uid:
+        return {}
+    entry = _usage_get(f"{_ALLOW_KEY_PREFIX}{uid}")
+    hosts = entry.get("hosts") if isinstance(entry, dict) else None
+    return dict(hosts) if isinstance(hosts, dict) else {}
+
+
+def _is_always_allowed(uid: str, host: str) -> bool:
+    h = _norm_host(host)
+    if not h or _host_blocked(h):
+        return False
+    return h in _allowed_hosts(uid)
+
+
+def _allow_site(uid: str, host: str) -> str:
+    """Record a host on the visitor's always-allow list. Returns
+    the normalized host, or "" when it cannot be recorded
+    (no host, or a hard-blocked one — those never get listed)."""
+    h = _norm_host(host)
+    if not uid or not h or _host_blocked(h):
+        return ""
+    hosts = _allowed_hosts(uid)
+    if h not in hosts:
+        hosts[h] = {"added": _today()}
+        _usage_set(f"{_ALLOW_KEY_PREFIX}{uid}", {"hosts": hosts})
+    return h
+
+
+def _disallow_site(uid: str, host: str) -> bool:
+    """Drop a host from the list; True when it was on it."""
+    h = _norm_host(host)
+    hosts = _allowed_hosts(uid)
+    if not h or h not in hosts:
+        return False
+    del hosts[h]
+    _usage_set(f"{_ALLOW_KEY_PREFIX}{uid}", {"hosts": hosts})
+    return True
+
+
+def _pending_site(pend: Dict) -> str:
+    """The host a parked approval belongs to — the same
+    resolution /browser/status shows the card."""
+    site = str(pend.get("disp_site") or pend.get("post_site")
+               or "")
+    if not site and pend.get("page_url"):
+        try:
+            site = urllib.parse.urlparse(
+                pend["page_url"]).hostname or ""
+        except Exception:
+            site = ""
+    return site
+
+
+def _allow_ran(uid: str, host: str, desc: str,
+               pend: Dict) -> List[Dict]:
+    """Always-allow skip: instead of parking, run the would-be
+    pending through _execute_gated (the identical re-verify +
+    run an approval gets), led by the fact that no approval was
+    asked because the site is on the visitor's list."""
+    out = _execute_gated(uid, pend)
+    lead = _result(
+        "OG BROWSER", "OG browser — always-allow",
+        f"No approval asked: {host} is on your always-allow "
+        f"list, so this went straight through the same page "
+        f"re-checks an approval gets: {desc}.")
+    return lead + out
+
+
+def _do_disallow(uid: str, host: str) -> List[Dict]:
+    """Chat + Connections removal of an always-allowed site."""
+    h = _norm_host(host)
+    if not h or not _disallow_site(uid, h):
+        return _result(
+            "OG BROWSER", "OG browser — always-allow",
+            f"{h or 'That site'} isn't on your always-allow "
+            "list — nothing to remove.")
+    return _result(
+        "OG BROWSER", "OG browser — always-allow removed",
+        f"Done — {h} is OFF your always-allow list. From here "
+        "I park actions there for your approval again, same "
+        "as everywhere else.")
+
+
 # --- Round 38: approval + sign-in alerts (og_notify producers) ---------------
 # When OG needs the visitor — a parked approval, or a login
 # wall only they can pass — the event ALSO lands in their
@@ -1266,165 +1367,12 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
         cdp.close()
 
 
-# --- The approval gate --------------------------------------------------------
-
-# A click on anything whose label reads like a consequential verb is
-# never taken silently — it is parked for a YES (plan 6.2.2).
-_GATE_RE = re.compile(
-    r"\b(submit|post|publish|send|buy|checkout|check\s?out|pay|payment|"
-    r"purchase|order\s+now|place\s+(the\s+)?order|delete|remove|comment|"
-    r"reply|follow|subscribe|sign\s?up|register|book\s+now|reserve|"
-    r"confirm|donate|apply\s+now|join\s+now)\b", re.I)
-
-
-def _gate_reason(el: Dict, action: Dict) -> str:
-    """'' when the action is free to run, else WHY it needs a YES.
-    Typing is a draft (visitor can still hand it back); Enter inside
-    a form submits the form; submit/consequential clicks commit."""
-    do = action.get("do")
-    if do == "enter":
-        if el.get("in_form"):
-            return "pressing Enter in that form field submits the form"
-        return ""
-    if do == "click":
-        if el.get("type") == "submit":
-            return "that button submits a form"
-        if el.get("tag") == "button" and el.get("in_form") \
-                and el.get("type") in ("", "submit"):
-            return "that button submits a form"
-        label = str(el.get("label") or "")
-        if _GATE_RE.search(label):
-            return f"'{label}' is a commit-style action, not a read"
-    return ""
-
-
-def _describe_action(action: Dict, el: Optional[Dict], snap: Dict) -> str:
-    """The exact action, in plain words, for the approval prompt."""
-    host = ""
-    try:
-        host = urllib.parse.urlparse(snap.get("url", "")).hostname or ""
-    except Exception:
-        pass
-    do = action.get("do")
-    label = (el or {}).get("label") or ""
-    if do == "click":
-        return f"click '{label}' on {host}"
-    if do == "enter":
-        return (f"press Enter in the '{label}' field on {host} "
-                "(that submits the form)")
-    return f"{do} on {host}"
-
-
-def _element_signature(el: Dict) -> Dict:
-    return {"label": el.get("label", ""), "href": el.get("href", ""),
-            "tag": el.get("tag", ""), "url": ""}
-
-
-def _find_element(elements: List[Dict], words: str) -> Dict:
-    """Resolve a visitor's click target words against the snapshot.
-    Returns {"el"} on a unique match, {"ambiguous": [...]}, or {}."""
-    want = " ".join(str(words).lower().split())
-    if not want:
-        return {}
-    scored = []
-    for el in elements:
-        label = " ".join(str(el.get("label") or "").lower().split())
-        if not label:
-            continue
-        if label == want:
-            scored.append((3, el))
-        elif want in label:
-            scored.append((2, el))
-        elif label in want:
-            scored.append((1, el))
-        else:
-            overlap = len(set(want.split()) & set(label.split()))
-            if overlap >= 2:
-                scored.append((0, el))
-    if not scored:
-        return {}
-    top = max(s for s, _ in scored)
-    best = [el for s, el in scored if s == top]
-    if len(best) > 1:
-        return {"ambiguous": best[:4]}
-    return {"el": best[0]}
-
-
-def _find_field(elements: List[Dict], words: str) -> Dict:
-    """Resolve a typing target: an input/textarea/select (or a
-    role=textbox composer) by words, or the page's obvious
-    search/main field when words are empty."""
-    fields = [el for el in elements
-              if el.get("tag") in ("input", "textarea", "select")
-              or el.get("role") == "textbox"]
-    if not fields:
-        return {}
-    if words:
-        found = _find_element(fields, words)
-        if found:
-            return found
-    for el in fields:
-        hay = (str(el.get("label") or "") + " "
-               + str(el.get("type") or "")).lower()
-        if any(k in hay for k in ("search", "query", "q", "find")):
-            return {"el": el}
-    return {"el": fields[0]} if len(fields) == 1 else {}
-
-
-_COMPOSER_LABEL_RE = re.compile(
-    r"what'?s on your mind|write something|write a post|"
-    r"create (a )?post|say something|share something|"
-    r"composer|status|post", re.I)
-
-
-def _find_composer(elements: List[Dict]) -> Optional[Dict]:
-    """The page's post composer, if one is visible: a field
-    (input/textarea/select/role=textbox) whose label reads like a
-    post box, else the page's lone role=textbox, else a lone
-    textarea. Generic by label — no site-specific selectors."""
-    fields = [el for el in elements
-              if el.get("tag") in ("input", "textarea", "select")
-              or el.get("role") == "textbox"]
-    if not fields:
-        return None
-    for el in fields:
-        if _COMPOSER_LABEL_RE.search(str(el.get("label") or "")):
-            return el
-    boxes = [el for el in fields if el.get("role") == "textbox"]
-    if len(boxes) == 1:
-        return boxes[0]
-    areas = [el for el in fields if el.get("tag") == "textarea"]
-    if len(areas) == 1:
-        return areas[0]
-    return None
-
-
-_POST_BUTTON_RE = re.compile(
-    r"^(post|publish|share|tweet|send)$", re.I)
-_POST_BUTTON_LOOSE_RE = re.compile(r"\b(post|publish)\b", re.I)
-
-
-def _find_post_button(elements: List[Dict]) -> Optional[Dict]:
-    """The composer's commit button: an exact 'Post' / 'Publish' /
-    'Share' label first, then any button-ish element whose label
-    carries post/publish. Clicking it ALWAYS goes through the
-    approval gate (its label matches the gate verbs by design)."""
-    clickables = [el for el in elements
-                  if el.get("tag") in ("button", "a", "input")
-                  or el.get("role") in ("button", "")]
-    exact = [el for el in clickables
-             if _POST_BUTTON_RE.match(
-                 str(el.get("label") or "").strip())]
-    if len(exact) == 1:
-        return exact[0]
-    if exact:
-        return exact[0]
-    loose = [el for el in clickables
-             if el.get("tag") == "button"
-             and _POST_BUTTON_LOOSE_RE.search(
-                 str(el.get("label") or ""))]
-    return loose[0] if len(loose) == 1 else None
-
+# --- The approval gate + element matching: MOVED to
+# og_browser_claim.py in Round 49 (push-payload ceiling,
+# the Round 46 pattern) and imported back below —
+# _gate_reason, _describe_action, _element_signature,
+# _find_element, _find_field, _find_composer,
+# _find_post_button and their label regexes live there.
 
 # --- Narration (grounded result blocks the persona voices) ---------------------
 
@@ -1689,14 +1637,36 @@ def _run_action(uid: str, rec: Dict, action: Dict,
 # and suites see the same attributes on this module.
 from og_browser_claim import (  # noqa: F401
     _ACCOUNT_RE, _APPROVE_RE, _BACK_RE, _BARE_FILLER,
-    _BLOCKED_TARGET_RE, _BROWSER_WORD_RE, _CLICK_RE, _CONTENT_MARKER_RE,
-    _DECLINE_RE, _END_RE, _ENTER_RE, _HANDBACK_RE,
-    _NAV_START_RE, _NAV_VERB_RE, _POST_ON_RE, _POST_QUOTED_RE,
+    _BLOCKED_TARGET_RE, _BROWSER_WORD_RE, _CLICK_RE,
+    _COMPOSER_LABEL_RE, _CONTENT_MARKER_RE,
+    _DECLINE_RE, _END_RE, _ENTER_RE, _GATE_RE, _HANDBACK_RE,
+    _NAV_START_RE, _NAV_VERB_RE, _POST_BUTTON_LOOSE_RE,
+    _POST_BUTTON_RE, _POST_ON_RE, _POST_QUOTED_RE,
     _POST_VERB_RE, _READ_RE, _SCROLL_RE, _SEARCH_RE,
     _SITE_NAMES, _SITE_NAME_RE, _TAKEOVER_RE, _TYPE_QUOTED_RE,
-    _TYPE_RE, _URL_TOKEN_RE, _extract_url, _is_bare_mention,
-    _is_start_request, _parse_post, _resolve_site_url,
+    _TYPE_RE, _URL_TOKEN_RE, _describe_action, _element_signature,
+    _extract_url, _find_composer, _find_element, _find_field,
+    _find_post_button, _gate_reason, _is_bare_mention,
+    _is_start_request, _parse_disallow, _parse_post,
+    _resolve_site_url,
 )
+
+
+def _disallow_host(words: str) -> str:
+    """Site words from a removal ask -> host (og_watch._site_host's
+    resolution: typed hosts and site names first, then a bare
+    name guessed as .com only when it is a browsable host)."""
+    w = " ".join(str(words or "").lower().split()).strip(" .,!?")
+    w = re.sub(r"^the\s+", "", w)
+    if not w:
+        return ""
+    url = _extract_url(w) or _resolve_site_url(w)
+    if url:
+        return _norm_host(urllib.parse.urlparse(url).hostname
+                          or "")
+    tok = w.split()[0]
+    cand = tok if "." in tok else tok + ".com"
+    return _norm_host(cand) if _host_allowed(cand) else ""
 
 
 def _claim_job(message: str, uid: str) -> Optional[Dict]:
@@ -1704,6 +1674,15 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
     never reaches this parser — only the visitor's own words do."""
     low = " ".join(str(message).lower().split())
     raw = str(message).strip()
+    # 0) Round 49: an always-allow removal ask claims FIRST —
+    #    it starts with "stop"/"don't", which step 1's DECLINE
+    #    would otherwise eat as a NO on a parked approval.
+    if uid:
+        words = _parse_disallow(raw)
+        if words is not None:
+            host = _disallow_host(words)
+            if host:
+                return {"op": "disallow", "host": host}
     # 1) A pending proposal / gated action owns YES/NO — and only
     #    while no other module's approval is waiting.
     if _get_pending(uid) and not _other_pending(uid):
@@ -2195,12 +2174,15 @@ def _gate_or_run(uid: str, rec: Dict, action: Dict, el: Dict,
         host = urllib.parse.urlparse(snap.get("url", "")).hostname or ""
     except Exception:
         pass
-    if not _set_pending(uid, {"kind": "action", "action": action,
-                              "sig": sig,
-                              "page_url": snap.get("url", ""),
-                              "desc": desc,
-                              "disp_kind": action.get("do", "click"),
-                              "disp_site": host, "disp_text": ""}):
+    state = {"kind": "action", "action": action, "sig": sig,
+             "page_url": snap.get("url", ""), "desc": desc,
+             "disp_kind": action.get("do", "click"),
+             "disp_site": host, "disp_text": ""}
+    if _is_always_allowed(uid, host):
+        # Round 49: this site skips the park — same execution
+        # an approval would have run, re-verification included.
+        return _allow_ran(uid, host, desc, state)
+    if not _set_pending(uid, state):
         # Round 36: a description-less approval is never parked,
         # so it is never asked for either — nothing ran.
         return _result(
@@ -2370,14 +2352,22 @@ def _attempt_post_draft(uid: str) -> List[Dict]:
             "the button lives. NOTHING is posted.")
     sig = _element_signature(btn)
     sig["url"] = snap2.get("url", "")
-    if not _set_pending(uid, {
-            "kind": "action",
-            "action": {"do": "click", "idx": btn.get("i")},
-            "sig": sig, "page_url": snap2.get("url", ""),
-            "desc": _describe_action({"do": "click"}, btn, snap2),
-            "post_text": text, "post_site": host,
-            "disp_kind": "post", "disp_text": text,
-            "disp_site": host}):
+    state = {"kind": "action",
+             "action": {"do": "click", "idx": btn.get("i")},
+             "sig": sig, "page_url": snap2.get("url", ""),
+             "desc": _describe_action({"do": "click"}, btn, snap2),
+             "post_text": text, "post_site": host,
+             "disp_kind": "post", "disp_text": text,
+             "disp_site": host}
+    if _is_always_allowed(uid, host):
+        # Round 49: the draft is in and this site is
+        # always-allowed — the Post click runs now, through the
+        # approval path's own re-verification + confirm read.
+        rec2 = dict(_get_session(uid) or rec)
+        rec2["post_intent"] = None
+        _set_session(uid, rec2)
+        return _allow_ran(uid, host, state["desc"], state)
+    if not _set_pending(uid, state):
         # Round 36: never happens while the words exist (they are
         # the description), but a refused park must not pretend.
         return _result(
@@ -2480,6 +2470,10 @@ def browser_results(job: Dict, message: str, uid: str) -> List[Dict]:
         return _do_approve(uid)
     if op == "decline":
         return _do_decline(uid)
+    if op == "disallow":
+        if not enabled():
+            return _dark_text()
+        return _do_disallow(uid, job.get("host") or "")
     if op == "end":
         return _do_end(uid)
     if op == "control":
@@ -2632,6 +2626,9 @@ def register_browser_routes(app):
                     "kind": pend.get("disp_kind")
                             or pend.get("kind", ""),
                     "site": site,
+                    # Round 49 (additive): the host the card's
+                    # "Always allow this site" button will record.
+                    "allow_site": site,
                     "text": pend.get("post_text")
                             or pend.get("disp_text") or "",
                     "expires_at": int(expires),
@@ -2690,6 +2687,85 @@ def register_browser_routes(app):
         return {"ok": True,
                 "title": blocks[0].get("title", "") if blocks else "",
                 "body": "\n".join(b.get("body", "") for b in blocks)}
+
+    @app.post("/browser/allow")
+    async def browser_allow(request: Request):
+        """The card's third door (Round 49): 'Always allow this
+        site'. Records the parked action's host on the visitor's
+        always-allow list, then resolves the pending through the
+        SAME _do_approve as Approve — re-verified, exactly once.
+        A host that cannot be recorded (blocked / hostless)
+        answers honestly and leaves the pending untouched."""
+        if not enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _route_uid(request)
+        pend = _get_pending(uid) if uid else None
+        if not pend or pend.get("kind") != "action":
+            return {"ok": False,
+                    "error": "no pending action — it expired or "
+                             "was already resolved"}
+        host = _pending_site(pend)
+        if not _allow_site(uid, host):
+            return {"ok": False,
+                    "error": "that site can't be always-allowed "
+                             "— approve or decline this one "
+                             "instead"}
+        blocks = _do_approve(uid)
+        body = "\n".join(b.get("body", "") for b in blocks)
+        return {"ok": True,
+                "title": blocks[0].get("title", "") if blocks
+                         else "",
+                "body": (f"Always-allow ON for "
+                         f"{_norm_host(host)} — actions there "
+                         f"won't ask again.\n" + body)}
+
+    @app.get("/browser/allowed")
+    async def browser_allowed(request: Request):
+        """Read-only always-allow listing for the Connections
+        page's Browser connect folder (/watch/logins family)."""
+        if not enabled():
+            return {"enabled": False, "allowed": []}
+        uid = _route_uid(request)
+        if not uid:
+            return {"enabled": True, "allowed": []}
+        hosts = _allowed_hosts(uid)
+        return {"enabled": True, "allowed": [
+            {"site": h,
+             "since": str((hosts[h] or {}).get("added") or "")}
+            for h in sorted(hosts)]}
+
+    @app.post("/browser/disallow")
+    async def browser_disallow(request: Request):
+        """Per-site removal for the Connections page — a thin
+        route over the same _do_disallow the chat ask runs
+        (/watch/forget-site family shapes)."""
+        if not enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _route_uid(request)
+        if not uid:
+            return JSONResponse({"ok": False,
+                                 "error": "no visitor cookie"},
+                                status_code=400)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        host = _norm_host(str(data.get("site")
+                              or data.get("host") or ""))
+        if not host:
+            return JSONResponse({"ok": False,
+                                 "error": "unknown site"},
+                                status_code=400)
+        blocks = _do_disallow(uid, host)
+        return {"ok": True,
+                "title": blocks[0].get("title", "") if blocks
+                         else "",
+                "body": "\n".join(b.get("body", "")
+                                   for b in blocks)}
 
     @app.post("/browser/decline")
     async def browser_decline(request: Request):
