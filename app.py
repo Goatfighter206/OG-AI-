@@ -37,8 +37,9 @@ logger = logging.getLogger(__name__)
 # Check if running in development mode (for error detail control)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 
-# --- OG Pro (money layer): free = daily per-visitor token budget
-# (UTC day); paid unmetered. OG_FREE_DAILY_LIMIT = legacy alias.
+# --- OG Pro (money layer): chat tokens are metered WEEKLY
+# (Round 55 — trailing 7 days, every tier; the free pool is
+# FREE_DAILY_TOKENS x7). OG_FREE_DAILY_LIMIT = legacy alias.
 FREE_DAILY_TOKENS = int(os.getenv(
     "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
 # (Raised 10k -> 25k 2026-10-08, Brent's call.)
@@ -80,26 +81,34 @@ def _today_entry(store: Dict, uid: str) -> Dict:
     entry.setdefault("tokens", 0)
     return entry
 
-def _free_tokens_remaining(uid: str) -> int:
-    """Free tokens this visitor has left today (UTC)."""
-    with _usage_lock:
-        store = _load_usage_store()
-    entry = _today_entry(store, uid)
-    return max(0, FREE_DAILY_TOKENS - int(entry.get("tokens", 0)))
+def _tokens_left_week(uid: str, tier: str = "free"):
+    """Tokens left in the tier's weekly chat pool (R55)."""
+    pool = _og_tiers.weekly_chat_tokens(tier)
+    if pool is None:
+        return None
+    return max(0, pool - _week_used(uid, "token_days", "tokens"))
 
-def _has_free_tokens(uid: str) -> bool:
-    """True while the visitor still has free tokens today."""
-    return _free_tokens_remaining(uid) > 0
+def _free_tokens_remaining(uid: str) -> int:
+    """Free tokens this visitor has left this week (R55: the
+    free pool is weekly — 25,000/day x7, same total)."""
+    return _tokens_left_week(uid, "free") or 0
 
 def _record_chat_usage(uid: str, tokens_used: int):
-    """Record one /chat exchange + deduct its tokens (free tier)."""
+    """Record one /chat exchange + tokens (all tiers, R55)."""
     with _usage_lock:
         store = _load_usage_store()
         entry = _today_entry(store, uid)
+        _og_tiers.carry_days(store.get(uid), entry, "token_days")
         entry["count"] = int(entry.get("count", 0)) + 1
         entry["tokens"] = int(entry.get("tokens", 0)) + max(0, int(tokens_used))
+        _og_tiers.note_day(entry, entry["date"], entry["tokens"], "token_days")
         store[uid] = entry
         _save_usage_store(store)
+
+def _week_used(key: str, field="days", value_key="count") -> int:
+    with _usage_lock:
+        store = _load_usage_store()
+    return _og_tiers.week_used(store.get(key), field, value_key)
 
 _token_encoder = None
 _token_encoder_tried = False
@@ -148,18 +157,21 @@ TTS_MAX_CHARS = 600
 TTS_VOICES = {"onyx", "fable", "echo", "nova", "shimmer", "alloy"}
 TTS_DEFAULT_VOICE = "onyx"
 
-def _consume_tts_call(uid: str, limit: int = None) -> bool:
-    """Record one /tts call today (UTC); False at cap."""
+def _consume_tts_call(uid: str, weekly_limit: int = None) -> bool:
+    """Record one /tts call; False at the weekly cap (R55:
+    voice is metered weekly only — no daily layer)."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"tts:{uid}"
     with _usage_lock:
         store = _load_usage_store()
         entry = store.get(key)
         if not isinstance(entry, dict) or entry.get("date") != today:
-            entry = {"date": today, "count": 0}
-        if entry["count"] >= (TTS_DAILY_LIMIT if limit is None else limit):
+            old, entry = entry, {"date": today, "count": 0}
+            _og_tiers.carry_days(old, entry)
+        if weekly_limit is not None and _og_tiers.week_used(entry) >= weekly_limit:
             return False
         entry["count"] += 1
+        _og_tiers.note_day(entry, today, entry["count"])
         store[key] = entry
         _save_usage_store(store)
         return True
@@ -173,29 +185,19 @@ from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
 IMAGE_FREE_DAILY = int(os.getenv("OG_IMAGE_FREE_DAILY", "2"))
 IMAGE_PRO_DAILY = int(os.getenv("OG_IMAGE_PRO_DAILY", "25"))
 
-def _images_used_today(uid: str) -> int:
-    """Images this visitor has generated today (UTC)."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    with _usage_lock:
-        store = _load_usage_store()
-    entry = store.get(f"image:{uid}")
-    if not isinstance(entry, dict) or entry.get("date") != today:
-        return 0
-    return int(entry.get("count", 0))
-
-def _images_left(uid: str, tier: str) -> int:
-    return _og_tiers.images_left(tier, _images_used_today(uid))
-
 def _consume_image(uid: str):
-    """Record one generated image today (UTC); success-only."""
+    """Record one generated image today (UTC); success-only.
+    (R55: also mirrors the entry's per-day map, note_day.)"""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     key = f"image:{uid}"
     with _usage_lock:
         store = _load_usage_store()
         entry = store.get(key)
         if not isinstance(entry, dict) or entry.get("date") != today:
-            entry = {"date": today, "count": 0}
+            old, entry = entry, {"date": today, "count": 0}
+            _og_tiers.carry_days(old, entry)
         entry["count"] = int(entry.get("count", 0)) + 1
+        _og_tiers.note_day(entry, today, entry["count"])
         store[key] = entry
         _save_usage_store(store)
 
@@ -1830,6 +1832,7 @@ class ChatResponse(BaseModel):
     timestamp: str
     upgrade_url: Optional[str] = None
     free_tokens_left: Optional[int] = None
+    weekly_tokens_left: Optional[int] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -2133,9 +2136,9 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
             "timestamp": latest_msg['timestamp'] if latest_msg else ""
         }
         _bump_stat("messages")
-        # Token metering (free visitors only; Pro is unmetered).
+        # Metering: record every tier (R55); free meter free-only.
+        _record_chat_usage(uid, tokens_used)
         if meter:
-            _record_chat_usage(uid, tokens_used)
             _bump_stat("tokens", tokens_used)
             result["free_tokens_left"] = _free_tokens_remaining(uid)
         else:
@@ -2215,7 +2218,7 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
 
 @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
 async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
-    """Send a message to the AI agent. Free visitors get FREE_DAILY_TOKENS tokens per UTC day (ogai_uid cookie); paid tiers unmetered; a capped visitor still gets HTTP 200 with an in-persona upgrade reply. {"stream": true} = Server-Sent Events."""
+    """Send a message to the AI agent. Every tier chats on a weekly token pool (trailing 7 days, ogai_uid cookie; free = 25,000/day x7); a capped visitor still gets HTTP 200 with an in-persona upgrade reply. {"stream": true} = Server-Sent Events."""
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -2236,26 +2239,19 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
         raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
 
-    if not is_pro:
-        if not _has_free_tokens(uid):
-            _bump_stat("cap_hits")
-            cap_payload = {
-                "response": (
-                    f"Yo, real talk — you're outta free tokens for today "
-                    f"({FREE_DAILY_TOKENS:,} a day on the free plan), and the OG don't work for free forever. "
-                    f"Go premium for unlimited: {_og_tiers.public_pro_url()} — or slide back tomorrow when your freebies reset."
-                ),
-                "agent_name": agent_instance.name,
-                "timestamp": datetime.now().isoformat(),
-                "upgrade_url": _og_tiers.public_pro_url(),
-                "free_tokens_left": 0
-            }
-            if request.stream:
-                async def cap_events():
-                    yield f"event: chunk\ndata: {json.dumps({'text': cap_payload['response']})}\n\n"
-                    yield f"event: done\ndata: {json.dumps(cap_payload)}\n\n"
-                return _sse_streaming_response(cap_events(), http_response, entitled)
-            return cap_payload
+    # Weekly chat pool (R55): every tier is metered on the
+    # trailing 7 days — there is no daily token cap anymore.
+    cap_payload = None
+    if _og_tiers.chat_pool_hit(tier, _week_used(uid, "token_days", "tokens")):
+        _bump_stat("cap_hits")
+        cap_payload = _og_tiers.weekly_chat_payload(tier, agent_instance.name)
+    if cap_payload is not None:
+        if request.stream:
+            async def cap_events():
+                yield f"event: chunk\ndata: {json.dumps({'text': cap_payload['response']})}\n\n"
+                yield f"event: done\ndata: {json.dumps(cap_payload)}\n\n"
+            return _sse_streaming_response(cap_events(), http_response, entitled)
+        return cap_payload
 
     if request.stream:
         return _stream_chat_response(
@@ -2298,12 +2294,11 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
 
         _bump_stat("messages")
 
-        # Token metering (free visitors only): the classic path gets no
-        # usage back from the agent, so the call is counted by estimate.
+        # Metering (estimate; recorded for every tier, R55).
+        _tokens_used = _estimate_call_tokens(agent_instance, response) \
+            + _drain_lookup_tokens()
+        _record_chat_usage(uid, _tokens_used)
         if not is_pro:
-            _tokens_used = _estimate_call_tokens(agent_instance, response) \
-                + _drain_lookup_tokens()
-            _record_chat_usage(uid, _tokens_used)
             _bump_stat("tokens", _tokens_used)
             result["free_tokens_left"] = _free_tokens_remaining(uid)
 
@@ -2357,8 +2352,11 @@ async def text_to_speech(raw_request: Request):
     uid = raw_request.cookies.get("ogai_uid") or "anon"
     _tts_tier = _tier_of(raw_request.cookies,
                          uid if uid != "anon" else "")
-    if not _consume_tts_call(uid, _og_tiers.cap(_tts_tier, "tts")):
-        raise HTTPException(status_code=429, detail="Daily voice limit reached")
+    _tts_wk = _og_tiers.weekly_cap(_tts_tier, "tts")
+    if _og_tiers.weekly_hit(_tts_tier, "tts", _week_used(f"tts:{uid}")):
+        raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
+    if not _consume_tts_call(uid, _tts_wk):
+        raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
     import httpx
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -2406,27 +2404,13 @@ async def generate_image(raw_request: Request):
     prompt = _clean_image_prompt(raw_prompt)
 
     tier = _request_tier(raw_request)
-    img_cap = _og_tiers.cap(tier, "images")
-    left = _images_left(uid, tier)
+    # Weekly ceiling (R55): pictures are metered weekly only.
+    cap_w = _og_tiers.weekly_cap(tier, "images") or 0
+    left = max(0, cap_w - _week_used(f"image:{uid}"))
     if left <= 0:
-        if tier != "free":
-            return _reply({
-                "ok": False, "capped": True, "images_left": 0,
-                "response": (
-                    f"Yo, you burned through all {img_cap} pics for "
-                    "today — even the top shelf gotta let the lab cool "
-                    "down. Slide back tomorrow."
-                ),
-            })
-        return _reply({
-            "ok": False, "capped": True, "images_left": 0,
-            "upgrade_url": _og_tiers.public_pro_url(),
-            "response": (
-                f"Yo, that's your {img_cap} free pics for today — the OG "
-                f"ain't runnin' a free art studio. Go premium for more "
-                f"a day: {_og_tiers.public_pro_url()} — or slide back tomorrow."
-            ),
-        })
+        return _reply({"ok": False, "capped": True, "weekly_capped": True,
+                       "images_left": 0,
+                       "response": _og_tiers.weekly_image_line(tier)})
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -2441,7 +2425,7 @@ async def generate_image(raw_request: Request):
                        "images_left": left})
 
     _consume_image(uid)
-    left = _images_left(uid, tier)
+    left = max(0, cap_w - _week_used(f"image:{uid}"))
     caption = _IMAGE_CAPTIONS[len(prompt) % len(_IMAGE_CAPTIONS)]
     # Note the drawing in the visitor's thread (too big to store).
     try:
@@ -2687,7 +2671,7 @@ async def get_history(raw_request: Request):
         elif uid:
             tokens_left = _free_tokens_remaining(uid)
         else:
-            tokens_left = FREE_DAILY_TOKENS
+            tokens_left = _og_tiers.weekly_chat_tokens("free") or 175000
         return {
             "conversation": history,
             "history": history,  # Backward compatibility with Flask API
