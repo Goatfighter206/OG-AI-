@@ -35,6 +35,22 @@ pack and binds hardest at $20 via Stripe's fixed 30c):
     $60=600,000  $70=700,000  $80=800,000  $90=900,000
     $100=1,000,000  $150=1,500,000  $200=2,000,000
     $300=3,000,000
+
+Round 58 (owner ruling): the exchange is TIER-AWARE. Red and
+Standard buyers credit at a leaner 6,500 tokens per $1 — the
+60% table, sized with the same guard method (worst case =
+the whole pack redeemed in songs, discrete whole units,
+Stripe 2.9% + 30c): at $20, 130,000 tokens buy 18 whole
+songs = $6.84 of redemption against $19.12 net, a 61.4% net
+margin, and every pack clears 60% (pinned in r58tests).
+Pro / Blue / Blackout buyers keep the flat 10,000/$ table
+(the 40% table). The rate is fixed AT PURCHASE TIME by the
+buyer's tier (balances are just numbers — nothing already
+bought is ever repriced). Crediting resolves the tier
+uid-only from the webhook entitlement store (the webhook-on
+resolution; with the webhook off no pack credits at all).
+An entitlement-less uid falls back to the flat table — the
+shipped Round 56 behavior.
 Burn rates (tokens): chat 1/token, image 750, video 7,000,
 song 7,000, tts 175. Redemption cost vs sale value (unit
 costs: chat $0.60/1M out worst case, image $0.04, video
@@ -58,6 +74,27 @@ PACK_PRICES = (20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300)
 TOKENS_PER_DOLLAR = 10_000
 PACK_TOKENS = {p: p * TOKENS_PER_DOLLAR for p in PACK_PRICES}
 TOKEN_SALE_PRICE = 1.0 / TOKENS_PER_DOLLAR  # $0.0001 per token
+
+# Round 58: the 60%-margin table for Red + Standard buyers.
+TOKENS_PER_DOLLAR_60 = 6_500
+PACK_TOKENS_60 = {p: p * TOKENS_PER_DOLLAR_60 for p in PACK_PRICES}
+TOKEN_SALE_PRICE_60 = 1.0 / TOKENS_PER_DOLLAR_60
+MARGIN_60_TIERS = ("red", "standard")
+
+
+def tokens_per_dollar(tier=None) -> int:
+    """The exchange a buyer at `tier` gets (60% table for
+    red/standard, the flat table for everyone else)."""
+    if tier in MARGIN_60_TIERS:
+        return TOKENS_PER_DOLLAR_60
+    return TOKENS_PER_DOLLAR
+
+
+def pack_tokens(price, tier=None) -> int:
+    """Tokens one pack of `price` credits a buyer at `tier`."""
+    table = PACK_TOKENS_60 if tier in MARGIN_60_TIERS \
+        else PACK_TOKENS
+    return table[int(price)]
 
 RATES = {"chat": 1, "image": 750, "video": 7000, "song": 7000,
          "tts": 175}
@@ -159,12 +196,15 @@ def credit(uid: str, amount: int, reason: str) -> int:
 
 
 def credit_pack(uid: str, price: int, event_key: str = "",
-                session_id: str = ""):
+                session_id: str = "", tier: str = None):
     """Credit one purchased pack, exactly once per Stripe
-    event. Returns (credited, balance)."""
+    event. `tier` is the buyer's tier at purchase time and
+    picks the exchange table (Round 58); None = the flat
+    table. Returns (credited, balance)."""
     price = int(price)
     if not uid or price not in PACK_TOKENS or "load_usage" not in _deps:
         return False, balance(uid)
+    amount = pack_tokens(price, tier)
     key = str(event_key or session_id or "")
     with _deps["usage_lock"]:
         store = _deps["load_usage"]()
@@ -177,8 +217,8 @@ def credit_pack(uid: str, price: int, event_key: str = "",
                 if isinstance(entry, dict) else 0
             return False, bal
         entry = _entry(store, uid)
-        entry["balance"] = int(entry["balance"]) + PACK_TOKENS[price]
-        _log(entry, PACK_TOKENS[price], f"pack:${price}")
+        entry["balance"] = int(entry["balance"]) + amount
+        _log(entry, amount, f"pack:${price}")
         store[_KEY + uid] = entry
         if key:
             events[key] = {"uid": uid, "price": price, "ts": _now(),
@@ -198,6 +238,20 @@ import logging
 logger = logging.getLogger("og_tokenpacks")
 
 
+def _buyer_tier(uid: str):
+    """The buyer's tier resolved from the uid alone (the
+    webhook has no cookies): the entitlement store, via
+    og_tiers — the same record tier_of() reads. None when
+    the uid holds no entitlement (the credit then falls
+    back to the flat table). Lazy import: og_tiers is a
+    sibling, never a module-level dependency here."""
+    try:
+        import og_tiers
+        return og_tiers.entitlement_tier_for(uid)
+    except Exception:
+        return None
+
+
 def credit_from_session(session: Dict, event_id: str = "",
                         uid: str = "") -> bool:
     """Webhook helper: credit a completed pack checkout
@@ -209,7 +263,8 @@ def credit_from_session(session: Dict, event_id: str = "",
                        "(uid=%r price=%r)", bool(uid), price)
         return False
     credited, bal = credit_pack(uid, price, event_id,
-                                session.get("id", ""))
+                                session.get("id", ""),
+                                tier=_buyer_tier(uid))
     logger.info("Token pack checkout: price=%s credited=%s "
                 "balance=%s", price, credited, bal)
     return credited
@@ -331,7 +386,7 @@ def register_token_routes(app):
         packs = []
         for p in PACK_PRICES:
             url = pack_link(p)
-            item = {"price": p, "tokens": PACK_TOKENS[p],
+            item = {"price": p, "tokens": pack_tokens(p, tier),
                     "available": bool(url), "url": None}
             if url and subscriber:
                 sep = "&" if "?" in url else "?"
@@ -341,6 +396,7 @@ def register_token_routes(app):
             "balance": balance(uid) if uid else 0,
             "tier": tier,
             "subscriber": subscriber,
+            "tokens_per_dollar": tokens_per_dollar(tier),
             "packs": packs,
             "rates": dict(RATES),
             "note": ("Tokens never expire, and they only start "
