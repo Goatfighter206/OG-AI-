@@ -104,10 +104,14 @@ TITLE_CAP = 160
 BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
          "song_done", "storage_warning", "notice",
-         "approval_needed", "signin_needed", "system_check")
+         "approval_needed", "signin_needed", "system_check",
+         "fix_needed")
 # Round 50: system_check joins the alert kinds — the twice-daily
 # self-check reports through the same own-switches posture.
-ALERT_KINDS = ("approval_needed", "signin_needed", "system_check")
+# Round 53: fix_needed joins too — a prepared fix waiting on the
+# owner's approval is an alert-family event, same posture.
+ALERT_KINDS = ("approval_needed", "signin_needed", "system_check",
+               "fix_needed")
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
 try:
