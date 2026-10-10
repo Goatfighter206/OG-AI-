@@ -1342,6 +1342,16 @@ def _run_job(job_id: str, uid: str) -> None:
                     file=final, size=os.path.getsize(final),
                     duration=round(total, 1), charged=True,
                     scenes_done=len(scenes))
+            # Notifications (optional layer): the finished
+            # video also lands in the visitor's notification
+            # center (+ opt-in channels). Fail-safe.
+            try:
+                import og_notify as _notify
+                _notify.record(
+                    uid, "video_done",
+                    f"Your video is ready: \"{title}\"", detail)
+            except Exception:
+                pass
             for name in os.listdir(job_dir):
                 if name != "final.mp4":
                     try:
