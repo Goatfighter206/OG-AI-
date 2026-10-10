@@ -1372,3 +1372,60 @@ def register_utils_routes(app):
         if not isinstance(record, dict) or not record.get("url"):
             raise HTTPException(status_code=404, detail="Not found")
         return RedirectResponse(url=record["url"], status_code=302)
+
+# --- Round 40 relocations from app.py (behavior-identical;
+# moved so app.py stays pushable under the wrapper size cap)
+CODE_ARTIFACT_RE = re.compile(
+    r"\b(script|function|class|api|app|website|web\s?site|cli|"
+    r"scraper|bot|component|program|code|plugin|extension|"
+    r"library|module)\b", re.IGNORECASE)
+
+_TOPIC_LEADIN_RE = re.compile(
+    r"^(what'?s|what is|what are|give me|tell me|show me|get me|"
+    r"any)\s+", re.IGNORECASE)
+
+def clean_news_topic(topic: str):
+    t = " ".join(str(topic).split()).strip(" ?.!,")
+    low = t.lower()
+    for stop in (" today", " right now", " please", " headlines", " news"):
+        idx = low.find(stop)
+        if idx > 2:
+            t = t[:idx]
+            low = t.lower()
+    t = t.strip(" ?.!,")
+    # Round 40: question scaffolding is not a topic — "what's the
+    # news today?" used to search Google News for the literal words
+    # "what's the". Strip interrogative lead-ins; a topic that is
+    # only scaffolding means "top headlines" (None).
+    while _TOPIC_LEADIN_RE.match(t):
+        t = _TOPIC_LEADIN_RE.sub("", t).strip(" ?.!,")
+    low = t.lower()
+    if len(t) < 3 or low in ("top", "top stories", "the", "latest",
+                             "the latest", "the news", "news",
+                             "headlines"):
+        return None
+    return t[:80]
+
+DATA_TEAM_WORDS = (
+    "seahawks", "mariners", "cardinals", "falcons", "ravens", "bills",
+    "panthers", "bears", "bengals", "browns", "cowboys", "broncos",
+    "lions", "packers", "texans", "colts", "jaguars", "chiefs",
+    "raiders", "chargers", "rams", "dolphins", "vikings", "patriots",
+    "saints", "giants", "jets", "eagles", "steelers", "49ers",
+    "buccaneers", "titans", "commanders", "celtics", "nets", "hornets",
+    "bulls", "cavaliers", "mavericks", "nuggets", "pistons",
+    "warriors", "rockets", "pacers", "clippers", "lakers", "grizzlies",
+    "heat", "bucks", "timberwolves", "pelicans", "knicks", "thunder",
+    "magic", "76ers", "suns", "blazers", "kings", "spurs", "raptors",
+    "jazz", "wizards", "diamondbacks", "braves", "orioles", "red sox",
+    "cubs", "white sox", "reds", "guardians", "rockies", "tigers",
+    "astros", "royals", "angels", "dodgers", "marlins", "brewers",
+    "twins", "mets", "yankees", "athletics", "phillies", "pirates",
+    "padres", "rays", "rangers", "blue jays", "nationals", "ducks",
+    "bruins", "sabres", "flames", "hurricanes", "blackhawks",
+    "avalanche", "blue jackets", "stars", "red wings", "oilers",
+    "canadiens", "predators", "devils", "islanders", "senators",
+    "flyers", "penguins", "sharks", "kraken", "blues", "lightning",
+    "maple leafs", "canucks", "golden knights", "capitals", "mammoth",
+    "coyotes",
+)
