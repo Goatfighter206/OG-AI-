@@ -41,6 +41,8 @@ shellRoot.innerHTML =
 '<p id="ogApprEmpty" class="og-appr-empty">Nothing waiting on you — when OG needs a yes or no, it parks here.</p>' +
 '<h3 class="og-appr-sec" id="ogApprRecentSec" hidden>Recent</h3>' +
 '<div id="ogApprList"></div>' +
+'<h3 class="og-appr-sec" id="ogApprFixSec" hidden>Fixes waiting</h3>' +
+'<div id="ogApprFixList"></div>' +
 '</div>' +
 '</section>';
 document.body.appendChild(shellRoot);
@@ -126,12 +128,19 @@ if (apprScrim) apprScrim.addEventListener('click', function () { closeApprovals(
 /* --- 4. Approvals panel ------------------------------------------------- */
 var pending = null, apprBusy = false, recentsCount = 0, outcomeUntil = 0;
 
+/* Round 53: the seat dot also lights for an open fix proposal. */
+var openFixCount = 0;
+function updateDot() {
+  if (apprDot) apprDot.hidden = !(pending || openFixCount > 0);
+}
+
 function openApprovals() {
   var p = $('ogApprovalsPanel'), s = $('ogApprovalsScrim');
   if (s) s.hidden = false;
   if (p) p.hidden = false;
   refreshPending();
   refreshRecents();
+  refreshFixes();
   paintSeats();
 }
 window.ogOpenApprovals = openApprovals;
@@ -148,12 +157,12 @@ function renderPending() {
   var card = $('ogApprCard'), desc = $('ogApprDesc'), text = $('ogApprText'),
       exp = $('ogApprExp'), always = $('ogApprAlwaysBtn'), out = $('ogApprOutcome'),
       empty = $('ogApprEmpty');
-  if (apprDot) apprDot.hidden = !pending;
+  updateDot();
   if (!card) return;
   if (Date.now() < outcomeUntil) { card.hidden = false; return; }
   if (!pending) {
     card.hidden = true;
-    if (empty) empty.hidden = recentsCount > 0;
+    if (empty) empty.hidden = recentsCount > 0 || openFixCount > 0;
     return;
   }
   if (empty) empty.hidden = true;
@@ -247,8 +256,87 @@ function refreshRecents() {
     .catch(function () { });
 }
 
+/* --- 5. Fixes waiting (Round 53 fix-approval pipeline) ------------------
+   OG prepares a fix for a problem he ran into; NOTHING runs until the
+   owner approves here (or in chat). The list is the caller's own
+   proposals from GET /approvals/proposals; the buttons POST the act
+   route with the proposal id + the decision. */
+function refreshFixes() {
+  var list = $('ogApprFixList'), sec = $('ogApprFixSec');
+  if (!list) return;
+  fetch('/approvals/proposals')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      var items = (d && d.proposals) || [];
+      openFixCount = (d && typeof d.open_count === 'number')
+        ? d.open_count
+        : items.filter(function (p) { return p && p.status === 'open'; }).length;
+      list.innerHTML = '';
+      if (sec) sec.hidden = items.length === 0;
+      items.forEach(function (p) {
+        if (!p) return;
+        var row = document.createElement('div');
+        row.className = 'og-appr-item';
+        var main = document.createElement('div');
+        main.className = 'og-appr-main';
+        var t = document.createElement('div');
+        t.className = 'og-appr-item-title';
+        t.textContent = '🔧 ' + (p.title || 'Fix waiting');
+        var b = document.createElement('div');
+        b.className = 'og-appr-item-body';
+        b.textContent = p.summary || '';
+        main.appendChild(t); main.appendChild(b);
+        if (p.status === 'open') {
+          var btns = document.createElement('div');
+          btns.className = 'og-appr-fix-btns';
+          var yes = document.createElement('button');
+          yes.type = 'button'; yes.className = 'og-appr-fix-yes';
+          yes.textContent = '✓ Approve fix';
+          var no = document.createElement('button');
+          no.type = 'button'; no.className = 'og-appr-fix-no';
+          no.textContent = '✕ Decline';
+          yes.addEventListener('click', function () { decideFix(p.id, 'approve', yes, no); });
+          no.addEventListener('click', function () { decideFix(p.id, 'decline', yes, no); });
+          btns.appendChild(yes); btns.appendChild(no);
+          main.appendChild(btns);
+        } else {
+          var w = document.createElement('div');
+          w.className = 'og-appr-item-time';
+          w.textContent = p.status === 'executed'
+            ? (p.outcome === 'fixed' ? 'Fixed ✓ — OG re-checked and it is gone' : 'Fix didn\'t take — a fresh approval is needed to try again')
+            : (p.status === 'handed_off' ? 'Steps handed over — in your hands now' : 'Declined');
+          main.appendChild(w);
+        }
+        row.appendChild(main);
+        list.appendChild(row);
+      });
+      updateDot();
+      renderPending();
+    })
+    .catch(function () { });
+}
+
+function decideFix(id, decision, yesBtn, noBtn) {
+  if (yesBtn) yesBtn.disabled = true;
+  if (noBtn) noBtn.disabled = true;
+  fetch('/approvals/proposals/act', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: id, decision: decision })
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+      if (res && res.title) showApprOutcome((res.ok ? '✅ ' : '⚠️ ') + res.title + (res.body ? '\n' + res.body : ''));
+      else showApprOutcome('⚠️ That didn\'t go through — ' + ((res && res.error) || 'try again in a moment.'));
+    })
+    .catch(function () { showApprOutcome('⚠️ That didn\'t go through — connection hiccup. The fix is still parked if it reappears above.'); })
+    .then(function () { refreshFixes(); refreshPending(); });
+}
+
 refreshPending();
+refreshFixes();
 setInterval(refreshPending, 4000);
+setInterval(refreshFixes, 4000);
 setInterval(paintSeats, 900);
 paintSeats();
 })();
