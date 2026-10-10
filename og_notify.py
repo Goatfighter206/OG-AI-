@@ -106,6 +106,36 @@ KINDS = ("watch_match", "price_alert", "video_done",
          "song_done", "storage_warning", "notice",
          "approval_needed", "signin_needed", "system_check",
          "fix_needed")
+
+# Round 59: a notification may carry a route descriptor ("target") so
+# tapping it takes the user to the thing it is about. Additive and
+# stable — the Unity client consumes the SAME shape:
+#   {"view": "approvals"|"browser"|"library"|"watch"|"system",
+#    "id": "<optional>", "kind": "<optional>"}
+# Old records have no target; clients treat missing/null as no-route.
+TARGET_VIEWS = ("approvals", "browser", "library", "watch", "system")
+
+
+def _clean_target(target):
+    """Coerce a producer-supplied target into the stored shape, or
+    None. Anything malformed becomes no-target — a bad target must
+    never break the producer that called record()."""
+    try:
+        if not isinstance(target, dict):
+            return None
+        view = target.get("view")
+        if view not in TARGET_VIEWS:
+            return None
+        out = {"view": view}
+        tid = target.get("id")
+        if isinstance(tid, str) and tid.strip():
+            out["id"] = tid[:64]
+        kind = target.get("kind")
+        if isinstance(kind, str) and kind.strip():
+            out["kind"] = kind[:32]
+        return out
+    except Exception:
+        return None
 # Round 50: system_check joins the alert kinds — the twice-daily
 # self-check reports through the same own-switches posture.
 # Round 53: fix_needed joins too — a prepared fix waiting on the
@@ -266,7 +296,7 @@ def _site_url() -> str:
     return base.rstrip("/") + "/"
 
 
-def record(uid, kind, title, body) -> None:
+def record(uid, kind, title, body, target=None) -> None:
     """The producer seam. FAIL-SAFE: never raises, never
     returns anything a producer depends on. Records the
     notification, then fans out to the opt-in channels."""
@@ -302,6 +332,9 @@ def record(uid, kind, title, body) -> None:
             "body": body,
             "ts": now,
             "read": False,
+            # Round 59: additive route descriptor (None = no route;
+            # tap then just marks read, as before).
+            "target": _clean_target(target),
         })
         _put("items:" + uid, items[-MAX_ITEMS:])
         if kind in ALERT_KINDS:
@@ -542,6 +575,8 @@ def register_notify_routes(app):
             "id": it.get("id"), "kind": it.get("kind"),
             "title": it.get("title"), "body": it.get("body"),
             "ts": it.get("ts"), "read": bool(it.get("read")),
+            # Round 59: old records have no target -> null (no-route).
+            "target": it.get("target"),
         } for it in reversed(items[-LIST_CAP:])]
         return {"items": out,
                 "unread": sum(1 for it in items
