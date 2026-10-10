@@ -1532,7 +1532,7 @@ function loadShot() {
 if (!shot) return;
 viewLive(false);
 shot.onerror = function () { note("Still view couldn't load a picture right now — the Open browser button below is your reliable window."); };
-shot.onload = function () { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. You can\'t click in this view; tap Open browser below to drive.' : ''); };
+shot.onload = function () { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. Driving? Tap 👆 Tap, then tap the picture to click; ⌨️ Keyboard types.' : ''); };
 shot.src = API_URL + '/browser/screenshot?ts=' + Date.now();
 }
 function setMode(mode, auto) {
@@ -1608,7 +1608,6 @@ if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 
 wasActive = true;
 if (window.ogSetAvatar) ogSetAvatar('working', 4000);
 }
-if (driving && viewMode === 'still') setMode('live', false);
 if (st.viewer_url) {
 viewerUrl = st.viewer_url;
 if (st.viewer_url !== lastSrc) { frame.src = st.viewer_url; lastSrc = st.viewer_url; frameLoaded = false; viewLive(false); srcSetAt = Date.now(); if (viewMode === 'still') loadShot(); }
@@ -1990,10 +1989,11 @@ if (scrim) scrim.addEventListener('click', closeProfile);
 var shareBtn = $('profileShareBtn');
 if (shareBtn) shareBtn.addEventListener('click', function () { closeProfile(); if (typeof delegate === 'function') delegate('shareBtn'); });
 var pillTop = $('ogTaskPillTop'), pillProf = $('ogTaskPillProfile');
-var chatBusy = false, browsing = false, browseHost = '', videoBusy = false, songBusy = false, lastText = '';
+var chatBusy = false, browsing = false, browseHost = '', loadingHost = '', videoBusy = false, songBusy = false, lastText = '';
 function compute() {
 if (videoBusy) return 'Making your video';
 if (songBusy) return 'Making your song';
+if (loadingHost) return 'Opening ' + loadingHost + '…';
 if (browsing) return browseHost ? 'Browsing ' + browseHost : 'Browsing';
 if (chatBusy) return 'Thinking…';
 return 'Online & Ready';
@@ -2019,6 +2019,7 @@ if (kind === 'browser') {
 browsing = !!(st.enabled && st.active);
 browseHost = '';
 if (browsing && st.page_url) { try { browseHost = new URL(st.page_url).hostname || ''; } catch (e) { } }
+loadingHost = st.loading_host || '';
 }
 else if (kind === 'video') videoBusy = !!(st.enabled && st.job && ['queued', 'drawing', 'voicing', 'stitching'].indexOf(st.job.state) !== -1);
 else if (kind === 'song') songBusy = !!(st.enabled && st.job && st.job.state === 'generating');
@@ -2078,10 +2079,12 @@ paint();
 <link rel="stylesheet" href="/static/og_library.css">
 <link rel="stylesheet" href="/static/og_store.css">
 <link rel="stylesheet" href="/static/og_notification_settings.css">
+<link rel="stylesheet" href="/static/og_browser_input.css">
 <script src="/static/og_notify.js"></script>
 <script src="/static/og_connections.js"></script>
 <script src="/static/og_library.js"></script>
 <script src="/static/og_store.js"></script>
 <script src="/static/og_notification_settings.js"></script>
+<script src="/static/og_browser_input.js"></script>
 </body>
 </html>
