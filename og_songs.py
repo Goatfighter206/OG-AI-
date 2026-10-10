@@ -235,6 +235,49 @@ def _charge_song(uid: str) -> None:
         _deps["save_usage"](store)
 
 
+# --- Round 56: token-pack funding past the weekly wall --------
+
+def _token_balance(uid: str) -> int:
+    try:
+        import og_tokenpacks as _tp
+        return _tp.balance(uid)
+    except Exception:
+        return 0
+
+
+def _token_rate() -> int:
+    try:
+        import og_tokenpacks as _tp
+        return int(_tp.RATES["song"])
+    except Exception:
+        return 0
+
+
+def _song_blocked(uid: str, tier: str) -> bool:
+    """True only when the weekly pool is dry AND the token
+    balance can't cover a track — every other state proceeds
+    (pool first, tokens second; Brent's burn order)."""
+    if _song_week_left(uid, tier) > 0:
+        return False
+    rate = _token_rate()
+    return rate <= 0 or _token_balance(uid) < rate
+
+
+def _settle_song(uid: str, rec: Dict) -> None:
+    """Charge a completed, verified generation exactly once:
+    the weekly pool for a pool-funded job; a token-funded job
+    burns its posted rate instead. Called at the same point
+    _charge_song always was — failures never reach here."""
+    if rec.get("fund") == "tokens":
+        try:
+            import og_tokenpacks as _tp
+            _tp.debit(uid, int(_tp.RATES["song"]), "song")
+        except Exception:
+            pass
+        return
+    _charge_song(uid)
+
+
 def _tier_now(uid: str) -> str:
     fn = _deps.get("get_tier")
     try:
@@ -844,7 +887,11 @@ def _cap_body(tier: str, uid: str, note: str = "") -> List[Dict]:
     body = (f"The visitor is at THIS WEEK's song cap for their "
             f"plan ({cap_w} per week) — there is no daily reset. "
             f"The weekly pool has no fixed reset day: {refill}. "
-            f"{note} Tell them plainly, in persona: the lyrics "
+            f"Their token balance ({_token_balance(uid):,} "
+            f"tokens) can't cover a track either — one song "
+            f"burns {_token_rate():,} tokens past the weekly "
+            f"wall, and token packs live in the menu "
+            f"(subscribers only). {note} Tell them plainly, in persona: the lyrics "
             f"themselves they can still get right here in chat "
             f"any time; the SUNG track is what's capped. Higher "
             f"plans sing more songs a week: {_pro_url()}")
@@ -1070,14 +1117,19 @@ def _approve(uid: str, tier: str):
         _clear_pending(uid)
         return False, "A track is already in the studio for " \
             "you — let that one finish first.", None
-    if _song_week_left(uid, tier) <= 0:
+    if _song_blocked(uid, tier):
         _clear_pending(uid)
         return False, "You're at this week's song cap for " \
-            "your plan, so this one can't be tracked. The " \
+            "your plan, and your token balance can't cover a " \
+            "track either, so this one can't be tracked. The " \
             "weekly pool refills as your old days roll off " \
             "it — the lyrics themselves stay right here in " \
             "chat.", None
     rec = _new_job(uid, pending)
+    if _song_week_left(uid, tier) <= 0:
+        # Pool is dry but the balance covers it: the track is
+        # token-funded and burns its rate when it lands.
+        rec["fund"] = "tokens"
     _clear_pending(uid)
     _store_put(rec)
     thread = threading.Thread(target=_run_job,
@@ -1105,7 +1157,7 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "visitor. Tell them, in persona: one at a time — "
                 "the tracking one lands right here in the thread "
                 "when it's done, then they can line up the next.")
-        if _song_week_left(uid, tier) <= 0:
+        if _song_blocked(uid, tier):
             return _cap_body(tier, uid)
         topic = job.get("topic", "")
         if not topic:
@@ -1122,7 +1174,7 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
     if kind == "topic":
         topic = job.get("topic", "")
         _clear_pending(uid)
-        if _song_week_left(uid, tier) <= 0:
+        if _song_blocked(uid, tier):
             return _cap_body(tier, uid)
         return _start_song(uid, topic)
     if kind == "replace":
@@ -1133,7 +1185,7 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A track is ALREADY being generated for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the tracking one to land in the thread.")
-        if _song_week_left(uid, tier) <= 0:
+        if _song_blocked(uid, tier):
             return _cap_body(tier, uid)
         return _start_song(uid, job.get("topic", ""),
                            job.get("style", ""))
@@ -1144,7 +1196,7 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A track is ALREADY being generated for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the tracking one to land in the thread.")
-        if _song_week_left(uid, tier) <= 0:
+        if _song_blocked(uid, tier):
             return _cap_body(tier, uid)
         pending = {"stage": "await_approval", "hist_len": 0,
                    "topic": ""}
@@ -1163,6 +1215,14 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "only track it after your YES. Whatever topic "
                 "they answer with becomes the song.")
         sections = captured["sections"]
+        _fund_line = ""
+        if _song_week_left(uid, tier) <= 0:
+            _fund_line = (
+                f" Their weekly songs are used up, so this one "
+                f"burns {_token_rate():,} tokens from their "
+                f"balance ({_token_balance(uid):,} on hand) "
+                f"when it finishes instead — YES still just "
+                f"tracks it.")
         body = (
             f"The visitor wants THAT song tracked. Present "
             f"this approval ask, in persona, with these REAL "
@@ -1174,7 +1234,7 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"{int(_tiers.weekly_cap(tier, 'song') or 0)} "
             f"weekly songs); NO scraps it. Nothing is "
             f"generated before their YES. Songs left this "
-            f"week: {_song_week_left(uid, tier)}.")
+            f"week: {_song_week_left(uid, tier)}.{_fund_line}")
         return _result("SONG: APPROVE?", "🎵 Song — approval",
                        body)
     if kind == "approve":
@@ -1195,6 +1255,15 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"anything — and it only counts against their "
             f"weekly songs when it FINISHES, so a failed take "
             f"costs them nothing.")
+        if rec.get("fund") == "tokens":
+            body = body.replace(
+                "and it only counts against their weekly songs "
+                "when it FINISHES, so a failed take costs them "
+                "nothing.",
+                f"and it burns {_token_rate():,} tokens from "
+                f"their balance when it FINISHES (their weekly "
+                f"songs are used up) — so a failed take burns "
+                f"nothing.")
         return _result("SONG: TRACKING", "🎵 Song — in the studio",
                        body)
     if kind == "decline":
@@ -1296,7 +1365,7 @@ def _run_job(job_id: str, uid: str) -> None:
                     "bad_audio", "written file failed re-check")
             dur = _track_duration(
                 final, float(rec.get("plan_ms", 0)) / 1000.0)
-            _charge_song(uid)
+            _settle_song(uid, rec)
             _update(rec, state="done",
                     detail=f"\"{rec.get('title', '')}\" — "
                            f"{rec.get('style', '')}; a real "
@@ -1518,6 +1587,7 @@ def register_song_routes(app):
                 "cap": int(_tiers.weekly_cap(tier, "song") or 0),
                 "used": _songs_used_week(uid),
                 "left": _song_week_left(uid, tier),
+                "token_balance": _token_balance(uid),
                 "locker_ok": locker_ok,
                 "pending": pending_view,
                 "job": _job_view(
