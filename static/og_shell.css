@@ -114,6 +114,13 @@
 #ogApprAlwaysBtn { border: 1px solid rgba(255,193,7,.55); background: transparent; color: #e8c95a; }
 #ogApprAlwaysBtn[hidden] { display: none !important; }
 
+/* Round 53: fix-proposal rows in the Approvals panel */
+.og-appr-fix-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.og-appr-fix-btns button { border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: .88rem; cursor: pointer; }
+.og-appr-fix-btns button[disabled] { opacity: .5; cursor: default; }
+.og-appr-fix-yes { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+.og-appr-fix-no { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+
 /* --- Signed out: the shell hides with the auth wall up ----------------- */
 body.og-shell-off .og-topbar,
 body.og-shell-off .og-top-avatar-bar,
