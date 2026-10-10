@@ -865,6 +865,12 @@ _SONG_VERB = re.compile(
 _SONG_NOUN = re.compile(
     r"\b(song|songs|track|anthem|jingle|rap|ballad)\b", re.I)
 _ABOUT = re.compile(r"\babout\s+(.+)$", re.I)
+# Round 40: "I want a song about …" — want-form with an article,
+# like the build verbs; "I want that song" (an existing song)
+# must not claim a fresh draft.
+_WANT_SONG = re.compile(
+    r"\bi want\s+(?:a\s+|an\s+|some\s+|one\s+)?"
+    r"(song|songs|track|anthem|jingle|rap|ballad)\b", re.I)
 _THREAD_BIND = re.compile(
     r"\b(make|turn|set)\b[^.?!]{0,40}\b(that|this|it)\b"
     r"[^.?!]{0,20}\b(song|track)\b|\bmake that a song\b|"
@@ -973,8 +979,10 @@ def _claim_song(message: str, uid: str) -> Optional[Dict]:
         return {"kind": "from_thread"}
     verb = _SONG_VERB.search(low)
     noun = _SONG_NOUN.search(low)
-    if verb and noun and noun.start() > verb.start() \
-            and noun.start() - verb.start() < 60:
+    want = _WANT_SONG.search(low)
+    vpos = verb.start() if verb else (want.start() if want else None)
+    if noun and vpos is not None and noun.start() > vpos \
+            and noun.start() - vpos < 60:
         topic = ""
         m = _ABOUT.search(raw.strip())
         if m:
