@@ -417,7 +417,7 @@ _LOOKUP_TRIGGER_PHRASES = (
     "google search", "check online", "on the internet", "on the web",
 )
 _LOOKUP_TRIGGER_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
-    r"\b(today|tonight|right now|currently|latest|this week|this month)\b",
+    r"\b(today|tonight|tomorrow|yesterday|right now|currently|latest|this week|this month)\b",
     r"\b(news|headlines|weather|forecast)\b",
     r"\b(score|who won|who is winning|standings)\b",
     r"\b(price of|how much is|stock price|market cap|exchange rate)\b",
@@ -584,17 +584,25 @@ def _install_lookup_tools(agent_instance):
         return
     agent_instance._og_original_web_search = original_search
 
+    # Round 40: the code-generation veto on the
+    # lookup upgrade now lives in og_utils
+    # (CODE_ARTIFACT_RE) — see the wrapper below.
+
     def detect_intent_wrapped(message):
         _current_message["text"] = str(message)
         intent = original_detect(message)
         try:
             if (isinstance(intent, dict)
                     and not intent.get("needs_web_search")
-                    and not intent.get("needs_code_generation")
                     and (_message_needs_lookup(message)
                          or _message_needs_data(message))):
-                intent["needs_web_search"] = True
-                intent["search_query"] = str(message).strip()
+                vetoed = (intent.get("needs_code_generation")
+                          and _og_utils.CODE_ARTIFACT_RE.search(str(message)))
+                if not vetoed:
+                    intent["needs_web_search"] = True
+                    intent["search_query"] = str(message).strip()
+                    if intent.get("needs_code_generation"):
+                        intent["needs_code_generation"] = False
         except Exception as e:
             logger.warning(f"Lookup trigger check failed: {e}")
         return intent
@@ -675,7 +683,9 @@ _PLACE_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
     r"\btemperature\s+in\s+([A-Za-z][A-Za-z .'-]{1,40})",
     r"\braining\s+in\s+([A-Za-z][A-Za-z .'-]{1,40})",
     r"\bsnowing\s+in\s+([A-Za-z][A-Za-z .'-]{1,40})",
+    r"\b(?:rain|snow)\s+(?:in|for)\s+([A-Za-z][A-Za-z .'-]{1,40})",
     r"^([A-Za-z][A-Za-z .'-]{1,40}?)\s+weather\b",
+    r"\bin\s+([A-Z][A-Za-z .'-]{1,40})",
 ))
 _PLACE_STOPWORDS = {"today", "tomorrow", "tonight", "outside", "here",
                     "there", "the", "my", "this", "week", "weekend"}
@@ -772,11 +782,13 @@ def _weather_wttr(place: str, key: str):
                              "https://wttr.in/"),
                        _DATA_TTL["weather"])
 
+_WEATHER_GATE_RE = re.compile(
+    r"\b(weather|forecast|temperature|rain|raining|snow|snowing)\b")
+
 def _tool_weather(query: str):
     """Live weather via Open-Meteo. (label, text, source) or None."""
     low = str(query).lower()
-    if not any(w in low for w in ("weather", "forecast", "temperature",
-                                  "raining", "snowing")):
+    if not _WEATHER_GATE_RE.search(low):
         return None
     place = _extract_place(query)
     if not place:
@@ -1264,18 +1276,7 @@ def _tool_crypto(query: str):
                        _DATA_TTL["crypto"])
 
 # --- Round 4: news (Google News RSS) ---
-def _clean_topic(topic: str):
-    t = " ".join(str(topic).split()).strip(" ?.!,")
-    low = t.lower()
-    for stop in (" today", " right now", " please", " headlines", " news"):
-        idx = low.find(stop)
-        if idx > 2:
-            t = t[:idx]
-            low = t.lower()
-    t = t.strip(" ?.!,")
-    if len(t) < 3 or low in ("top", "top stories", "the", "latest"):
-        return None
-    return t[:80]
+_clean_topic = _og_utils.clean_news_topic
 
 def _tool_news(query: str):
     """Top or topical headlines via Google News RSS. Tuple or None."""
@@ -1283,7 +1284,7 @@ def _tool_news(query: str):
     import xml.etree.ElementTree as ET
     low = str(query).lower()
     if "news" not in low and "headline" not in low \
-            and "happening" not in low:
+            and "happening" not in low and "top stories" not in low:
         return None
     topic = None
     m = re.search(r"\b(?:news|headlines?)\s+(?:about|on|regarding|for)\s+(.+)",
@@ -1367,29 +1368,7 @@ def _og_data_tools(query: str):
                 return results
     return None
 
-_DATA_TEAM_WORDS = (
-    "seahawks", "mariners", "cardinals", "falcons", "ravens", "bills",
-    "panthers", "bears", "bengals", "browns", "cowboys", "broncos",
-    "lions", "packers", "texans", "colts", "jaguars", "chiefs",
-    "raiders", "chargers", "rams", "dolphins", "vikings", "patriots",
-    "saints", "giants", "jets", "eagles", "steelers", "49ers",
-    "buccaneers", "titans", "commanders", "celtics", "nets", "hornets",
-    "bulls", "cavaliers", "mavericks", "nuggets", "pistons",
-    "warriors", "rockets", "pacers", "clippers", "lakers", "grizzlies",
-    "heat", "bucks", "timberwolves", "pelicans", "knicks", "thunder",
-    "magic", "76ers", "suns", "blazers", "kings", "spurs", "raptors",
-    "jazz", "wizards", "diamondbacks", "braves", "orioles", "red sox",
-    "cubs", "white sox", "reds", "guardians", "rockies", "tigers",
-    "astros", "royals", "angels", "dodgers", "marlins", "brewers",
-    "twins", "mets", "yankees", "athletics", "phillies", "pirates",
-    "padres", "rays", "rangers", "blue jays", "nationals", "ducks",
-    "bruins", "sabres", "flames", "hurricanes", "blackhawks",
-    "avalanche", "blue jackets", "stars", "red wings", "oilers",
-    "canadiens", "predators", "devils", "islanders", "senators",
-    "flyers", "penguins", "sharks", "kraken", "blues", "lightning",
-    "maple leafs", "canucks", "golden knights", "capitals", "mammoth",
-    "coyotes",
-)
+_DATA_TEAM_WORDS = _og_utils.DATA_TEAM_WORDS
 
 def _message_needs_data(message: str) -> bool:
     """App-layer heuristic for the Round 4 data pack (weather, sports,
@@ -1400,7 +1379,9 @@ def _message_needs_data(message: str) -> bool:
     if "news" in low:
         return True
     if any(w in low for w in ("weather", "forecast", "temperature in",
-                              "headlines")):
+                              "headlines", "top stories")):
+        return True
+    if re.search(r"\b(rain|raining|snow|snowing)\s+in\s+\S+", low):
         return True
     if re.search(r"\b(nfl|nba|mlb|nhl)\b", low):
         return True
