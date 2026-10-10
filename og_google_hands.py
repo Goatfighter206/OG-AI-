@@ -267,16 +267,47 @@ def _api(method: str, url: str, token: str,
 
 _WS = re.compile(r"\s+")
 _GMAIL_HINT = re.compile(
-    r"\b(gmail|e-?mails?|inbox|my mail)\b")
+    r"\b(gmail|e-?mails?|e-?mailed|inbox|my mail|messages?)\b")
 _CAL_ADD_RE = re.compile(
     r"\b(add|put|schedule|book|create)\b[^.?!]*\bcalendar\b")
+# Round 40: a calendar add the natural way — an add verb, an
+# event-ish noun, and a day AND a time the parser can find —
+# claims a cal_add even without the literal word "calendar".
+# Anything less complete keeps flowing to normal chat (the
+# calendar-word path above keeps its clarify behavior).
+_CAL_ADD_VERB_RE = re.compile(
+    r"\b(add|put|schedule|book|create)\b")
+_CAL_EVENT_NOUN_RE = re.compile(
+    r"\b(appointment|meeting|event|haircut|dentist|doctor|"
+    r"check-?up|visit|interview|lunch|dinner|breakfast|call|"
+    r"class|lesson|party|birthday|workout)\b")
 _GMAIL_READ_RE = re.compile(
     r"\b(read|open)\b[^.?!]*\b(e-?mail|mail|message|it|that|one)\b")
+_GMAIL_SAY_RE = re.compile(
+    r"\bwhat\s+does\s+(that|the|this)\s+(e-?mail|message)\s+say\b")
 _GMAIL_LATEST_RE = re.compile(
-    r"\b(latest|newest|most recent|last)\s+(e-?mail|message)\b|"
+    r"\b(latest|newest|most recent|last)\s+(e-?mails?|messages?)\b|"
     r"\bwhat'?s\s+(in\s+)?my\s+(inbox|gmail|mail)\b|"
     r"\bcheck\s+my\s+(e-?mail|inbox|gmail|mail)\b|"
-    r"\bany\s+new\s+(e-?mails?|messages?)\b")
+    r"\bany\s+new\s+(e-?mails?|messages?)\b|"
+    r"\brecent\s+(e-?mails?|messages?)\b")
+# Round 40: "email" used as a verb — "did my boss email me?" —
+# and the who-form "who emailed me". The first carries its
+# sender between the auxiliary and the verb.
+_GMAIL_VERB_RE = re.compile(
+    r"\b(?:did|has|have|had|does|do)\s+(.+?)\s+"
+    r"e-?mail(?:ed|s)?\s+me\b")
+_GMAIL_VERB_WHO_RE = re.compile(r"\bwho\s+e-?mailed\s+me\b")
+_YESTERDAY_WORD_RE = re.compile(r"\byesterday\b")
+_GMAIL_YESTERDAY_RE = re.compile(
+    r"\byesterday'?s\s+(e-?mails?|mail|inbox|messages?)\b|"
+    r"\b(e-?mails|messages)\s+yesterday\b|"
+    r"\bwhat\s+(e-?mails?|messages?)\b[^.?!]*\byesterday\b|"
+    r"\b(did|do)\s+i\s+(get|have|receive)\b[^.?!]*"
+    r"\b(e-?mail|mail|inbox|messages?)\b[^.?!]*\byesterday\b|"
+    r"\b(any|new|recent)\s+(e-?mails?|messages?)\b[^.?!]*"
+    r"\byesterday\b|"
+    r"\binbox\b[^.?!]*\byesterday\b")
 # Round 39: natural arrival questions ("what emails did I get
 # today") matched NO pattern above and fell through to the plain
 # chat path, so a connected visitor never saw their mail. Two
@@ -306,7 +337,10 @@ _CAL_READ_RE = re.compile(
     r"\bwhat'?s\s+on\s+my\s+(calendar|schedule)\b|"
     r"\bdo\s+i\s+have\s+anything\s+(on|scheduled|planned)\b|"
     r"\b(anything|something)\s+on\s+(today|tomorrow)\b|"
-    r"\bmy\s+(meetings|events|appointments)\b")
+    r"\bmy\s+(meetings|events|appointments)\b|"
+    r"\bam\s+i\s+free\b|"
+    r"\bwhen\s+is\s+my\s+next\s+(meeting|appointment|event)\b|"
+    r"\bwhat\s+do\s+i\s+have\s+going\s+on\b")
 
 
 def _clean(text: str) -> str:
@@ -319,10 +353,15 @@ def _gmail_query(low: str) -> str:
     'just show the latest mail'."""
     q = ""
     m = re.search(r"\bfrom\s+([a-z0-9 .&'\-]+?)(?=\s+(?:about|regarding|"
-                  r"on|with)\b|[?.!,]|$)", low)
+                  r"on|with)\b|\s+in\s+my\s+(?:inbox|gmail|e-?mail|"
+                  r"mail)\b|[?.!,]|$)", low)
     if m:
         who = m.group(1).strip()
         who = re.sub(r"^(my|the)\s+", "", who)
+        # Round 40: a time word is not a sender — "emails from
+        # today" used to search for a person named "today".
+        if who in ("today", "yesterday", "tonight"):
+            who = ""
         if who:
             q = f'from:"{who}"' if " " in who else f"from:{who}"
     m = re.search(r"\b(?:for|about|regarding|mentioning|containing)\s+"
@@ -505,6 +544,11 @@ def _parse_add(message: str, tz, now: datetime) -> Dict:
                 date = None
     # --- title: the ORIGINAL message minus the scaffolding ---
     title = _WS.sub(" ", str(message)).strip()
+    # Round 40: "… called team standup" — the name after "called"
+    # IS the title.
+    m = re.search(r"\bcalled\s+(.+)$", title, flags=re.IGNORECASE)
+    if m:
+        title = m.group(1).strip()
     title = re.sub(r"^\s*(please\s+)?(add|put|schedule|book|create)"
                    r"\s+", "", title, flags=re.IGNORECASE)
     title = _remove_text(title, "to my calendar")
@@ -517,7 +561,7 @@ def _parse_add(message: str, tz, now: datetime) -> Dict:
         title = _remove_text(title, time_text)
     title = _WS.sub(" ", title).strip(" ,.-")
     title = re.sub(r"^(to|on|at|for)\s+", "", title).strip(" ,.-")
-    title = re.sub(r"\s+(to|on|at)$", "", title).strip(" ,.-")
+    title = re.sub(r"\s+(to|on|at|for)$", "", title).strip(" ,.-")
     if title:
         title = title[0].upper() + title[1:]
     missing = []
@@ -546,29 +590,58 @@ def parse_google_intent(message: str, tz=None, now: datetime = None
     parsing (defaults: UTC/now) — the search-time caller re-parses
     cal_add with the calendar's real timezone."""
     low = _clean(message)
-    if _CAL_ADD_RE.search(low) and _GMAIL_HINT.search(low) is None:
-        job = _parse_add(str(message), tz or timezone.utc,
-                         now or datetime.now(timezone.utc))
-        return job
+    if _GMAIL_HINT.search(low) is None:
+        if _CAL_ADD_RE.search(low):
+            job = _parse_add(str(message), tz or timezone.utc,
+                             now or datetime.now(timezone.utc))
+            return job
+        # Round 40: the natural add — verb + event noun + a
+        # complete day/time parse, no "calendar" required.
+        if _CAL_ADD_VERB_RE.search(low) \
+                and _CAL_EVENT_NOUN_RE.search(low):
+            job = _parse_add(str(message), tz or timezone.utc,
+                             now or datetime.now(timezone.utc))
+            if job.get("complete"):
+                return job
     if _GMAIL_HINT.search(low):
         q = _gmail_query(low)
-        if _GMAIL_READ_RE.search(low):
+        if _GMAIL_READ_RE.search(low) or _GMAIL_SAY_RE.search(low):
             # Explicit read: pull that message's full text (newest
             # match when no query terms were given).
             return {"kind": "gmail_read", "query": q}
         today = bool(_TODAY_WORD_RE.search(low))
+        yesterday = bool(_YESTERDAY_WORD_RE.search(low))
+        # Round 40: "email" as a verb ("did my boss email me?").
+        mv = _GMAIL_VERB_RE.search(low)
+        if mv:
+            who = re.sub(r"^(my|the|a|an)\s+", "",
+                         mv.group(1).strip())
+            qv = (f'from:"{who}"' if " " in who
+                  else f"from:{who}") if who else ""
+            if yesterday:
+                return {"kind": "gmail_yesterday", "query": qv}
+            return {"kind": "gmail_search", "query": qv}
+        if _GMAIL_VERB_WHO_RE.search(low):
+            if yesterday:
+                return {"kind": "gmail_yesterday", "query": ""}
+            return {"kind": "gmail_latest"}
         if q or _GMAIL_SEARCH_RE.search(low):
             # A real search (query terms) keeps its exact mapping;
             # the no-terms fallback is a latest-style ask, and a
-            # 'today' inside it makes it a today ask (Round 39).
+            # 'today'/'yesterday' inside it bounds the answer
+            # (Rounds 39/40).
             return ({"kind": "gmail_search", "query": q} if q
+                    else {"kind": "gmail_yesterday"} if yesterday
                     else {"kind": "gmail_today"} if today
                     else {"kind": "gmail_latest"})
         if _GMAIL_LATEST_RE.search(low):
-            return ({"kind": "gmail_today"} if today
+            return ({"kind": "gmail_yesterday"} if yesterday
+                    else {"kind": "gmail_today"} if today
                     else {"kind": "gmail_latest"})
         if _GMAIL_TODAY_RE.search(low):
             return {"kind": "gmail_today"}
+        if _GMAIL_YESTERDAY_RE.search(low):
+            return {"kind": "gmail_yesterday"}
         return None
     if _CAL_READ_RE.search(low):
         return {"kind": "cal_read"}
@@ -829,12 +902,23 @@ def _gmail_answer(job: Dict, token: str, who: str,
             # newer_than:1d the Round 18 digest uses for its mail
             # section (NOT a timezone calendar-day query).
             query = "newer_than:1d"
+        elif kind == "gmail_yesterday":
+            # Round 40: yesterday is a real calendar day — bound
+            # the list with after:/before: dates (UTC), keeping
+            # any sender/topic terms the ask carried.
+            _today_d = datetime.now(timezone.utc).date()
+            _yday = _today_d - timedelta(days=1)
+            _bound = (f"after:{_yday:%Y/%m/%d} "
+                      f"before:{_today_d:%Y/%m/%d}")
+            query = f"{query} {_bound}".strip() if query else _bound
         messages = _gmail_list(token, query, _MAX_RESULTS)
         if messages is None:
             return None
         if not messages:
             if kind == "gmail_today":
                 what = " for mail from today (the last 24 hours)"
+            elif kind == "gmail_yesterday":
+                what = " for mail from yesterday"
             elif query:
                 what = f" for '{query}'"
             else:
@@ -849,6 +933,8 @@ def _gmail_answer(job: Dict, token: str, who: str,
         else:
             if kind == "gmail_today":
                 label = "email from today (the last 24 hours)"
+            elif kind == "gmail_yesterday":
+                label = "email from yesterday"
             elif kind == "gmail_latest":
                 label = "latest email"
             else:
