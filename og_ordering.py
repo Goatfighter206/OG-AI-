@@ -406,7 +406,7 @@ def _parse_items(text: str) -> list:
     parts = re.split(r",|;|\band\b|\+|&", cleaned)
     items = []
     for part in parts:
-        seg = re.sub(r"\s+", " ", part).strip(" .")
+        seg = re.sub(r"\s+", " ", part).strip(" .?")
         if seg.lower() in _SEGMENT_JUNK or len(seg) < 2 or len(seg) > 60:
             continue
         qty = 1
@@ -460,11 +460,23 @@ def _parse_order_ask(message: str) -> Optional[Dict]:
     may be missing (the clarify step asks for it). None when the
     message is not an order ask at all."""
     payload = _fresh_payload(message)
+    want_form = False
+    if payload is None:
+        # Round 40: bare "I want <food>" is an order ask — but
+        # only when a store resolves, so "I want a video…" /
+        # "I want a song…" (other modules' turf, no store named)
+        # is never hijacked.
+        m = re.search(r"\bi\s+want\s+(.+)$", str(message), re.I)
+        if m:
+            payload = m.group(1).strip()
+            want_form = True
     if payload is None:
         return None
     if "usual" in payload.lower():
         return None  # usuals have their own branch
     store = _find_store(message)
+    if want_form and store is None:
+        return None
     items = _parse_items(payload)
     if store is None and not items:
         # "place an order" with no content at all still counts —
