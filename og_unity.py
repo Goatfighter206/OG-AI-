@@ -680,6 +680,50 @@ def install_unity_tools(agent_instance, get_uid, consume_unity,
 
 # --- Download route (live) ------------------------------------------------------
 
+def list_packages_for_owner(uid: str) -> List[Dict]:
+    """The visitor's OWN packaged Unity projects still inside
+    the 24 h retention window, newest first (Library).
+    Read-only: scans the same <id>.json sidecars the download
+    route checks (ZIP present + inside _ZIP_TTL + sidecar uid
+    matches) and writes nothing."""
+    out: List[Dict] = []
+    if not uid:
+        return out
+    import json
+    try:
+        names = os.listdir(UNITY_STORE_DIR)
+    except Exception:
+        return out
+    for fname in names:
+        if not fname.endswith(".json"):
+            continue
+        build_id = fname[:-5]
+        if not re.fullmatch(r"[0-9a-f]{32}", build_id):
+            continue
+        zpath = os.path.join(UNITY_STORE_DIR, build_id + ".zip")
+        if not os.path.exists(zpath):
+            continue
+        try:
+            if time.time() - os.path.getmtime(zpath) > _ZIP_TTL:
+                continue
+            with open(os.path.join(UNITY_STORE_DIR, fname)) as f:
+                meta = json.load(f)
+            size = os.path.getsize(zpath)
+        except Exception:
+            continue
+        if meta.get("uid") != uid:
+            continue
+        out.append({"id": build_id,
+                    "name": meta.get("name") or "Unity project",
+                    "filename": meta.get("filename")
+                    or "unity-project.zip",
+                    "created": meta.get("created") or "",
+                    "size": size,
+                    "files": meta.get("files") or []})
+    out.sort(key=lambda m: m.get("created") or "", reverse=True)
+    return out
+
+
 def register_unity_routes(app):
     """Attach GET /unity/download/<id> — the packaged ZIP, served
     only to the visitor who owns it (their ogai_uid cookie), only
