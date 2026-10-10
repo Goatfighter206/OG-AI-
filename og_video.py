@@ -1530,7 +1530,9 @@ def _run_job(job_id: str, uid: str) -> None:
                 import og_notify as _notify
                 _notify.record(
                     uid, "video_done",
-                    f"Your video is ready: \"{title}\"", detail)
+                    f"Your video is ready: \"{title}\"", detail,
+                    target={"view": "library", "kind": "video",
+                            "id": job_id})
             except Exception:
                 pass
             for name in os.listdir(job_dir):
