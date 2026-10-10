@@ -135,3 +135,76 @@ body.og-shell-off #ogShellDock { display: none !important; }
     .input-wrapper #sendBtn { flex: 0 0 auto; width: 42px; min-height: 0; }
     .og-seat-label { font-size: .56rem; }
 }
+
+/* --- Round 59: four seats + the content-area seat screen ---------------
+   The seat screen lives BETWEEN the top cluster and the dock: fixed in
+   the same centered column, its bottom edge stops above the dock and
+   its z-index (7400) sits BELOW the dock/avatar bars (7500/7600), so
+   the composer dock + seat pill stay pinned and visible while any
+   seat is the active context. Full-screen takeovers that legitimately
+   cover (browser Take control, the side menu) are unchanged. */
+#ogSeatScreen {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    width: min(880px, 100%); z-index: 7400;
+    top: calc(148px + env(safe-area-inset-top));
+    bottom: calc(202px + env(safe-area-inset-bottom));
+    background: rgba(10,10,10,.98);
+    border-top: 1px solid rgba(255,193,7,.35);
+    border-bottom: 1px solid rgba(255,193,7,.35);
+    display: flex; flex-direction: column; color: #f2f2f2;
+}
+#ogSeatScreen[hidden] { display: none !important; }
+body.og-shell-off #ogSeatScreen { display: none !important; }
+.og-seat-screen-head {
+    display: flex; align-items: center; justify-content: space-between;
+    flex: 0 0 auto; padding: 12px 16px 8px;
+}
+.og-seat-screen-title { font-size: 1.15rem; font-weight: 700; color: #f5f5f5; }
+.og-seat-view { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 4px 16px 16px; }
+.og-seat-view[hidden] { display: none !important; }
+.og-seat-summary { color: #a8a8a8; line-height: 1.5; padding: 6px 4px 2px; }
+.og-seat-summary[hidden] { display: none !important; }
+.og-seat-notice {
+    flex: 0 0 auto; margin: 0 16px 8px; padding: 9px 12px;
+    border: 1px solid rgba(255,193,7,.5); border-radius: 12px;
+    background: rgba(255,193,7,.1); color: #ffe082;
+    font-size: .9rem; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.og-seat-notice[hidden] { display: none !important; }
+.og-seat-notice-pulse { animation: ogSeatNoticePulse 1.2s ease; }
+@keyframes ogSeatNoticePulse {
+    0% { background: rgba(255,193,7,.32); }
+    100% { background: rgba(255,193,7,.1); }
+}
+#ogIdeasApprBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+
+/* Feed: library tabs + merged rows */
+.og-feed-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 0 12px; }
+.og-feed-tab {
+    border: 1px solid #2c2c2c; background: #171717; color: #cfcfcf;
+    border-radius: 999px; padding: 7px 14px; font-family: inherit;
+    font-size: .85rem; font-weight: 600; cursor: pointer;
+}
+.og-feed-tab:hover { color: #ffc107; }
+.og-feed-tab.is-on { background: linear-gradient(135deg, #ffc107, #ff8f00); color: #151515; border-color: transparent; }
+.og-feed-row { align-items: center; }
+.og-feed-tappable { cursor: pointer; }
+.og-feed-tappable:hover { border-color: rgba(255,193,7,.55); }
+.og-feed-action {
+    flex: 0 0 auto; align-self: center; text-decoration: none;
+    border: 1px solid #ffc107; background: rgba(255,193,7,.12); color: #ffc107;
+    border-radius: 999px; padding: 7px 14px; font-size: .85rem; font-weight: 700;
+}
+.og-feed-action:hover { background: rgba(255,193,7,.25); }
+.og-feed-flash { animation: ogFeedFlash 1.8s ease; }
+@keyframes ogFeedFlash {
+    0%, 55% { background: rgba(255,193,7,.3); border-color: #ffc107; }
+    100% { background: #171717; }
+}
+
+@media (max-width: 768px) {
+    #ogSeatScreen {
+        top: calc(140px + env(safe-area-inset-top));
+        bottom: calc(186px + env(safe-area-inset-bottom));
+    }
+}
