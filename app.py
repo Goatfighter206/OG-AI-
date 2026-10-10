@@ -331,6 +331,7 @@ import og_library as _og_library
 import og_store_ready as _ogs
 import og_selfcheck as _og_selfcheck
 import og_fixqueue as _og_fixqueue
+import og_tokenpacks as _og_tokenpacks  # Round 56
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -382,8 +383,7 @@ def _request_tier(raw_request) -> str:
 
 def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bool:
     """
-    Verify a Stripe webhook signature (the v1 HMAC-SHA256 scheme) without
-    the Stripe SDK: the signed payload is "<timestamp>.<raw body>".
+    Verify a Stripe webhook signature (v1 HMAC-SHA256, no SDK).
     """
     if not secret or not sig_header:
         return False
@@ -579,7 +579,7 @@ def _og_web_search(agent_instance, query: str, num_results: int = 5):
     return []
 
 def _install_lookup_tools(agent_instance):
-    """Wrap the agent's detect_intent + web_search (app layer only) so lookup triggers cover current-events questions and search runs on the OpenAI route."""
+    """Wrap the agent's detect_intent + web_search (app layer only)."""
     if getattr(agent_instance, "_og_lookup_installed", False):
         return
     original_detect = getattr(agent_instance, "detect_intent", None)
@@ -715,7 +715,7 @@ def _extract_place(query: str):
     return None
 
 def _geocode(place: str):
-    """Place name -> (lat, lon, name, region) or None. Open-Meteo geocoder first, Nominatim fallback (different hosts, so one outage doesn't kill weather)."""
+    """Place name -> (lat, lon, name, region) or None (Open-Meteo, Nominatim fallback)."""
     import urllib.parse
     geo = _fetch_json("https://geocoding-api.open-meteo.com/v1/search?"
                       + urllib.parse.urlencode(
@@ -1347,7 +1347,7 @@ def _tool_news(query: str):
 
 # --- Round 4: router + detect heuristic ---
 def _og_data_tools(query: str):
-    """Round 4 router: try the live data pack; on a hit return web_search-shaped results, on a miss return None and the caller falls through to the Round 3 lookup chain."""
+    """Round 4 router: live data pack hit -> web_search-shaped results; miss -> None."""
     candidates = []
     raw = _current_message.get("text") or ""
     if raw.strip():
@@ -1585,7 +1585,7 @@ def _save_memory_store_db(store: Dict) -> bool:
         return False
 
 def _reset_memory_store():
-    """Start the memory store empty on fresh agent creation (a new agent must not inherit visitor threads) — EXCEPT with the Postgres backend (OG_MEMORY_DB_URL), where the store is deliberately NOT reset."""
+    """Start the memory store empty on fresh agent creation (NOT reset with the Postgres backend)."""
     if MEMORY_DB_URL:
         logger.info("Durable memory backend active — memory store not reset")
         return
@@ -1833,6 +1833,7 @@ class ChatResponse(BaseModel):
     upgrade_url: Optional[str] = None
     free_tokens_left: Optional[int] = None
     weekly_tokens_left: Optional[int] = None
+    token_balance: Optional[int] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -1851,6 +1852,7 @@ class HistoryResponse(BaseModel):
     # Free tokens the visitor has left today (omitted/null for Pro).
     free_tokens_left: Optional[int] = None
     tier: Optional[str] = None
+    token_balance: Optional[int] = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -1938,7 +1940,7 @@ async def health_check():
 
 def _generate_reply_streaming(agent_instance, message: str,
                               speak_response: bool, sink):
-    """Streaming twin of process_message(): same intent, tools, persona, model, parameters — each token piece is pushed to sink("chunk", text); a stream failing before any text falls back to full-text. Returns (response, tokens)."""
+    """Streaming twin of process_message(); returns (response, tokens)."""
     agent = agent_instance
     agent.add_message('user', message)
 
@@ -2088,8 +2090,9 @@ def _generate_reply_streaming(agent_instance, message: str,
 
 def _stream_chat_worker(agent_instance, uid: str, message: str,
                         speak_response: bool, sink, meter: bool = True,
-                        tier: str = "free", coords=None, image=None):
-    """Streaming /chat worker: mirrors classic /chat bookkeeping — the visitor's thread is swapped into the shared agent under the memory lock and saved back in a finally block."""
+                        tier: str = "free", coords=None, image=None,
+                        token_funded: bool = False):
+    """Streaming /chat worker: mirrors classic /chat bookkeeping."""
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
@@ -2138,6 +2141,8 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         _bump_stat("messages")
         # Metering: record every tier (R55); free meter free-only.
         _record_chat_usage(uid, tokens_used)
+        result["token_balance"] = _og_tokenpacks.settle_chat(
+            uid, token_funded, tokens_used)
         if meter:
             _bump_stat("tokens", tokens_used)
             result["free_tokens_left"] = _free_tokens_remaining(uid)
@@ -2164,8 +2169,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
             _memory_lock.release()
 
 def _sse_streaming_response(event_gen, http_response, entitled: bool):
-    """Build the SSE response, carrying over cookies the handler already set
-    (e.g. a fresh ogai_uid) plus the Pro cookie for entitled visitors."""
+    """Build the SSE response, carrying over cookies the handler set."""
     resp = StreamingResponse(
         event_gen,
         media_type="text/event-stream",
@@ -2181,7 +2185,8 @@ def _sse_streaming_response(event_gen, http_response, entitled: bool):
 
 def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
                           http_response: Response, entitled: bool,
-                          meter: bool = True, tier: str = "free"):
+                          meter: bool = True, tier: str = "free",
+                          token_funded: bool = False):
     """Start the worker thread and return the SSE response for /chat."""
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
@@ -2197,7 +2202,7 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
         args=(agent_instance, uid, request.message.strip(),
               request.speak_response, sink),
         kwargs={"meter": meter, "tier": tier, "coords": request.coords,
-                "image": request.image},
+                "image": request.image, "token_funded": token_funded},
         daemon=True,
     )
     worker.start()
@@ -2218,7 +2223,7 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
 
 @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
 async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
-    """Send a message to the AI agent. Every tier chats on a weekly token pool (trailing 7 days, ogai_uid cookie; free = 25,000/day x7); a capped visitor still gets HTTP 200 with an in-persona upgrade reply. {"stream": true} = Server-Sent Events."""
+    """Send a message to the AI agent (weekly token pool, R55; {"stream": true} = SSE)."""
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
@@ -2239,10 +2244,11 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
         raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
 
-    # Weekly chat pool (R55): every tier is metered on the
-    # trailing 7 days — there is no daily token cap anymore.
+    # R55 weekly pool; R56: pack balance takes over when dry.
+    _pool_hit = _og_tiers.chat_pool_hit(tier, _week_used(uid, "token_days", "tokens"))
+    token_funded = bool(_pool_hit) and _og_tokenpacks.balance(uid) > 0
     cap_payload = None
-    if _og_tiers.chat_pool_hit(tier, _week_used(uid, "token_days", "tokens")):
+    if _pool_hit and not token_funded:
         _bump_stat("cap_hits")
         cap_payload = _og_tiers.weekly_chat_payload(tier, agent_instance.name)
     if cap_payload is not None:
@@ -2256,7 +2262,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     if request.stream:
         return _stream_chat_response(
             agent_instance, uid, request, http_response, entitled,
-            meter=not is_pro, tier=tier)
+            meter=not is_pro, tier=tier, token_funded=token_funded)
 
     if entitled:
         http_response.set_cookie(
@@ -2298,6 +2304,8 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         _tokens_used = _estimate_call_tokens(agent_instance, response) \
             + _drain_lookup_tokens()
         _record_chat_usage(uid, _tokens_used)
+        result["token_balance"] = _og_tokenpacks.settle_chat(
+            uid, token_funded, _tokens_used)
         if not is_pro:
             _bump_stat("tokens", _tokens_used)
             result["free_tokens_left"] = _free_tokens_remaining(uid)
@@ -2352,10 +2360,13 @@ async def text_to_speech(raw_request: Request):
     uid = raw_request.cookies.get("ogai_uid") or "anon"
     _tts_tier = _tier_of(raw_request.cookies,
                          uid if uid != "anon" else "")
-    _tts_wk = _og_tiers.weekly_cap(_tts_tier, "tts")
+    _tts_rate = _og_tokenpacks.RATES["tts"]
+    _tts_token_funded = False
     if _og_tiers.weekly_hit(_tts_tier, "tts", _week_used(f"tts:{uid}")):
-        raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
-    if not _consume_tts_call(uid, _tts_wk):
+        if not _og_tokenpacks.can_afford(uid, _tts_rate):
+            raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
+        _tts_token_funded = True
+    elif not _consume_tts_call(uid, _og_tiers.weekly_cap(_tts_tier, "tts")):
         raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
     import httpx
     try:
@@ -2371,11 +2382,13 @@ async def text_to_speech(raw_request: Request):
     if r.status_code != 200:
         logger.warning(f"TTS upstream status: {r.status_code}")
         raise HTTPException(status_code=502, detail="Voice service error")
+    if _tts_token_funded:
+        _og_tokenpacks.debit(uid, _tts_rate, "tts")
     return Response(content=r.content, media_type="audio/mpeg")
 
 @app.post("/image")
 async def generate_image(raw_request: Request):
-    """Generate ONE image for a visitor (Round 5). Body: {"prompt": ...}. Every expected outcome answers 200 JSON (success / cap upsell / lab-down)."""
+    """Generate ONE image for a visitor (Round 5); expected outcomes answer 200 JSON."""
     get_agent()  # instantiate first: its creation resets the file store
     uid = raw_request.cookies.get("ogai_uid")
     fresh_uid = False
@@ -2407,7 +2420,9 @@ async def generate_image(raw_request: Request):
     # Weekly ceiling (R55): pictures are metered weekly only.
     cap_w = _og_tiers.weekly_cap(tier, "images") or 0
     left = max(0, cap_w - _week_used(f"image:{uid}"))
-    if left <= 0:
+    img_token_funded = left <= 0 and _og_tokenpacks.can_afford(
+        uid, _og_tokenpacks.RATES["image"])
+    if left <= 0 and not img_token_funded:
         return _reply({"ok": False, "capped": True, "weekly_capped": True,
                        "images_left": 0,
                        "response": _og_tiers.weekly_image_line(tier)})
@@ -2424,8 +2439,11 @@ async def generate_image(raw_request: Request):
         return _reply({"ok": False, "response": _IMAGE_DOWN_LINE,
                        "images_left": left})
 
-    _consume_image(uid)
-    left = max(0, cap_w - _week_used(f"image:{uid}"))
+    if img_token_funded:
+        _og_tokenpacks.debit(uid, _og_tokenpacks.RATES["image"], "image")
+    else:
+        _consume_image(uid)
+    left = 0 if img_token_funded else max(0, cap_w - _week_used(f"image:{uid}"))
     caption = _IMAGE_CAPTIONS[len(prompt) % len(_IMAGE_CAPTIONS)]
     # Note the drawing in the visitor's thread (too big to store).
     try:
@@ -2442,7 +2460,8 @@ async def generate_image(raw_request: Request):
         logger.warning(f"Could not note image in history: {e}")
     return _reply({"ok": True, "image": image_src, "model": model_used,
                    "prompt": prompt, "response": caption,
-                   "images_left": left})
+                   "images_left": left,
+                   "token_balance": _og_tokenpacks.balance(uid)})
 
 _og_files.bind_app({
     "get_agent": get_agent, "pro_url": _og_tiers.public_pro_url(),
@@ -2560,10 +2579,12 @@ _ogs.register_store_routes(app)
 _og_selfcheck.bind_app({"load_usage": _load_usage_store, "save_usage": _save_usage_store, "usage_lock": _usage_lock})
 _og_selfcheck.register_selfcheck_routes(app)
 _og_fixqueue.register_fixqueue_routes(app)
+_og_tokenpacks.bind_app({"load_usage": _load_usage_store, "save_usage": _save_usage_store, "usage_lock": _usage_lock, "tier_of": lambda uid, req: _tier_of(req.cookies, uid)})  # R56
+_og_tokenpacks.register_token_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
-    """Stripe webhook: grant a Pro entitlement on checkout.session.completed. Inert unless OG_WEBHOOK_ENABLED=true and STRIPE_WEBHOOK_SECRET set (404 while disabled). Buyer = client_reference_id (ogai_uid); signature verified first."""
+    """Stripe webhook: checkout.session.completed -> entitlement grant or token-pack credit (dark unless enabled + secret set)."""
     if not WEBHOOK_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
     if not STRIPE_WEBHOOK_SECRET:
@@ -2582,7 +2603,9 @@ async def stripe_webhook(raw_request: Request):
         email = ((session.get("customer_details") or {}).get("email")
                  or session.get("customer_email") or "")
         _bought_tier = ((session.get("metadata") or {}).get("tier") or "")
-        if uid:
+        if _og_tokenpacks.session_is_pack(session):
+            _og_tokenpacks.credit_from_session(session, event.get("id", ""), uid)
+        elif uid:
             _grant_entitlement(uid, session.get("id", ""), email,
                                 _bought_tier)
             logger.info("Pro entitlement granted via Stripe webhook")
@@ -2657,7 +2680,7 @@ the server and reset if the service gets rebuilt from scratch.</p>
 
 @app.get("/history", response_model=HistoryResponse)
 async def get_history(raw_request: Request):
-    """The requesting visitor's own conversation history, keyed by the ogai_uid cookie — never anyone else's. No cookie = empty history."""
+    """The requesting visitor's own conversation history (ogai_uid cookie)."""
     get_agent()  # a fresh agent instance starts with a fresh memory store
     try:
         uid = raw_request.cookies.get("ogai_uid")
@@ -2677,7 +2700,8 @@ async def get_history(raw_request: Request):
             "history": history,  # Backward compatibility with Flask API
             "message_count": len(history),
             "free_tokens_left": tokens_left,
-            "tier": tier
+            "tier": tier,
+            "token_balance": _og_tokenpacks.balance(uid) if uid else 0
         }
     except Exception as e:
         logger.error(f"Error retrieving history: {str(e)}")
@@ -2809,7 +2833,7 @@ async def google_auth_start(raw_request: Request):
 @app.get("/auth/google/callback")
 async def google_auth_callback(raw_request: Request, code: str = "",
                                state: str = "", error: str = ""):
-    """Google returns the visitor with a code; the signed state names the visitor, the code is exchanged for tokens stored under their uid. Any failure lands back on chat with ?google=failed."""
+    """Google OAuth callback: exchange the code, store tokens under the visitor uid."""
     if not GOOGLE_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
     uid = _google_uid_from_state(state)
