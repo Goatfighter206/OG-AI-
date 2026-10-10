@@ -710,8 +710,11 @@ def _alert_approval(uid: str, state: Dict) -> None:
             body += f' It will post: "{text}"'
         if site:
             body += f" ({site})"
+        _tgt = {"view": "approvals"}
+        if site:
+            _tgt["id"] = site
         _notify.record(uid, "approval_needed",
-                       "OG needs your OK", body)
+                       "OG needs your OK", body, target=_tgt)
     except Exception:
         pass
 
@@ -733,7 +736,8 @@ def _alert_signin(uid: str, site: str) -> None:
             f"{site} is asking for a sign-in, and that part "
             "is yours alone. Open OG's browser and tap Take "
             "control to sign in yourself — OG never sees, "
-            "types, or stores your password.")
+            "types, or stores your password.",
+            target={"view": "browser", "id": site})
     except Exception:
         pass
 
