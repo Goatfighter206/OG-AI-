@@ -1056,11 +1056,24 @@ def _run_visitor_checks(uid: str, due: list, watches: list) -> int:
         if pid:
             logger.warning(f"Watch check: stored profile refused: {e}")
             _hook_profile_gone(uid)
+            # Round 46: same dead-profile hardening as the chat
+            # start path — destroy the corpse on Steel's side
+            # before the fresh retry (best-effort).
+            try:
+                B._steel_api("DELETE", f"/profiles/{pid}")
+            except B._SteelError as de:
+                logger.warning(
+                    f"Watch check: dead-profile delete failed: {de}")
             try:
                 sess = B._steel_create_session(SESSION_BUDGET_MIN,
                                                persist=True)
-            except B._SteelError:
+            except B._SteelError as e2:
+                logger.warning(
+                    f"Watch check: fresh-profile retry failed: {e2}")
                 sess = None
+        else:
+            logger.warning(
+                f"Watch check: Steel session create failed: {e}")
     if sess is None:
         logger.warning("Watch check: Steel handed no session")
         return 0
