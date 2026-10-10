@@ -540,7 +540,8 @@ def _warning_block(uid: str, tier: str) -> str:
             f"{fmt_size(quota_bytes(tier))} used (90%+). The "
             f"oldest/biggest stuff: {names}. Say \"clean up "
             f"my storage\" and OG lines them up for your OK — "
-            f"nothing is deleted without your YES.")
+            f"nothing is deleted without your YES.",
+            target={"view": "library"})
     except Exception:
         pass
     return block
