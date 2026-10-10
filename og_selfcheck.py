@@ -832,7 +832,8 @@ def run_check(trigger: str = "scheduled") -> dict:
             else:
                 title = "System check: everything measured is OK"
             _notify.record(operator, "system_check", title,
-                           report["summary"])
+                           report["summary"],
+                           target={"view": "system"})
         except Exception as e:
             logger.warning(f"Selfcheck notify failed: {e}")
     # Round 53: every non-ok finding becomes a problem in the
@@ -946,6 +947,32 @@ def _key_ok(key: str) -> bool:
 
 
 def register_selfcheck_routes(app):
+
+    @app.get("/system/offers")
+    async def system_offers(request: Request):
+        # Round 59: the latest self-check's upgrade offers for the
+        # shell's Ideas seat. Operator-level data: served ONLY when
+        # the caller's uid IS the operator uid (resolved from
+        # OG_OWNER_EMAIL); everyone else gets an empty list. Acting
+        # on an offer stays the Round 50 chat sentence — this route
+        # only reads. Gated by the Round 44 gate like /system/check
+        # is key-gated.
+        uid = request.cookies.get("ogai_uid") or ""
+        operator = _operator_uid()
+        if not uid or not operator or uid != operator:
+            return {"operator": False, "offers": [],
+                    "summary": None, "checked_at": None}
+        rep = latest_report() or {}
+        offers = [{
+            "id": u.get("id"), "name": u.get("name"),
+            "what": u.get("what"),
+            "owner_steps": u.get("owner_steps") or [],
+            "has_server_steps": bool(u.get("server_steps")),
+        } for u in (rep.get("upgrades") or [])
+            if isinstance(u, dict)]
+        return {"operator": True, "offers": offers,
+                "summary": rep.get("summary"),
+                "checked_at": rep.get("ts")}
 
     @app.get("/system/check")
     async def system_check_latest(key: str = ""):
