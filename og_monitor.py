@@ -440,6 +440,17 @@ def evaluate_all(price_fn=None) -> int:
                 })
                 fired += 1
                 changed = True
+                # Notifications (optional layer): the fire
+                # also lands in the visitor's notification
+                # center (+ opt-in channels). Fail-safe.
+                try:
+                    import og_notify as _notify
+                    _notify.record(
+                        uid, "price_alert",
+                        f"Price alert: {w.get('symbol')}",
+                        alerts[-1]["text"])
+                except Exception:
+                    pass
         if changed:
             _put_blob(uid, "watches", watches)
             _put_blob(uid, "alerts", alerts)
