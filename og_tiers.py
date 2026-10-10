@@ -35,8 +35,20 @@ day: Blue 60, Blackout 600, every other tier 0 — plus the module's
 own once-ever 10-minute free taste). Round 20 also caps the SIZE
 of one trade:
 TRADE_CEILINGS below (env OG_TRADE_CEIL_<TIER> overrides).
-Chat tokens: free is metered by
-OG_FREE_DAILY_TOKENS in app.py; every paid tier is unlimited.
+Chat tokens: free was metered by
+OG_FREE_DAILY_TOKENS in app.py. Round 55 (owner ruling
+2026-10-10 14:19: "Change daily cap to weekly cap"): for the
+priced kinds — chat tokens, images, video, song, tts — the
+caps are WEEKLY, full stop; there is no daily enforcement layer
+for them anymore. Every tier carries a weekly chat-token pool
+(_WEEKLY_CHAT_TOKENS; free's pool is the old 25,000/day x7 =
+175,000/week — same total, weekly window) and weekly ceilings
+for images/video/song/tts (_WEEKLY_CAPS). The weekly window is
+trailing 7 UTC days, read from a per-day map the existing
+writers maintain on the same usage-store entries
+(note_day/week_used). Kinds outside the priced grid (uploads,
+lookup, browser minutes, ...) keep their daily caps — no weekly
+numbers were set for them.
 
 Payment links default to the live Stripe links created 2026-10-08;
 OG_LINK_STANDARD / OG_LINK_PRO / OG_LINK_BLUE / OG_LINK_BLACKOUT
@@ -47,7 +59,7 @@ env vars land.
 
 import hmac
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -206,6 +218,260 @@ def cap(tier: str, kind: str) -> int:
     return _DEFAULT_CAPS[kind][tier]
 
 
+# --- Round 55: weekly ceilings ---------------------------------------
+# For the priced kinds (chat tokens, images, video, song, tts)
+# the caps ARE weekly — owner ruling 2026-10-10 14:19: "Change
+# daily cap to weekly cap." No daily enforcement layer remains
+# for them; the daily tables above now serve only the kinds
+# outside this grid. The weekly fences exist because the old
+# daily ladder's worst case was unprofitable at the top (a
+# maxed Blackout burned ~$3,435/mo in generators against
+# $100/mo in). Brent's invariant (2026-10-10, hard 40% profit
+# floor, after Stripe's 2.9% + 30c): total worst-case cost
+# (generators + chat) per user per month <= standard $5.41,
+# pro $13.97, blue $28.25, blackout $56.80. Unit costs: image
+# $0.04, video $0.375, song ~$0.38, tts ~$0.009/call. Weekly
+# generator spend by tier: free $3.14, standard $1.085,
+# pro $2.58, blue $5.16, blackout $11.305. No weekly row
+# exceeds its old daily cap x7 (pinned in r55tests). Env
+# OG_WCAP_<TIER>_<KIND> overrides a row, mirroring cap().
+_WEEKLY_CAPS = {
+    # kind:      free  standard  pro   blue  blackout
+    "images":  {"free": 7,    "standard": 6,   "pro": 20,  "blue": 40,  "blackout": 100},
+    "video":   {"free": 2,    "standard": 1,   "pro": 2,   "blue": 4,   "blackout": 5},
+    "song":    {"free": 2,    "standard": 1,   "pro": 2,   "blue": 4,   "blackout": 6},
+    "tts":     {"free": 150,  "standard": 10,  "pro": 30,  "blue": 60,  "blackout": 350},
+}
+
+# Weekly chat-token pools. Free's pool is the old 25,000/day
+# allowance x7 = 175,000/week (same total, weekly window — the
+# daily meter is gone). The chat model is OPENAI_MODEL, default
+# gpt-4o-mini; OpenAI's list price for it is $0.15/1M input +
+# $0.60/1M output, so the paid pools are sized billing EVERY
+# token at the $0.60 output rate (the worst case — no token can
+# cost more). Chat spend/week: standard $0.15, pro $0.60,
+# blue $1.20, blackout $1.80. TOTAL worst case (generators +
+# chat, per month): standard $5.35 <= $5.41, pro $13.78 <=
+# $13.97, blue $27.56 <= $28.25, blackout $56.79 <= $56.80.
+# The invariant rules (r55tests pins these sums); if a row
+# ever has to move, the totals must still fit — trim
+# generators before the chat pool.
+_WEEKLY_CHAT_TOKENS = {
+    "free": 175000, "standard": 250000, "pro": 1000000,
+    "blue": 2000000, "blackout": 3000000,
+}
+
+
+def weekly_cap(tier: str, kind: str):
+    """Weekly cap for (tier, kind); None when the kind has no
+    weekly row. Env OG_WCAP_<TIER>_<KIND> wins, mirroring cap()."""
+    row = _WEEKLY_CAPS.get(kind)
+    if row is None:
+        return None
+    env = os.getenv(f"OG_WCAP_{tier.upper()}_{kind.upper()}")
+    if env is not None:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    return row.get(tier)
+
+
+def weekly_hit(tier: str, kind: str, used: int) -> bool:
+    """True when `used` has reached the weekly cap for the kind
+    (False when the kind has no weekly row)."""
+    cap_w = weekly_cap(tier, kind)
+    return cap_w is not None and used >= cap_w
+
+
+def chat_pool_hit(tier: str, used: int) -> bool:
+    """True when `used` tokens have reached the tier's weekly
+    chat pool (every tier has one; free's is 175,000/week)."""
+    pool = weekly_chat_tokens(tier)
+    return pool is not None and used >= pool
+
+
+def weekly_chat_tokens(tier: str):
+    """Weekly chat-token pool for a tier. Env
+    OG_WCAP_<TIER>_CHAT_TOKENS wins. Free's pool defaults to
+    the table's 175,000 but follows OG_FREE_DAILY_TOKENS (or
+    the legacy OG_FREE_DAILY_LIMIT) x7 when either is set, so
+    the old daily knob still scales the free allowance."""
+    env = os.getenv(f"OG_WCAP_{tier.upper()}_CHAT_TOKENS")
+    if env is not None:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    if tier == "free":
+        daily = os.getenv("OG_FREE_DAILY_TOKENS") \
+            or os.getenv("OG_FREE_DAILY_LIMIT")
+        if daily is not None:
+            try:
+                return int(daily) * 7
+            except ValueError:
+                pass
+    return _WEEKLY_CHAT_TOKENS.get(tier)
+
+
+def week_dates(today=None):
+    """The trailing 7 UTC dates (ISO strings), oldest first,
+    ending today."""
+    if today is None:
+        today = datetime.now(timezone.utc).date()
+    elif isinstance(today, datetime):
+        today = today.date()
+    return [(today - timedelta(days=n)).isoformat()
+            for n in range(6, -1, -1)]
+
+
+def week_used(entry, field="days", value_key="count") -> int:
+    """One meter entry's usage across the trailing 7 UTC days.
+
+    The daily writers keep a per-day map on the entry (note_day);
+    this sums it over the window. Entries from before Round 55
+    have no map: fall back to today's value when the entry is
+    today's (weekly history accrues from deploy day)."""
+    if not isinstance(entry, dict):
+        return 0
+    days = entry.get(field)
+    if isinstance(days, dict):
+        total = 0
+        for d in week_dates():
+            try:
+                total += int(days.get(d, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        return total
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if entry.get("date") == today:
+        try:
+            return int(entry.get(value_key, 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+def note_day(entry, today: str, value: int, field="days"):
+    """Mirror today's running total into the entry's per-day map
+    and prune dates outside the trailing 7-day window. Writers
+    call this right after updating the entry's daily total, so
+    map[today] always equals that total. `field` is "days" for
+    count meters, "token_days" for the chat-token meter."""
+    days = entry.get(field)
+    if not isinstance(days, dict):
+        days = {}
+        entry[field] = days
+    try:
+        days[today] = int(value)
+    except (TypeError, ValueError):
+        days[today] = 0
+    keep = set(week_dates())
+    for d in list(days):
+        if d not in keep:
+            del days[d]
+
+
+def carry_days(old, entry, field="days"):
+    """Carry a stale entry's per-day map onto its fresh same-day
+    replacement (writers replace the entry when the date rolls;
+    the weekly history must survive the roll)."""
+    if isinstance(old, dict) and isinstance(old.get(field), dict):
+        entry.setdefault(field, dict(old[field]))
+
+
+def week_refill_text(entry, field="days", value_key="count") -> str:
+    """When space starts opening up again, in plain words. The
+    window trails, so there is NO fixed reset day: room frees as
+    the oldest day with usage rolls off the week. Says exactly
+    that — never a fake reset date."""
+    days = entry.get(field) if isinstance(entry, dict) else None
+    used_dates = []
+    if isinstance(days, dict):
+        for d in week_dates():
+            try:
+                if int(days.get(d, 0) or 0) > 0:
+                    used_dates.append(d)
+            except (TypeError, ValueError):
+                pass
+    if not used_dates and isinstance(entry, dict):
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        try:
+            if entry.get("date") == today and \
+                    int(entry.get(value_key, 0) or 0) > 0:
+                used_dates = [today]
+        except (TypeError, ValueError):
+            pass
+    if not used_dates:
+        return "it refills a little every day as your old days roll off"
+    oldest = date.fromisoformat(used_dates[0])
+    today = datetime.now(timezone.utc).date()
+    n = (oldest + timedelta(days=7) - today).days
+    if n <= 0:
+        return ("space opens back up at midnight tonight, when "
+                "today rolls off the week")
+    if n == 1:
+        return ("space starts opening back up tomorrow, when your "
+                "oldest day rolls off the week")
+    return (f"space starts opening back up in {n} days, when your "
+            f"oldest day rolls off the week")
+
+
+def weekly_chat_payload(tier: str, agent_name: str):
+    """The /chat refusal when a visitor hits their weekly chat
+    pool — names the pool and the honest roll-off refill (no
+    daily reset exists anymore). Free keeps its own pitch and
+    the free_tokens_left field the page reads."""
+    pool = weekly_chat_tokens(tier) or 0
+    if tier == "free":
+        return {
+            "response": (
+                f"Yo, real talk — you're outta free tokens for "
+                f"this week ({pool:,} a week on the free plan), "
+                f"and the OG don't work for free forever. Go "
+                f"premium for a bigger weekly pool: "
+                f"{public_pro_url()} — the free pool refills a "
+                f"little every day as your old days roll off "
+                f"the week."),
+            "agent_name": agent_name,
+            "timestamp": datetime.now().isoformat(),
+            "upgrade_url": public_pro_url(),
+            "free_tokens_left": 0,
+        }
+    return {
+        "response": (
+            f"Yo, real talk — you burned through this week's chat "
+            f"pool ({pool:,} tokens on the {NAMES.get(tier, tier)} "
+            f"plan). The pool ain't daily: it refills a little "
+            f"every day as your old days roll off the week. Higher "
+            f"plans carry bigger weekly pools: {public_pro_url()}"),
+        "agent_name": agent_name,
+        "timestamp": datetime.now().isoformat(),
+        "upgrade_url": public_pro_url(),
+        "weekly_tokens_left": 0,
+    }
+
+
+def weekly_image_line(tier: str) -> str:
+    """The /image refusal when the weekly picture wall hits.
+    Names the weekly number and the roll-off refill — no fake
+    reset date."""
+    cap_w = weekly_cap(tier, "images") or 0
+    return (
+        f"Yo, that's all {cap_w} pics for this week on your plan "
+        f"— the weekly pool only refills a little every day as "
+        f"your old days roll off it. Higher plans draw more a "
+        f"week: {public_pro_url()}")
+
+
+def weekly_tts_detail(tier: str) -> str:
+    """The /tts 429 detail when the weekly voice wall hits."""
+    cap_w = weekly_cap(tier, "tts") or 0
+    return (f"Weekly voice limit reached ({cap_w} voice replies "
+            f"a week on your plan) — it refills as your week "
+            f"rolls on")
+
+
 def tier_link(tier: str, legacy_pro_link: str = "") -> str:
     """Checkout URL for a tier: env OG_LINK_<TIER> > the created
     Stripe link > the legacy OG_PRO_LINK (# = unset, never used).
@@ -232,36 +498,43 @@ def public_pro_url() -> str:
 
 _FEATURES = {
     "standard": [
-        "Unlimited chat — no daily token cap",
+        "Chat on a weekly pool — 250K tokens a week",
         "Web lookup + live data: news, weather, scores, stocks, crypto",
-        "10 images a day, drawn by OG",
+        "6 images a week, drawn by OG",
         "25 file uploads a day (PDFs & photos OG can read)",
         "5 GB file storage",
         "Voice replies + Talk mode",
         "Voice notes — talk instead of typing (15 a day)",
+        "Weekly fences: 1 story video · 1 song · 10 voice replies a week",
     ],
     "pro": [
-        "50 images a day",
+        "Chat pool grows — 1M tokens a week",
+        "20 images a week",
         "30 uploads a day — files up to 25 MB",
         "25 GB file storage",
         "250 lookups a day",
         "Higher voice limits (5× the voice)",
+        "Weekly fences: 2 story videos · 2 songs · 30 voice replies a week",
         "Early access — new tools land here first",
     ],
     "blue": [
-        "300 images a day",
+        "Chat pool grows — 2M tokens a week",
+        "40 images a week",
         "100 uploads a day",
         "50 GB file storage",
         "OG's own web browser — 60 minutes a day, watch him drive it live",
+        "Weekly fences: 4 story videos · 4 songs · 60 voice replies a week",
         "Monitoring pack included when it ships (bank, email, BTC & stock alerts)",
         "Priority speed — your chats jump the line",
     ],
     "blackout": [
-        "1,000 images a day",
+        "Chat pool maxed — 3M tokens a week",
+        "100 images a week",
         "300 uploads a day",
         "100 GB file storage",
         "1,000 lookups a day",
         "OG's own web browser — 600 minutes a day, ten full hours",
+        "Weekly fences: 5 story videos · 6 songs · 350 voice replies a week",
         "Online ordering + trading-on-approval included when they ship",
         "Every future tool — day one, no upsells ever",
     ],
