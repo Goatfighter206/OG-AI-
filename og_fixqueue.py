@@ -329,8 +329,12 @@ def _notify_proposal(owner: str, problem: dict, proposal: dict):
         import og_notify as _notify
         body = (proposal["summary"] + " Diagnosis: " +
                 problem["diagnosis"])[:590]
+        _tgt = {"view": "approvals"}
+        if problem.get("id"):
+            _tgt["id"] = problem["id"]
         _notify.record(owner, "fix_needed",
-                       f"Fix waiting: {problem['title']}", body)
+                       f"Fix waiting: {problem['title']}", body,
+                       target=_tgt)
     except Exception as e:
         logger.warning(f"Fixqueue notify failed: {e}")
 
