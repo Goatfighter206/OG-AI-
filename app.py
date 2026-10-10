@@ -319,6 +319,7 @@ import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
 import og_accounts as _og_accounts
+import og_notify as _og_notify
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -2572,6 +2573,7 @@ _og_songs.register_song_routes(app)
 _og_avatar.register_avatar_routes(app)
 _og_legal.register_legal_routes(app)
 _og_accounts.register_account_routes(app)
+_og_notify.register_notify_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
