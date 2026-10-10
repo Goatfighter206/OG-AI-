@@ -664,6 +664,11 @@ def _clean(text: str) -> str:
 def _parse_side(low: str) -> Optional[str]:
     m = _SIDE_RE.search(low)
     if not m:
+        # Round 40: "I want to invest in …" is a buy ask — invest
+        # was counted as a trade verb but never as a side, so the
+        # most natural phrasing claimed nothing.
+        if re.search(r"\binvest(?:ing|ment)?\b", low):
+            return "buy"
         return None
     return "sell" if m.group(1).startswith("sel") else "buy"
 
@@ -677,6 +682,22 @@ def _parse_broker(text: str) -> Optional[str]:
         name, name.title())
 
 
+# Round 40: household company names resolve to their tickers, so
+# "invest in Tesla stock" / "sell my Tesla shares" name the asset
+# instead of clarifying on a blank. (Coinbase is deliberately
+# absent — it is also a broker name in this module.)
+_COMPANY_NAMES = {
+    "tesla": "TSLA", "apple": "AAPL", "nvidia": "NVDA",
+    "microsoft": "MSFT", "amazon": "AMZN", "google": "GOOGL",
+    "alphabet": "GOOGL", "meta": "META", "facebook": "META",
+    "netflix": "NFLX", "amd": "AMD", "intel": "INTC",
+    "boeing": "BA", "disney": "DIS", "ford": "F",
+    "walmart": "WMT", "nike": "NKE", "starbucks": "SBUX",
+    "paypal": "PYPL", "uber": "UBER", "airbnb": "ABNB",
+    "shopify": "SHOP", "palantir": "PLTR", "rivian": "RIVN",
+}
+
+
 def _parse_asset(text: str, low: str):
     """(symbol, kind) — crypto names/symbols first, then an
     uppercase ticker token, then a '<n> of TICKER' tail."""
@@ -684,6 +705,9 @@ def _parse_asset(text: str, low: str):
         if re.search(rf"\b{re.escape(name)}\b", low):
             symbol = _CRYPTO_NAMES[name]
             return symbol, "crypto"
+    for name in sorted(_COMPANY_NAMES, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(name)}\b", low):
+            return _COMPANY_NAMES[name], "stock"
     for tok in re.findall(r"\b[A-Z]{1,5}\b", str(text)):
         if tok in _TICKER_STOP:
             continue
