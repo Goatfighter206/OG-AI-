@@ -320,6 +320,7 @@ import og_avatar as _og_avatar
 import og_legal as _og_legal
 import og_accounts as _og_accounts
 import og_notify as _og_notify
+import og_library as _og_library
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -2574,6 +2575,7 @@ _og_avatar.register_avatar_routes(app)
 _og_legal.register_legal_routes(app)
 _og_accounts.register_account_routes(app)
 _og_notify.register_notify_routes(app)
+_og_library.register_library_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
