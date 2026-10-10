@@ -362,11 +362,16 @@ def _session_minutes_left(rec: Dict) -> int:
 def _end_session(uid: str, why: str = "") -> Optional[Dict]:
     """Release the Steel session (best effort), meter the minutes,
     clear the record. Returns the closed record, or None. Idempotent:
-    whichever worker/reaper clears the record first does the meter."""
+    whichever worker/reaper clears the record first does the meter.
+    Round 36 hygiene: any pending approval parked on the session
+    dies with it, in the same operation — every ending (panel,
+    chat, reaper, budget, idle, kill switch) funnels through here,
+    so a stale 'Needs approval' can never outlive its session."""
     rec = _get_session(uid)
     if not rec:
         return None
     _set_session(uid, None)
+    _clear_pending(uid)
     sid = rec.get("steel_id")
     if sid:
         try:
@@ -382,16 +387,38 @@ def _end_session(uid: str, why: str = "") -> Optional[Dict]:
 
 
 # --- Pending proposals / gated actions (per visitor, 10-min TTL) ------------
+# Round 36 hygiene (Brent's stuck "Needs approval", 2026-10-09):
+# (1) a pending dies with its session — _end_session clears it in
+# the same operation, and _get_pending sweeps an ACTION pending
+# whose session record is gone; (2) the 10-minute TTL is a hard
+# stop on every read; (3) an action approval may only park with a
+# non-empty human description (its desc, or the text it will
+# post) — _set_pending is the single choke point and refuses a
+# description-less park, so the card can never show a blank one.
 
 _pending_lock = threading.Lock()
 _pending_by_uid: Dict[str, Dict] = {}
 
 
-def _set_pending(uid: str, state: Dict):
+def _set_pending(uid: str, state: Dict) -> bool:
+    """Park a pending proposal / gated action. Returns False when
+    the park is REFUSED (Round 36: an action approval with no
+    human description — no desc and no text it will post)."""
     state = dict(state)
+    if state.get("kind") == "action":
+        desc = str(state.get("desc") or "").strip()
+        text = str(state.get("post_text")
+                   or state.get("disp_text")
+                   or state.get("text") or "").strip()
+        if not desc and not text:
+            logger.warning(
+                "Browser pending refused: action approval with "
+                "no description")
+            return False
     state["created"] = time.time()
     with _pending_lock:
         _pending_by_uid[uid] = state
+    return True
 
 
 def _get_pending(uid: str) -> Optional[Dict]:
@@ -403,7 +430,15 @@ def _get_pending(uid: str) -> Optional[Dict]:
                 > _PENDING_TTL:
             del _pending_by_uid[uid]
             return None
-        return dict(state) if state else None
+        state = dict(state) if state else None
+    if state and state.get("kind") == "action" \
+            and not _get_session(uid):
+        # Orphan sweep: an action approval belongs to its session.
+        # No session record -> the pending is already dead; clear
+        # it here so /browser/status can never report it.
+        _clear_pending(uid)
+        return None
+    return state
 
 
 def _clear_pending(uid: str):
@@ -1942,10 +1977,21 @@ def _gate_or_run(uid: str, rec: Dict, action: Dict, el: Dict,
         host = urllib.parse.urlparse(snap.get("url", "")).hostname or ""
     except Exception:
         pass
-    _set_pending(uid, {"kind": "action", "action": action, "sig": sig,
-                       "page_url": snap.get("url", ""), "desc": desc,
-                       "disp_kind": action.get("do", "click"),
-                       "disp_site": host, "disp_text": ""})
+    if not _set_pending(uid, {"kind": "action", "action": action,
+                              "sig": sig,
+                              "page_url": snap.get("url", ""),
+                              "desc": desc,
+                              "disp_kind": action.get("do", "click"),
+                              "disp_site": host, "disp_text": ""}):
+        # Round 36: a description-less approval is never parked,
+        # so it is never asked for either — nothing ran.
+        return _result(
+            "OG BROWSER", "OG browser — stopped",
+            "I stopped before asking: I couldn't state that "
+            "action in plain words, so I won't park a blank "
+            "approval. NOTHING was clicked, typed, or submitted. "
+            "Tell me the move again and I'll line it up properly."
+            + _session_footer(uid))
     return _result(
         "OG BROWSER", "OG browser — approval needed",
         f"STOP — approval needed. I am ready to {desc}. Why this "
@@ -2106,13 +2152,22 @@ def _attempt_post_draft(uid: str) -> List[Dict]:
             "the button lives. NOTHING is posted.")
     sig = _element_signature(btn)
     sig["url"] = snap2.get("url", "")
-    _set_pending(uid, {
-        "kind": "action",
-        "action": {"do": "click", "idx": btn.get("i")},
-        "sig": sig, "page_url": snap2.get("url", ""),
-        "desc": _describe_action({"do": "click"}, btn, snap2),
-        "post_text": text, "post_site": host,
-        "disp_kind": "post", "disp_text": text, "disp_site": host})
+    if not _set_pending(uid, {
+            "kind": "action",
+            "action": {"do": "click", "idx": btn.get("i")},
+            "sig": sig, "page_url": snap2.get("url", ""),
+            "desc": _describe_action({"do": "click"}, btn, snap2),
+            "post_text": text, "post_site": host,
+            "disp_kind": "post", "disp_text": text,
+            "disp_site": host}):
+        # Round 36: never happens while the words exist (they are
+        # the description), but a refused park must not pretend.
+        return _result(
+            "OG BROWSER", "OG browser — draft typed, not parked",
+            f"The words are IN the box on {host}, word for word: "
+            f"\"{text}\" — but the approval couldn't be lined up, "
+            "so nothing is waiting on a YES and NOTHING is posted. "
+            "Take control and press Post yourself, or ask me again.")
     rec2 = dict(_get_session(uid) or rec)
     rec2["post_intent"] = None
     _set_session(uid, rec2)
