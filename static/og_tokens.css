@@ -1,0 +1,32 @@
+/* Round 56: the "Buy more tokens" card — sits ON THE RIGHT of
+   the plan card in the menu (Brent's layout, 2026-10-10), same
+   gold-edged card family, plus the pack picker panel. */
+.og-plan-row{display:flex;gap:10px;align-items:stretch}
+.og-plan-row .og-plan-card{flex:1.3 1 0;min-width:0}
+.og-plan-row .og-plan-name{font-size:1.08rem}
+.og-tokens-card{flex:1 1 0;min-width:0;background:linear-gradient(165deg,#1d1d1d,#131313);border:1px solid rgba(255,193,7,.38);border-radius:20px;padding:16px 14px 4px;box-shadow:0 10px 26px rgba(0,0,0,.45);display:flex;flex-direction:column}
+.og-tokens-name{margin:0;font-size:1.08rem;font-weight:700;color:#f5f5f5;line-height:1.2}
+.og-tokens-bal{margin:5px 0 0;font-size:.92rem;color:#bcbcbc}
+.og-tokens-bal b{color:#ffc107;font-weight:700}
+.og-tokens-note{margin:6px 0 0;font-size:.76rem;color:#8f8f8f;line-height:1.4}
+.og-tokens-action{margin:auto -14px 0;width:calc(100% + 28px);padding:13px 14px 15px;border-top:1px solid #2a2a2a;border-radius:0 0 20px 20px;color:#ffc107;font-weight:700}
+.og-tokens-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9100}
+.og-tokens-scrim[hidden]{display:none}
+.og-tokens-panel{position:fixed;top:0;right:0;height:100vh;height:100dvh;width:min(340px,88vw);background:#0c0c0c;border-left:1px solid #2b2b2b;z-index:9101;transform:translateX(105%);transition:transform .25s ease;display:flex;flex-direction:column;padding:18px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:-12px 0 32px rgba(0,0,0,.5)}
+.og-tokens-panel.open{transform:none}
+.og-tokens-panel[hidden]{display:none}
+.og-tokens-top{display:flex;align-items:center;gap:12px;padding:0 2px 12px}
+.og-tokens-top h2{flex:1 1 auto;margin:0;color:#f2f2f2;font-size:1.12rem}
+.og-tokens-scroll{flex:1 1 auto;overflow-y:auto;min-height:0}
+.og-tokens-balrow{color:#bcbcbc;font-size:.95rem;margin:0 2px 12px}
+.og-tokens-balrow b{color:#ffc107}
+.og-pack{display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;margin:0 0 10px;background:#171717;border:1px solid #2c2c2c;border-radius:16px;color:#ececec;font-family:inherit;font-size:1rem;text-align:left;text-decoration:none;cursor:pointer;box-sizing:border-box}
+a.og-pack:hover{border-color:rgba(255,193,7,.7)}
+.og-pack .og-pack-price{font-weight:700;color:#fff;flex:0 0 auto}
+.og-pack .og-pack-amt{color:#ffc107;font-weight:700;margin-left:auto;text-align:right}
+.og-pack.off{opacity:.45;cursor:default}
+.og-pack .og-pack-off{margin-left:auto;color:#8f8f8f;font-size:.85rem}
+.og-tokens-rates{color:#a8a8a8;font-size:.85rem;line-height:1.55;margin:14px 2px 10px}
+.og-tokens-legal{color:#777;font-size:.78rem;line-height:1.5;margin:10px 2px 0}
+.og-tokens-subonly{background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.45);border-radius:14px;padding:12px 14px;color:#e8e8e8;line-height:1.5;margin:0 0 12px}
+.og-tokens-subonly a{color:#ffc107;font-weight:700}
