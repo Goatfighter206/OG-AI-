@@ -1331,9 +1331,9 @@ _loop_started = {"on": False}
 
 
 def register_watch_routes(app):
-    """Mount /watch/status + /watch/forget and start the check
-    scheduler. The loop is failure-quiet: a bad cycle is logged
-    and skipped, never raised into the app."""
+    """Mount /watch/status + /watch/logins + /watch/forget and
+    start the check scheduler. The loop is failure-quiet: a bad
+    cycle is logged and skipped, never raised into the app."""
     ensure_hooks()
 
     @app.get("/watch/status")
@@ -1382,6 +1382,67 @@ def register_watch_routes(app):
                 "sites": sorted(live.keys()),
                 "profile_gone": bool(v.get("profile_gone"))}
         return out
+
+    @app.get("/watch/logins")
+    async def watch_logins(request: Request):
+        """Read-only vault listing for the Connections page: the
+        caller's own live saved log-ins (site + dates only — the
+        profile id itself is never exposed)."""
+        if not B.enabled():
+            return {"enabled": False, "logins": []}
+        uid = ""
+        try:
+            uid = request.cookies.get("ogai_uid", "") or ""
+        except Exception:
+            uid = ""
+        if not uid:
+            return {"enabled": True, "profile": False, "logins": []}
+        v = _vault(uid)
+        live, _dropped = _live_sites(v)
+        return {
+            "enabled": True,
+            "profile": bool(v.get("profile_id")),
+            "logins": [{
+                "site": host,
+                "since": str((info or {}).get("first") or ""),
+                "last": str((info or {}).get("last") or ""),
+            } for host, info in sorted(live.items())]}
+
+    @app.post("/watch/forget-site")
+    async def watch_forget_site(request: Request):
+        """Per-site Forget for the Connections page — a thin route
+        over the Round 29 _forget_site semantics (surgical cookie /
+        storage clear on the caller's own profile); no parallel
+        implementation lives here."""
+        if not B.enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = ""
+        try:
+            uid = request.cookies.get("ogai_uid", "") or ""
+        except Exception:
+            uid = ""
+        if not uid:
+            return JSONResponse({"ok": False,
+                                 "error": "no visitor cookie"},
+                                status_code=400)
+        data = {}
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        host = _site_host(str(data.get("site")
+                              or data.get("host") or ""))
+        if not host:
+            return JSONResponse({"ok": False,
+                                 "error": "unknown site"},
+                                status_code=400)
+        blocks = _forget_site(uid, host)
+        return {"ok": True,
+                "title": blocks[0].get("title", "") if blocks else "",
+                "body": "\n".join(b.get("body", "") for b in blocks)}
 
     @app.post("/watch/forget")
     async def watch_forget(request: Request):
