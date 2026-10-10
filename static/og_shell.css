@@ -1,0 +1,130 @@
+/* Round 52 — OG chat shell (Brent's design, 2026-10-10): the layout of
+   his reference (Muse iOS app) in OG's black-and-gold skin. Floating
+   top cluster (avatar center, name + live status under it, round corner
+   buttons), a floating composer pill, and a floating five-seat pill
+   under it: Chat · Library · All actions · Approvals · Menu.
+   Layout only — every control keeps its existing id and wiring. */
+
+/* --- Top cluster ---------------------------------------------------- */
+.og-topbar {
+    position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+    width: min(880px, 100%); z-index: 7600;
+    max-width: none; margin: 0;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 0;
+    background: transparent; pointer-events: none;
+}
+.og-topbar .og-circle-btn { pointer-events: auto; box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+
+.og-top-avatar-bar {
+    position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+    width: min(880px, 100%); z-index: 7500;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 10px;
+    pointer-events: none;
+    background: radial-gradient(ellipse 75% 115% at 50% 0%, rgba(8,8,8,.88), rgba(8,8,8,0) 78%);
+}
+.og-top-avatar-bar .og-top-ava { pointer-events: auto; }
+.og-top-avatar-bar .og-notify-bell { pointer-events: auto; top: calc(12px + env(safe-area-inset-top)); right: 76px; box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+
+/* The chat column clears the floating cluster above and the dock below */
+.chat-container {
+    padding-top: calc(148px + env(safe-area-inset-top));
+    padding-bottom: calc(198px + env(safe-area-inset-bottom));
+}
+
+/* --- Bottom dock: composer pill + seat pill -------------------------- */
+#ogShellDock {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 0;
+    width: min(880px, 100%); z-index: 7600;
+    padding: 0 12px calc(10px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none;
+}
+#ogShellDock > * { pointer-events: auto; }
+#ogShellComposerSlot { display: flex; flex-direction: column; }
+
+#ogShellDock .input-area {
+    background: transparent; border-top: none; padding: 0;
+}
+#ogShellDock .input-wrapper {
+    border-radius: 999px; padding: 6px 8px; gap: 6px;
+    background: rgba(22,22,22,.97);
+    box-shadow: 0 14px 36px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.5);
+}
+#ogShellDock .og-status-line { margin-top: 7px; text-shadow: 0 1px 6px #000; }
+#ogShellDock .og-token-line { margin-top: 2px; text-shadow: 0 1px 6px #000; }
+
+/* --- Five-seat pill --------------------------------------------------- */
+#ogSeatBar {
+    display: flex; gap: 2px; padding: 6px;
+    background: rgba(17,17,17,.95);
+    border: 1px solid #2c2c2c; border-radius: 999px;
+    box-shadow: 0 14px 36px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.5);
+    backdrop-filter: blur(8px);
+}
+.og-seat {
+    flex: 1 1 0; min-width: 0; position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 7px 2px 5px; border: none; border-radius: 999px;
+    background: transparent; color: #cfcfcf;
+    font-family: inherit; cursor: pointer;
+}
+.og-seat svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.og-seat-label { font-size: .6rem; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; line-height: 1; white-space: nowrap; }
+.og-seat:hover { color: #ffc107; }
+.og-seat.is-on { background: linear-gradient(135deg, #ffc107, #ff8f00); color: #151515; }
+.og-seat.is-on:hover { color: #151515; }
+.og-seat-dot {
+    position: absolute; top: 5px; left: calc(50% + 5px);
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #ffc107; border: 2px solid #111;
+}
+.og-seat-dot[hidden] { display: none !important; }
+.og-seat.is-on .og-seat-dot { background: #151515; border-color: #ffc107; }
+
+/* --- Approvals panel --------------------------------------------------- */
+.og-appr-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 8199; }
+.og-appr-scrim[hidden] { display: none !important; }
+.og-appr-panel {
+    position: fixed; top: 0; right: 0; z-index: 8200;
+    height: 100vh; height: 100dvh; width: min(400px, 94vw);
+    background: #0c0c0c; border-left: 1px solid rgba(255,193,7,.38);
+    display: flex; flex-direction: column;
+    padding: calc(14px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    box-shadow: -12px 0 32px rgba(0,0,0,.5);
+}
+.og-appr-panel[hidden] { display: none !important; }
+.og-appr-head { display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto; padding: 0 2px 12px; }
+.og-appr-title { font-size: 1.32rem; font-weight: 700; color: #f5f5f5; }
+.og-appr-scroll { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+.og-appr-card { border: 2px solid #ffc107; border-radius: 14px; background: linear-gradient(180deg, #1d1703, #121212); padding: 12px 14px; color: #f2f2f2; }
+.og-appr-card[hidden] { display: none !important; }
+.og-appr-sec { margin: 20px 4px 8px; font-size: .74rem; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; color: #8f8f8f; }
+.og-appr-sec[hidden] { display: none !important; }
+.og-appr-item { display: flex; gap: 12px; padding: 13px 14px; background: #171717; border: 1px solid #262626; border-radius: 16px; margin: 0 0 10px; }
+.og-appr-item.unread { border-color: rgba(255,193,7,.55); }
+.og-appr-ico { font-size: 1.25rem; line-height: 1.3; flex: 0 0 auto; }
+.og-appr-main { flex: 1 1 auto; min-width: 0; }
+.og-appr-item-title { font-weight: 700; color: #f2f2f2; font-size: .98rem; line-height: 1.3; }
+.og-appr-item-body { color: #bcbcbc; font-size: .9rem; line-height: 1.4; margin-top: 2px; overflow-wrap: anywhere; }
+.og-appr-item-time { color: #8f8f8f; font-size: .76rem; margin-top: 4px; }
+.og-appr-empty { color: #a8a8a8; line-height: 1.5; padding: 10px 4px; }
+.og-appr-empty[hidden] { display: none !important; }
+#ogApprYesBtn { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+#ogApprNoBtn { border: 1px solid rgba(255,120,120,.7); background: transparent; color: #ff9c9c; }
+#ogApprAlwaysBtn { border: 1px solid rgba(255,193,7,.55); background: transparent; color: #e8c95a; }
+#ogApprAlwaysBtn[hidden] { display: none !important; }
+
+/* --- Signed out: the shell hides with the auth wall up ----------------- */
+body.og-shell-off .og-topbar,
+body.og-shell-off .og-top-avatar-bar,
+body.og-shell-off #ogShellDock { display: none !important; }
+
+/* --- Phones: keep the pill in one row (reference layout) --------------- */
+@media (max-width: 768px) {
+    #ogShellDock { padding: 0 10px calc(8px + env(safe-area-inset-bottom)); }
+    #ogShellDock .input-wrapper { flex-direction: row; flex-wrap: nowrap; border-radius: 999px; gap: 4px; }
+    #ogShellDock #messageInput { flex: 1 1 auto; order: 0; padding: 8px 6px; font-size: 16px; }
+    .input-wrapper #voiceBtn { flex: 0 0 auto; width: 40px; min-height: 0; }
+    .input-wrapper #sendBtn { flex: 0 0 auto; width: 42px; min-height: 0; }
+    .og-seat-label { font-size: .56rem; }
+}
