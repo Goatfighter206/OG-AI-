@@ -98,6 +98,18 @@ resolution wins, expiry and owner isolation enforced server-side.
 fresh (not the live session), so the panel's no-WebRTC fallback
 is a still captured over the session's own CDP connection
 (/browser/screenshot); refused while the visitor drives.
+
+ROUND 38 (Brent, 2026-10-10): NEEDING THE VISITOR LEAVES A
+RECORD. A parked approval fires one approval_needed
+notification and landing on a login wall fires one
+signin_needed notification (og_notify, Round 31 center + the
+alert kinds' own switches on the Notification settings
+page). Dedupe: one alert per pending identity (a
+same-identity re-park of a still-live pending never
+re-alerts) and one per session+site sign-in episode (the
+session record's wall list is the episode marker). Both
+producers are fail-safe and gated on the caller's `alerts`
+pref (default ON).
 """
 
 import asyncio
@@ -400,6 +412,25 @@ _pending_lock = threading.Lock()
 _pending_by_uid: Dict[str, Dict] = {}
 
 
+def _pending_identity(state: Dict) -> tuple:
+    """The identity of a parked approval — desc + site + text,
+    the same triple the approval card shows (and /browser/status
+    serves). Round 38 dedupe compares identities, never object
+    identity, so a re-park of the SAME approval is recognizably
+    the same ask."""
+    site = str(state.get("disp_site") or state.get("post_site")
+               or "")
+    if not site and state.get("page_url"):
+        try:
+            site = urllib.parse.urlparse(
+                state["page_url"]).hostname or ""
+        except Exception:
+            site = ""
+    text = str(state.get("post_text") or state.get("disp_text")
+               or state.get("text") or "")
+    return (str(state.get("desc") or ""), site, text)
+
+
 def _set_pending(uid: str, state: Dict) -> bool:
     """Park a pending proposal / gated action. Returns False when
     the park is REFUSED (Round 36: an action approval with no
@@ -417,7 +448,20 @@ def _set_pending(uid: str, state: Dict) -> bool:
             return False
     state["created"] = time.time()
     with _pending_lock:
+        prev = _pending_by_uid.get(uid)
+        # Round 38: re-parking the SAME still-live approval
+        # (identical identity, unexpired) is the same ask —
+        # it must not alert twice. A park that replaces a
+        # resolved / expired / different pending is a new ask.
+        same_live = (
+            prev is not None
+            and prev.get("kind") == state.get("kind")
+            and _pending_identity(prev) == _pending_identity(state)
+            and time.time() - float(prev.get("created", 0))
+            <= _PENDING_TTL)
         _pending_by_uid[uid] = state
+    if state.get("kind") == "action" and not same_live:
+        _alert_approval(uid, state)
     return True
 
 
@@ -444,6 +488,60 @@ def _get_pending(uid: str) -> Optional[Dict]:
 def _clear_pending(uid: str):
     with _pending_lock:
         _pending_by_uid.pop(uid, None)
+
+
+# --- Round 38: approval + sign-in alerts (og_notify producers) ---------------
+# When OG needs the visitor — a parked approval, or a login
+# wall only they can pass — the event ALSO lands in their
+# Round 31 notification center (+ the alert kinds' own email /
+# push switches), not only in the chat where it can scroll
+# away. Both producers follow the house pattern: optional
+# import, fully fail-safe (a notification problem never
+# touches the park or the drive), gated on the caller's
+# `alerts` master pref (default ON; a prefs-read failure
+# means send — og_notify.alerts_enabled owns that rule).
+
+
+def _alert_approval(uid: str, state: Dict) -> None:
+    """One approval_needed record per parked approval. Called
+    from _set_pending only when a real, described approval was
+    actually parked and it is not a same-identity re-park."""
+    try:
+        import og_notify as _notify
+        if not _notify.alerts_enabled(uid):
+            return
+        desc, site, text = _pending_identity(state)
+        body = desc or "OG is waiting on your approval."
+        if text and text not in body:
+            body += f' It will post: "{text}"'
+        if site:
+            body += f" ({site})"
+        _notify.record(uid, "approval_needed",
+                       "OG needs your OK", body)
+    except Exception:
+        pass
+
+
+def _alert_signin(uid: str, site: str) -> None:
+    """One signin_needed record per session+site sign-in
+    episode. Called from _update_rec_from_snap at the exact
+    moment a NEW wall host joins the session record's wall
+    list — the list is the episode marker: the host stays on
+    it while the wall stands (repeat reads never re-alert),
+    leaves it when the visitor gets in, so a later wall on
+    the same site is a new episode and alerts again."""
+    try:
+        import og_notify as _notify
+        if not _notify.alerts_enabled(uid):
+            return
+        _notify.record(
+            uid, "signin_needed", "Sign-in needed",
+            f"{site} is asking for a sign-in, and that part "
+            "is yours alone. Open OG's browser and tap Take "
+            "control to sign in yourself — OG never sees, "
+            "types, or stores your password.")
+    except Exception:
+        pass
 
 
 def _other_pending(uid: str) -> bool:
@@ -1179,6 +1277,9 @@ def _update_rec_from_snap(uid: str, rec: Dict, snap: Dict) -> None:
             h = _norm_host(wall)
             if h and h not in walls:
                 walls.append(h)
+                # Round 38: a NEW sign-in episode starts here —
+                # alert once (the wall list dedupes the rest).
+                _alert_signin(uid, wall)
         else:
             host = _norm_host(urllib.parse.urlparse(
                 snap.get("url") or "").hostname or "")
