@@ -4,7 +4,9 @@
 // runs out; buying needs an active subscription. The card
 // sits on the RIGHT of the plan card in the menu; balance and
 // buy links come from GET /tokens (server-gated: links only
-// ever exist for subscribers).
+// ever exist for subscribers). Picker layout (Round 57, owner
+// directive): the packs you can buy on top, then the balance
+// and token info underneath them — all inside the same area.
 (function () {
   "use strict";
 
@@ -51,9 +53,9 @@
       '<button type="button" class="og-circle-btn" ' +
       'id="ogTokensClose" aria-label="Close">✕</button></div>' +
       '<div class="og-tokens-scroll">' +
-      '<p class="og-tokens-balrow">Your balance: <b>' +
-      fmt(data.balance) + " tokens</b></p>" +
       gateBlock + packs +
+      '<p class="og-tokens-balrow">Your tokens: <b>' +
+      fmt(data.balance) + " on hand</b></p>" +
       '<div class="og-tokens-rates"><b>How tokens burn</b><br>' +
       "Your weekly plan limits always spend first. Tokens only " +
       "start burning when you run out of your weekly cap:" +
