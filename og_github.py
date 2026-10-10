@@ -18,8 +18,11 @@ OG open pull requests at all under GitHub's classic OAuth App model,
 where scopes are coarse and there is no per-repo or read/write split
 short of the fine-grained permissions of a full GitHub App. v1
 accepts that tradeoff knowingly: OG's own code only ever reads repo
-metadata/READMEs and creates NEW files on NEW branches via PRs (see
-below), and the migration path to a GitHub App (per-repo install,
+metadata/READMEs/files and writes on NEW branches via PRs —
+creating files, and (since the Code-Works extension) editing
+existing ones, always approval-gated, never a delete, never the
+default branch (see below) — and the migration path to a GitHub
+App (per-repo install,
 fine-grained contents+pull-requests permissions) is documented in
 the Round 14 report. A visitor who doesn't want the broad scope
 simply doesn't connect.
@@ -62,6 +65,47 @@ approve -> execute rule):
   (never edit/delete, never commit to the default branch), one file
   per PR, 64 KB content cap.
 
+CODE THAT WORKS, IN THE RIGHT PLACE (2026-10-09, Brent: "have OG
+make the code work and put it in the correct place" + "If he needs
+to test the code, use GitHub or Python") — extends the write flow
+above, same laws, never replaces them:
+- EDITS: a coding ask can now target an EXISTING file. The draft
+  step reads the repo tree + the target file first, so the change
+  lands in the correct place — an edit to the file the visitor
+  named, or a new file at the path the repo's own layout implies
+  (a test for utils.py goes to tests/test_utils.py when the tree
+  has a tests/ dir, beside the code when that's the repo's shape).
+- VERIFIED PREVIEW: edits (any type) and new Python files take one
+  extra beat. The first YES makes the module extract the draft,
+  re-check the base file on GitHub (if it moved since the preview,
+  the write ABORTS honestly and a fresh preview is needed), compute
+  the EXACT unified diff itself (difflib — what the visitor
+  approves is character-exact), run the Python checks below, and
+  present a second, verified preview. The second YES executes.
+  New non-Python files keep the original single-YES flow (their
+  preview already IS the full content).
+- TEST WITH PYTHON: for changes touching Python files, the module
+  assembles the repo's Python files in a throwaway temp dir,
+  applies the change, runs py_compile on the changed files and the
+  repo's own pytest suite when it has one. Guardrails are hard:
+  subprocess with a 60s cap, an environment scrubbed to a minimal
+  whitelist (no OG_* secrets, no tokens), cwd = the temp dir, the
+  temp dir deleted after, and ONLY the visitor's own repo files +
+  the pending change are ever executed — there is NO general
+  run-this-code endpoint or chat trigger. The verified preview
+  states the outcome plainly (compiled OK / N passed, M failed
+  with names / could not run + why). A failing test never blocks:
+  it is reported and the human decides — but OG never claims
+  "works" without the run.
+- TEST WITH GITHUB: after an approved PR opens, OG tracks its
+  GitHub Actions check runs (bounded poll, ~20 minutes) and
+  records the outcome through og_notify exactly once; "did the
+  checks pass on my PR?" answers from the stored state (with one
+  live refresh while still pending). A repo with no Actions
+  checks is stated plainly, once.
+- Ambiguity about WHICH repo or file earns exactly ONE clarifying
+  question, never a guess.
+
 GitHub OAuth App tokens don't expire and have no refresh flow: if
 the visitor revokes the app (or the token otherwise dies), the API
 answers 401 and the stored connection is dropped gracefully — the
@@ -70,12 +114,18 @@ are never touched.
 """
 
 import base64
+import difflib
 import hashlib
 import hmac
 import json
 import logging
 import os
 import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -109,6 +159,22 @@ _MAX_REPOS = 10
 _MAX_README_CHARS = 12000
 _MAX_FILE_BYTES = 64 * 1024
 _PENDING_TTL = 30 * 60  # seconds a drafted PR preview stays approvable
+
+# Code-Works extension (edits + placement + Python/GitHub testing).
+_MAX_EDIT_CHARS = 48 * 1000  # an edit target must fit whole in the
+# drafting context — OG never edits a file it cannot show in full
+_MAX_DIFF_CHARS = 100 * 1000  # diff text stored/shown cap (the write
+# itself always uses the full approved content; truncation is noted)
+_MAX_TREE_LINES = 150  # repo paths shown to the drafter per preview
+_SANDBOX_TIMEOUT = 60  # hard per-subprocess cap, seconds (Brent's
+# Python-testing rule runs under this, never without it)
+_SANDBOX_MAX_FILES = 120  # .py files assembled for one test run
+_SANDBOX_MAX_BYTES = 6 * 1024 * 1024  # total assembled bytes cap
+_CHECKS_POLL_FIRST = 20  # first Actions poll delay, seconds
+_CHECKS_POLL_SECONDS = 60  # Actions poll cadence after that
+_CHECKS_POLL_BUDGET = 20 * 60  # stop tracking a PR after ~20 minutes
+_CHECKS_STORE_FILE = "github_checks.json"
+_CHECKS_KEEP = 5  # tracked PRs remembered per visitor
 
 # Durable backend (opt-in, same rule as the memory/Google/Spotify
 # stores): when OG_MEMORY_DB_URL points at a Postgres database the
@@ -429,6 +495,23 @@ _APPROVE_RE = re.compile(
 _DECLINE_RE = re.compile(
     r"^\W*(no|nope|nah|cancel|scrap|discard|never ?mind|stop|don'?t"
     r"|do not)\b")
+# Code-Works: edit verbs claim a write only with a concrete target
+# in the message (a file path, or bug/code/file/function/error) so
+# questions ABOUT a repo ("what changed in my repo X") never get
+# hijacked into the write flow.
+_EDIT_VERB_RE = re.compile(
+    r"\b(fix|edit|change|patch|correct|repair|refactor)\b")
+_UPDATE_VERB_RE = re.compile(r"\bupdate\b")
+_EDIT_TARGET_RE = re.compile(r"\b(bug|code|file|function|error)\b")
+_TEST_FOR_RE = re.compile(r"\btests?\s+for\b|\btest\s+file\s+for\b")
+# "Did the checks pass on my PR?" — GitHub Actions status asks.
+_CHECKS_RES = (
+    r"\b(checks?|ci|actions)\b[^.?!]*\b(pass|passed|fail|failed|"
+    r"failing|status|done|finish|finished|green|red)\b",
+    r"\bdid (the |my )?(checks?|ci|actions|pr|pull request)\b",
+    r"\bhow (did|are) (the |my )?(checks|ci|actions)\b",
+    r"\bpull request\b[^.?!]*\b(checks?|ci|actions)\b",
+)
 
 
 def _extract_repo_name(message: str) -> Optional[str]:
@@ -477,19 +560,37 @@ def _extract_thing(message: str) -> str:
 
 def parse_github_intent(message: str) -> Optional[Dict]:
     """Parse a first-person GitHub job from the raw message. Returns
-    a job dict — {'kind': 'repos'|'repo_read'|'pr_write', ...} — or
-    None when the message isn't about the visitor's own GitHub.
-    Approval/decline replies are NOT parsed here (they only mean
-    something against a pending draft — see github_results)."""
+    a job dict — {'kind': 'repos'|'repo_read'|'pr_write'|
+    'pr_checks'|'pr_clarify', ...} — or None when the message isn't
+    about the visitor's own GitHub. Approval/decline replies are
+    NOT parsed here (they only mean something against a pending
+    draft — see github_results)."""
     low = " " + re.sub(r"\s+", " ", str(message).lower()).strip() + " "
+    # Actions-checks status: no write/read verb overlap possible.
+    for pattern in _CHECKS_RES:
+        if re.search(pattern, low):
+            return {"kind": "pr_checks"}
     # Writes first: a write ask also mentions the repo by name and
     # must not be claimed as a read.
-    if _WRITE_VERB_RE.search(low) and _REPO_WORD_RE.search(low):
+    verb = bool(_WRITE_VERB_RE.search(low))
+    if not verb and _EDIT_VERB_RE.search(low):
+        verb = bool(_extract_path(message)
+                    or _EDIT_TARGET_RE.search(low))
+    if not verb and _UPDATE_VERB_RE.search(low):
+        verb = bool(_extract_path(message))
+    if verb and _REPO_WORD_RE.search(low):
         repo = _extract_repo_name(message)
         if repo:
             return {"kind": "pr_write", "repo": repo,
                     "thing": _extract_thing(message),
                     "path": _extract_path(message)}
+        # A repo is being talked about but never named: exactly one
+        # clarifying question downstream (the thread may still
+        # supply the repo — see _claim_job).
+        return {"kind": "pr_clarify", "repo": None,
+                "path": _extract_path(message),
+                "thing": _extract_thing(message),
+                "repo_word": True}
     for pattern in _READ_RES:
         if re.search(pattern, low):
             repo = _extract_repo_name(message)
@@ -626,6 +727,132 @@ def _repo_read_answer(entry: Dict, job: Dict, uid: str,
              "body": body, "href": data.get("html_url", "")}]
 
 
+# --- Repo tree + file reads (Code-Works: correct placement) -------------------
+# Before drafting ANY change, OG reads the repo's tree and the
+# target file, so an edit lands in the file that exists and a new
+# file lands where the repo's own layout says it belongs.
+
+def _fetch_tree(token: str, owner: str, repo: str, ref: str):
+    """The repo's full recursive tree at a ref. Returns
+    (status, entries) — entries are {path, type, sha, size} — or
+    (status, None) when the tree can't be read."""
+    status, data = _gh_request(
+        "GET", f"/repos/{owner}/{repo}/git/trees/"
+        + quote(ref, safe="/") + "?recursive=1", token)
+    if status != 200 or not isinstance(data, dict):
+        return status, None
+    entries = []
+    for item in data.get("tree") or []:
+        if isinstance(item, dict) and item.get("path"):
+            entries.append({"path": item["path"],
+                            "type": item.get("type", ""),
+                            "sha": item.get("sha", ""),
+                            "size": item.get("size") or 0})
+    return status, entries
+
+
+def _fetch_file(token: str, owner: str, repo: str, path: str,
+                ref: str = ""):
+    """One file on a ref (default branch when ref is ''). Returns
+    (status, info) — info {"sha", "size", "text"} for a decodable
+    text file; info is None for a miss or a binary file (status
+    still says which: 200 = exists but not text, 404 = absent)."""
+    url = f"/repos/{owner}/{repo}/contents/" + quote(path, safe="/")
+    if ref:
+        url += "?ref=" + quote(ref, safe="")
+    status, data = _gh_request("GET", url, token)
+    if status != 200 or not isinstance(data, dict):
+        return status, None
+    if data.get("type") != "file":
+        return status, None
+    try:
+        blob = base64.b64decode(data.get("content") or "")
+        text = blob.decode("utf-8")
+    except Exception:
+        return status, None
+    return status, {"sha": data.get("sha", ""),
+                    "size": data.get("size", len(blob)),
+                    "text": text}
+
+
+def _is_test_path(path: str) -> bool:
+    base = path.rsplit("/", 1)[-1]
+    return (base.startswith("test_") and base.endswith(".py")) \
+        or base.endswith("_test.py")
+
+
+def _placement(tree_paths, named_path: str, message: str):
+    """Decide where a change lands, from the repo's own shape.
+    Returns (mode, path): 'edit' an existing file or 'new' at a
+    path; path is '' only for generic new-file asks, where the
+    drafter still chooses (with the tree in front of it)."""
+    paths = set(tree_paths)
+    low = str(message).lower()
+    if named_path:
+        if _TEST_FOR_RE.search(low) and named_path.endswith(".py") \
+                and not _is_test_path(named_path):
+            # "write a test for utils.py" — the change belongs in
+            # the TEST file for that module, not the module.
+            d, _, base = named_path.rpartition("/")
+            stem = base[:-3]
+            prefix = (d + "/") if d else ""
+            for cand in (f"tests/test_{stem}.py",
+                         f"test/test_{stem}.py",
+                         f"{prefix}test_{stem}.py",
+                         f"{prefix}{stem}_test.py"):
+                if cand in paths:
+                    return "edit", cand
+            if any(p.startswith("tests/") for p in paths):
+                return "new", f"tests/test_{stem}.py"
+            if any(p.startswith("test/") for p in paths):
+                return "new", f"test/test_{stem}.py"
+            return "new", f"{prefix}test_{stem}.py"
+        if named_path in paths:
+            return "edit", named_path
+        return "new", named_path
+    return "new", ""
+
+
+def _tree_excerpt(tree_paths, focus_path: str) -> str:
+    """A bounded path listing for the drafting instruction: the
+    target's directory first, then Python files, then the rest,
+    capped with an honest 'N more' note."""
+    if tree_paths is None:
+        return "(the repo tree could not be read this time)"
+    focus_dir = focus_path.rpartition("/")[0] if focus_path else ""
+
+    def rank(p):
+        if focus_dir and p.rpartition("/")[0] == focus_dir:
+            return 0
+        if p.endswith(".py"):
+            return 1
+        return 2
+
+    ordered = sorted(set(tree_paths), key=lambda p: (rank(p), p))
+    shown = ordered[:_MAX_TREE_LINES]
+    text = "\n".join("- " + p for p in shown)
+    if len(ordered) > len(shown):
+        text += f"\n- … and {len(ordered) - len(shown)} more files"
+    return text or "(empty repo)"
+
+
+def _ask_one_question(uid: str, pending_fields: Dict, question: str,
+                      who: str) -> list:
+    """Park the clarify state and have the agent ask exactly ONE
+    question — OG's law for ambiguity. Nothing is drafted and
+    nothing is written."""
+    fields = {"mode": "clarify"}
+    fields.update(pending_fields)
+    _set_pending(uid, fields)
+    body = (f"The visitor ({who}) wants OG to do GitHub repo work, "
+            "but the ask is ambiguous and OG does NOT guess which "
+            "repo or file. Ask EXACTLY this one question, in "
+            "persona, and nothing else yet — do not draft or "
+            f"promise anything:\n\n{question}")
+    return [{"title": "🐙 GitHub — one question", "body": body,
+             "href": "/auth/github"}]
+
+
 # --- The write flow: draft (preview) then approval-gated execution --------------
 
 _PREVIEW_MARKER = "PR PREVIEW"
@@ -633,11 +860,11 @@ _PREVIEW_MARKER = "PR PREVIEW"
 
 def _draft_answer(entry: Dict, job: Dict, message: str,
                   uid: str) -> Optional[list]:
-    """Step 1 of the write flow: verify the repo is real, park the
-    pending change, and hand the agent an instruction to draft the
-    file + present the exact preview shape. NOTHING is written to
-    GitHub here, and the draft spends no budget (the unit is spent
-    at PR creation)."""
+    """Step 1 of the write flow: verify the repo is real, read its
+    tree (+ the target file for an edit), park the pending change,
+    and hand the agent an instruction to draft the change + present
+    the exact preview shape. NOTHING is written to GitHub here, and
+    the draft spends no budget (the unit is spent at PR creation)."""
     token = entry.get("access_token", "")
     who = entry.get("login") or entry.get("name") or "the visitor"
     owner, repo = _resolve_repo(entry, job.get("repo", ""))
@@ -657,38 +884,147 @@ def _draft_answer(entry: Dict, job: Dict, message: str,
     if status != 200 or not isinstance(data, dict):
         return None
     full_name = data.get("full_name", f"{owner}/{repo}")
+    default_branch = data.get("default_branch") or "main"
     thing = job.get("thing") or ""
-    path_hint = job.get("path") or ""
-    slug_src = thing or (path_hint.rsplit("/", 1)[-1] if path_hint
-                         else repo)
+    ask_text = job.get("orig") or str(message)
+    low = " " + re.sub(r"\s+", " ", ask_text.lower()).strip() + " "
+
+    # Read the tree so the change lands in the correct place.
+    tstatus, entries = _fetch_tree(token, owner, repo, default_branch)
+    if tstatus == 401:
+        return _revoked(uid, who)
+    tree_paths = None
+    if entries is not None:
+        tree_paths = [e["path"] for e in entries
+                      if e.get("type") == "blob"]
+    named = job.get("path") or ""
+    if tree_paths is not None:
+        mode, path = _placement(tree_paths, named, ask_text)
+    else:
+        # Tree unreadable: keep the Round 14 behavior (named path
+        # is a new file; un-named is drafter's choice). No edit is
+        # ever guessed blind.
+        mode, path = "new", named
+
+    # An edit ask with no resolvable file earns ONE question.
+    if not path and _EDIT_VERB_RE.search(low) \
+            and not _TEST_FOR_RE.search(low):
+        return _ask_one_question(
+            uid,
+            {"repo_full": full_name, "owner": owner, "repo": repo,
+             "thing": thing, "orig": ask_text},
+            f"Which file in {full_name} should OG change for that?",
+            who)
+
+    base_text = None
+    base_sha = ""
+    if mode == "edit":
+        fstatus, info = _fetch_file(token, owner, repo, path,
+                                    default_branch)
+        if fstatus == 401:
+            return _revoked(uid, who)
+        if info is None:
+            body = (f"The visitor ({who}) asked OG to change "
+                    f"{path} in {full_name}, but OG could not read "
+                    "that file as text (it is missing or binary), "
+                    "so OG will NOT draft an edit it cannot see. "
+                    "Tell them plainly, in persona — no draft, no "
+                    "pull request promised.")
+            return [{"title": "🐙 GitHub — file unreadable",
+                     "body": body,
+                     "href": data.get("html_url", "")}]
+        if len(info["text"]) > _MAX_EDIT_CHARS:
+            body = (f"The visitor ({who}) asked OG to change "
+                    f"{path} in {full_name}, but that file is "
+                    f"{len(info['text'])} characters — over OG's "
+                    f"{_MAX_EDIT_CHARS}-character edit limit, because "
+                    "OG only edits a file it can show whole. Tell "
+                    "them plainly, in persona — no draft, no pull "
+                    "request promised.")
+            return [{"title": "🐙 GitHub — file too large to edit",
+                     "body": body,
+                     "href": data.get("html_url", "")}]
+        base_text, base_sha = info["text"], info["sha"]
+
+    slug_src = thing or (path.rsplit("/", 1)[-1] if path else repo)
     branch = "og/" + _slugify(slug_src)
-    _set_pending(uid, {"repo_full": full_name, "owner": owner,
-                       "repo": repo, "branch": branch,
-                       "path_hint": path_hint, "thing": thing})
-    path_line = (f"Use this file path (the visitor named it): "
-                 f"{path_hint}" if path_hint else
-                 "Choose ONE sensible file path for it yourself "
-                 "(e.g. hello.py, notes.md — match what they asked "
-                 "for) and put it on the File line")
-    body = (
-        f"The visitor ({who}) asked you to write a file for their "
-        f"GitHub repo {full_name}: \"{message}\". The repo is real "
-        "and connected. DRAFT the complete file content NOW — the "
-        "actual code/text they asked for, finished and usable, not "
-        "a sketch. NOTHING has been written to GitHub yet: OG only "
-        "ever writes as a pull request the owner approves first.\n\n"
+    verify_first = mode == "edit" or not path \
+        or path.endswith(".py")
+    _set_pending(uid, {
+        "repo_full": full_name, "owner": owner, "repo": repo,
+        "branch": branch, "path_hint": named, "thing": thing,
+        "mode": mode, "path": path, "base_sha": base_sha,
+        "base_text": base_text, "default_branch": default_branch,
+        "stage": "draft", "verify_first": verify_first,
+        "py_paths": [p for p in (tree_paths or [])
+                     if p.endswith(".py")],
+        "tree_paths": tree_paths or [],
+    })
+    closing = (
+        "Reply YES — OG will run the checks and show you the "
+        "final verified preview before anything is written — or "
+        "NO to scrap it." if verify_first else
+        "Reply YES to open the PR — or NO to scrap it.")
+    shape = (
         "Present the draft in EXACTLY this shape, in this order, "
         "with nothing before the first line:\n"
         f"Line 1: 🧾 {_PREVIEW_MARKER} — nothing is on GitHub yet\n"
         f"Line 2: Repo: {full_name}\n"
-        f"Line 3: Branch: {branch}\n"
-        "Line 4: File: <the file path> — " + path_line + "\n"
-        "Then the FULL file content in ONE fenced code block.\n"
-        "Then this closing line, word for word: Reply YES to open "
-        "the PR — or NO to scrap it.\n\n"
-        "Rules: new file only, one file, content under 64 KB. Do "
-        "NOT claim the file or the PR exists yet — this is a "
-        "preview awaiting their YES.")
+        f"Line 3: Branch: {branch}\n")
+    if mode == "edit":
+        body = (
+            f"The visitor ({who}) asked you to change code in "
+            f"their GitHub repo {full_name}: \"{ask_text}\". The "
+            f"repo is real and connected. The change belongs in "
+            f"the EXISTING file {path} — its current content is at "
+            "the end of this instruction. DRAFT the complete new "
+            "content of that file NOW — the whole finished file "
+            "with the change applied, not a snippet and not a "
+            "patch. NOTHING has been written to GitHub yet: OG "
+            "only ever writes as a pull request the owner "
+            "approves.\n\n"
+            "Repo files (context for the draft):\n"
+            + _tree_excerpt(tree_paths, path) + "\n\n"
+            + shape
+            + f"Line 4: File: {path}\n"
+              "Line 5: Mode: edit\n"
+              "Then the COMPLETE new content of the file in ONE "
+              "fenced code block.\n"
+              "Then ONE short plain-words line saying what "
+              "changed.\n"
+              f"Then this closing line, word for word: {closing}\n\n"
+              "Rules: one file, new content under 64 KB. Do NOT "
+              "claim the change or the PR exists yet — this is a "
+              "preview awaiting their YES.\n\n"
+              f"Current content of {path} on {default_branch} — "
+              "draft the new version FROM this, keeping everything "
+              f"that should not change:\n{base_text}")
+    else:
+        path_line = (
+            f"Line 4: File: {path}\n" if path else
+            "Line 4: File: <the file path> — Choose ONE sensible "
+            "file path yourself (e.g. hello.py, notes.md — match "
+            "what they asked for, and the repo layout above) and "
+            "put it on the File line\n")
+        body = (
+            f"The visitor ({who}) asked you to write a file for "
+            f"their GitHub repo {full_name}: \"{ask_text}\". The "
+            "repo is real and connected. DRAFT the complete file "
+            "content NOW — the actual code/text they asked for, "
+            "finished and usable, not a sketch. NOTHING has been "
+            "written to GitHub yet: OG only ever writes as a pull "
+            "request the owner approves first.\n\n"
+            "Repo files (context for the draft):\n"
+            + _tree_excerpt(tree_paths, path) + "\n\n"
+            + shape
+            + path_line
+            + "Line 5: Mode: new\n"
+              "Then the FULL file content in ONE fenced code "
+              "block.\n"
+              f"Then this closing line, word for word: {closing}\n\n"
+              "Rules: new file only, one file, content under "
+              "64 KB. Do NOT claim the file or the PR exists yet — "
+              "this is a preview awaiting their YES.")
     return [{"title": f"🐙 PR draft for {full_name}", "body": body,
              "href": data.get("html_url", "")}]
 
@@ -710,7 +1046,11 @@ def _extract_preview(uid: str, pending: Dict) -> Optional[Dict]:
     text = ""
     for entry in reversed(history or []):
         if isinstance(entry, dict) and entry.get("role") == "assistant" \
-                and _PREVIEW_MARKER in str(entry.get("content", "")):
+                and _PREVIEW_MARKER in str(entry.get("content", "")) \
+                and "(verified)" not in str(entry.get("content", "")):
+            # Verified previews are never extracted: for an edit
+            # their first block is a DIFF, not shipping content.
+            # The verified package rides the pending change itself.
             text = str(entry["content"])
             break
     if not text:
@@ -718,11 +1058,24 @@ def _extract_preview(uid: str, pending: Dict) -> Optional[Dict]:
     m_repo = re.search(r"^Repo:\s*(\S+)\s*$", text, re.M)
     m_branch = re.search(r"^Branch:\s*(\S+)\s*$", text, re.M)
     m_file = re.search(r"^File:\s*(\S+)\s*$", text, re.M)
+    m_mode = re.search(r"^Mode:\s*(\S+)\s*$", text, re.M)
     if not m_repo or m_repo.group(1) != pending.get("repo_full"):
         return None
     if not m_branch or m_branch.group(1) != pending.get("branch"):
         return None
-    path = m_file.group(1) if m_file else pending.get("path_hint", "")
+    if pending.get("mode") in ("edit", "new") and m_mode \
+            and m_mode.group(1) != pending["mode"]:
+        return None
+    if pending.get("path"):
+        # The change's place was fixed at draft time (an edit
+        # target or a layout-derived path): the preview must be
+        # for THAT file.
+        if m_file and m_file.group(1) != pending["path"]:
+            return None
+        path = pending["path"]
+    else:
+        path = m_file.group(1) if m_file \
+            else pending.get("path_hint", "")
     if not _valid_path(path or ""):
         return None
     # The content is the first fenced block after the File line.
@@ -736,6 +1089,372 @@ def _extract_preview(uid: str, pending: Dict) -> Optional[Dict]:
     if len(content.encode("utf-8")) > _MAX_FILE_BYTES:
         return {"error": "too_big", "path": path}
     return {"path": path, "content": content}
+
+
+# --- The Python sandbox (Brent's rule: test it with Python) --------------------
+# The ONLY code path in OG that ever executes visitor code, and it
+# exists only inside this PR flow: there is no route, no chat
+# trigger and no other caller. Hard guardrails, all enforced here:
+# the visitor's OWN repo files + the pending change only; a minimal
+# whitelist environment (nothing inherited — no OG_* secrets, no
+# tokens); cwd pinned to a throwaway temp dir that is deleted
+# after; every subprocess under a hard timeout with its whole
+# process group killed on expiry.
+
+def _sandbox_env(tmp: str) -> Dict:
+    return {
+        "PATH": os.defpath,
+        "HOME": tmp,
+        "TMPDIR": tmp,
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONHASHSEED": "0",
+    }
+
+
+def _run_capped(argv, cwd: str, env: Dict, timeout: int):
+    """One subprocess under a hard timeout. Returns
+    (returncode|None, stdout, stderr, timed_out)."""
+    try:
+        proc = subprocess.Popen(
+            argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True,
+            start_new_session=True)
+    except Exception as e:
+        return None, "", str(e), False
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        return proc.returncode, out or "", err or "", False
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception:
+            pass
+        try:
+            out, err = proc.communicate(timeout=10)
+        except Exception:
+            out, err = "", ""
+        return None, out or "", err or "", True
+
+
+def _safe_rel(path: str) -> bool:
+    """A path safe to materialize inside the sandbox temp dir."""
+    if not path or path.startswith("/") or "\\" in path:
+        return False
+    return all(p not in ("", ".", "..") for p in path.split("/"))
+
+
+def _pytest_available() -> bool:
+    try:
+        import pytest  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def run_python_checks(files: Dict, changed_paths, timeout: int =
+                      _SANDBOX_TIMEOUT, tests_skip_reason: str = ""
+                      ) -> Dict:
+    """Assemble `files` (repo-relative path -> bytes) in a
+    throwaway dir and run: (a) py_compile on every changed .py;
+    (b) the repo's own pytest suite when test files are present
+    and pytest exists in this environment. Returns
+    {"compile": {"ok", "errors"}|None, "tests": {"status",
+    "passed", "failed", "failing", "tail", "reason"}} — status is
+    passed|failed|error|timeout|none|unavailable|skipped. Nothing
+    here ever raises."""
+    tests = {"status": "skipped", "passed": 0, "failed": 0,
+             "failing": [], "tail": "", "reason": ""}
+    result = {"compile": None, "tests": tests}
+    changed_py = [p for p in changed_paths if p.endswith(".py")]
+    test_files = [p for p in files if _is_test_path(p)]
+    tmp = tempfile.mkdtemp(prefix="og_code_")
+    try:
+        for path, blob in files.items():
+            if not _safe_rel(path):
+                continue
+            dest = os.path.join(tmp, path)
+            parent = os.path.dirname(dest)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(dest, "wb") as f:
+                f.write(blob)
+        env = _sandbox_env(tmp)
+        if changed_py:
+            errors = []
+            for p in changed_py:
+                if p not in files:
+                    continue
+                rc, out, err, timed = _run_capped(
+                    [sys.executable, "-m", "py_compile", p],
+                    tmp, env, timeout)
+                if timed:
+                    errors.append(
+                        f"{p}: compile timed out after {timeout}s")
+                elif rc is None:
+                    errors.append(
+                        f"{p}: could not start Python "
+                        f"({(err or '').strip()[:120]})")
+                elif rc != 0:
+                    lines = (err or out).strip().splitlines()
+                    errors.append(
+                        f"{p}: "
+                        f"{lines[-1][:200] if lines else 'compile failed'}")
+            result["compile"] = {"ok": not errors, "errors": errors}
+        if not test_files:
+            tests["status"] = "none"
+        elif result["compile"] and not result["compile"]["ok"]:
+            tests["status"] = "skipped"
+            tests["reason"] = "the changed Python doesn't compile"
+        elif tests_skip_reason:
+            tests["status"] = "skipped"
+            tests["reason"] = tests_skip_reason
+        elif not _pytest_available():
+            tests["status"] = "unavailable"
+            tests["reason"] = ("pytest is not installed on OG's "
+                               "server")
+        else:
+            rc, out, err, timed = _run_capped(
+                [sys.executable, "-m", "pytest", "-q", "-rf",
+                 "--tb=line", "-p", "no:cacheprovider"],
+                tmp, env, timeout)
+            blob = ((out or "") + "\n" + (err or "")).strip()
+            tests["tail"] = blob[-1200:]
+            if timed:
+                tests["status"] = "timeout"
+                tests["reason"] = f"timed out after {timeout}s"
+            else:
+                mp = re.search(r"(\d+) passed", blob)
+                mf = re.search(r"(\d+) failed", blob)
+                tests["passed"] = int(mp.group(1)) if mp else 0
+                tests["failed"] = int(mf.group(1)) if mf else 0
+                tests["failing"] = re.findall(
+                    r"^FAILED (\S+)", blob, re.M)[:10]
+                if rc == 0:
+                    tests["status"] = "passed"
+                elif rc == 1:
+                    tests["status"] = "failed"
+                elif rc == 5:
+                    tests["status"] = "none"
+                else:
+                    tests["status"] = "error"
+                    tests["failing"] = re.findall(
+                        r"^ERROR (\S+)", blob, re.M)[:10]
+                    first = next((ln for ln in blob.splitlines()
+                                  if ln.strip()), "")
+                    tests["reason"] = first[:200]
+        return result
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# --- The verified preview (first YES on an edit / Python change) ---------------
+
+def _make_diff(base_text: str, new_text: str, path: str) -> str:
+    """The EXACT unified diff, computed by the module — never by
+    the drafting model — so what the visitor approves is
+    character-exact. Display/store truncation is noted inline."""
+    diff = "".join(difflib.unified_diff(
+        base_text.splitlines(keepends=True),
+        new_text.splitlines(keepends=True),
+        fromfile="a/" + path, tofile="b/" + path))
+    if len(diff) > _MAX_DIFF_CHARS:
+        diff = (diff[:_MAX_DIFF_CHARS]
+                + "\n… (diff truncated here — the full new "
+                  "content was verified and is what ships)\n")
+    return diff
+
+
+def _checks_line(test, path: str) -> str:
+    """The one plain line the verified preview (and the PR body)
+    carries about testing. OG never says 'works' without a run."""
+    if test is None:
+        return ("no Python in this change — nothing to run here. "
+                "If this repo has GitHub Actions checks, they "
+                "report after the PR opens.")
+    compile_ = test.get("compile") or {}
+    if compile_.get("errors"):
+        return (f"❌ COMPILE FAILED — {compile_['errors'][0]} "
+                "Nothing is written unless you still say YES.")
+    tests = test.get("tests") or {}
+    status = tests.get("status", "")
+    passed = tests.get("passed", 0)
+    failed = tests.get("failed", 0)
+    if status == "passed":
+        if passed:
+            return (f"✅ compiled OK · tests: {passed} passed, "
+                    "0 failed.")
+        return "✅ compiled OK · tests ran clean (0 failures)."
+    if status == "failed":
+        names = ", ".join((tests.get("failing") or [])[:5])
+        return (f"⚠️ compiled OK · tests: {passed} passed, "
+                f"{failed} failed ({names}). Your call — YES "
+                "still opens the PR.")
+    if status == "none":
+        return ("✅ compiled OK · no test suite found in this "
+                "repo.")
+    if status == "unavailable":
+        return ("✅ compiled OK · tests could not run here — "
+                "pytest isn't installed on OG's server.")
+    if status == "timeout":
+        return (f"⚠️ compiled OK · tests {tests.get('reason', '')}"
+                " — treated as unknown, not as a pass.")
+    if status == "error":
+        return ("⚠️ compiled OK · the test run itself errored "
+                f"({tests.get('reason', '')}) — that's the run, "
+                "not necessarily the code.")
+    # skipped
+    return (f"✅ compiled OK · test suite not run "
+            f"({tests.get('reason', '')}).")
+
+
+def _assemble_test_files(entry: Dict, pending: Dict,
+                         changed_path: str, content: str):
+    """Collect the repo's Python files for the sandbox, with the
+    pending change applied over the current files. Returns
+    (files, hard_reason, soft_note): a hard_reason means the suite
+    must NOT run (assembly limits — a partial run would mislead);
+    a soft_note means some files couldn't be read and the preview
+    must say the run was partial."""
+    token = entry.get("access_token", "")
+    owner, repo = pending["owner"], pending["repo"]
+    ref = pending.get("default_branch", "")
+    files = {changed_path: content.encode("utf-8")}
+    py_paths = [p for p in (pending.get("py_paths") or [])
+                if p != changed_path]
+    if len(py_paths) > _SANDBOX_MAX_FILES:
+        return files, (f"the repo has {len(py_paths)} Python "
+                       f"files — over OG's "
+                       f"{_SANDBOX_MAX_FILES}-file assembly limit"), ""
+    total = len(files[changed_path])
+    fetched = 0
+    for p in py_paths:
+        st, info = _fetch_file(token, owner, repo, p, ref)
+        if info is None:
+            continue
+        blob = info["text"].encode("utf-8")
+        total += len(blob)
+        if total > _SANDBOX_MAX_BYTES:
+            return files, ("the repo's Python exceeds OG's "
+                           f"{_SANDBOX_MAX_BYTES // (1024 * 1024)} MB "
+                           "assembly limit"), ""
+        files[p] = blob
+        fetched += 1
+    for cfg in ("pytest.ini", "pyproject.toml", "setup.cfg",
+                "tox.ini"):
+        if cfg in (pending.get("tree_paths") or []) \
+                and cfg not in files:
+            st, info = _fetch_file(token, owner, repo, cfg, ref)
+            if info is not None and len(info["text"]) < 64 * 1024:
+                files[cfg] = info["text"].encode("utf-8")
+    soft = ""
+    if fetched < len(py_paths):
+        soft = (f"assembled {fetched} of {len(py_paths)} Python "
+                "files — the rest could not be read")
+    return files, "", soft
+
+
+def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
+                    uid: str) -> list:
+    """The first YES on a change that needs verification: re-check
+    the base on GitHub (moved = abort, honestly), compute the
+    exact diff, run the Python checks, park the verified package
+    and present the FINAL preview. The second YES executes. Any
+    failure here writes NOTHING."""
+    token = entry.get("access_token", "")
+    who = entry.get("login") or entry.get("name") or "the visitor"
+    owner, repo, full = (pending["owner"], pending["repo"],
+                         pending["repo_full"])
+    path = extracted["path"]
+    content = extracted["content"]
+    ref = pending.get("default_branch", "")
+
+    def abort(title: str, body: str) -> list:
+        _clear_pending(uid)
+        return [{"title": title, "body": body,
+                 "href": f"https://github.com/{full}"}]
+
+    diff = None
+    if pending.get("mode") == "edit":
+        st, info = _fetch_file(token, owner, repo, path, ref)
+        if st == 401:
+            _clear_pending(uid)
+            return _revoked(uid, who)
+        if info is None or info.get("sha") != pending.get("base_sha"):
+            return abort(
+                "🐙 GitHub PR — file changed",
+                f"The visitor ({who}) approved a draft edit to "
+                f"{path} in {full}, but that file has CHANGED on "
+                "GitHub since the preview was drafted — OG will "
+                "not write over someone else's newer work. NOTHING "
+                "was written. Tell them plainly, in persona, and "
+                "invite them to ask again so OG drafts a fresh "
+                "preview against the current file.")
+        base_text = pending.get("base_text") or ""
+        if content == base_text:
+            return abort(
+                "🐙 GitHub PR — no change",
+                f"The visitor ({who}) approved a draft for "
+                f"{full}, but the drafted content is IDENTICAL to "
+                f"the current {path} — there is no change to ship. "
+                "NOTHING was written. Tell them plainly, in "
+                "persona.")
+        diff = _make_diff(base_text, content, path)
+    else:
+        st, info = _fetch_file(token, owner, repo, path, ref)
+        if st == 401:
+            _clear_pending(uid)
+            return _revoked(uid, who)
+        if st == 200:
+            return abort(
+                "🐙 GitHub PR — file appeared",
+                f"The visitor ({who}) approved a draft for "
+                f"{full}, but a file now EXISTS at {path} on the "
+                "default branch — it appeared after the preview. "
+                "NOTHING was written. Tell them plainly, in "
+                "persona, and invite them to ask again.")
+
+    test = None
+    if path.endswith(".py"):
+        files, hard, soft = _assemble_test_files(
+            entry, pending, path, content)
+        test = run_python_checks(files, [path],
+                                 tests_skip_reason=hard)
+        if soft:
+            test["note"] = soft
+    pkg = {"path": path, "content": content, "diff": diff,
+           "test": test}
+    verified = dict(pending)
+    verified["stage"] = "verified"
+    verified["pkg"] = pkg
+    _set_pending(uid, verified)  # fresh window for THIS preview
+
+    checks = _checks_line(test, path)
+    if test is not None and test.get("note"):
+        checks += f" (Partial run: {test['note']}.)"
+    block = (f"```diff\n{diff}```" if diff is not None
+             else f"```\n{content}\n```")
+    preview = (
+        f"🧾 {_PREVIEW_MARKER} (verified) — nothing is on GitHub "
+        f"yet\nRepo: {full}\nBranch: {pending['branch']}\n"
+        f"File: {path}\nMode: {pending.get('mode', 'new')}\n"
+        f"{block}\nChecks: {checks}\n"
+        "Reply YES to open the PR — or NO to scrap it.")
+    body = (
+        f"The visitor ({who}) said YES to the draft for {full}. "
+        "OG has now VERIFIED the change: the base on GitHub is "
+        "unchanged, the diff below was computed by OG itself (it "
+        "is exact), and the Python checks were actually run — "
+        "their outcome is on the Checks line. NOTHING has been "
+        "written to GitHub yet. Present the following preview "
+        "EXACTLY, word for word — every line, the block and the "
+        "Checks line — and add nothing about the change "
+        f"yourself:\n\n{preview}")
+    return [{"title": "🐙 PR verified preview — "
+                       f"{full}", "body": body,
+             "href": f"https://github.com/{full}"}]
 
 
 def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
@@ -768,6 +1487,36 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
         return failed("repo check")
     default_branch = data.get("default_branch") or "main"
 
+    # The standing law, enforced at the moment of writing: the
+    # base the visitor approved against must not have moved. An
+    # edit whose target changed — or a "new" file that now exists
+    # — aborts BEFORE any branch or commit exists.
+    mode = pending.get("mode", "new")
+    vstatus, vinfo = _fetch_file(token, owner, repo, path,
+                                 default_branch)
+    if vstatus == 401:
+        return _revoked(uid, who)
+    if mode == "edit":
+        if vinfo is None or vinfo.get("sha") != pending.get("base_sha"):
+            body = (f"The visitor ({who}) approved a pull request "
+                    f"for {full}, but {path} CHANGED on GitHub "
+                    "after the preview — OG will not write over "
+                    "newer work. NOTHING was written and no branch "
+                    "was created. Tell them plainly, in persona, "
+                    "and invite them to ask again for a fresh "
+                    "preview.")
+            return [{"title": "🐙 GitHub PR — file changed",
+                     "body": body,
+                     "href": f"https://github.com/{full}"}]
+    elif vstatus == 200:
+        body = (f"The visitor ({who}) approved a pull request for "
+                f"{full}, but a file already exists at {path} on "
+                f"{default_branch} — it appeared after the preview. "
+                "NOTHING was written and no branch was created. "
+                "Tell them plainly, in persona.")
+        return [{"title": "🐙 GitHub PR — file exists",
+                 "body": body, "href": f"https://github.com/{full}"}]
+
     status, ref = _gh_request(
         "GET", f"/repos/{owner}/{repo}/git/ref/heads/"
         + quote(default_branch, safe="/"), token)
@@ -795,39 +1544,53 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
         return failed("branch creation")
 
     encoded = base64.b64encode(content.encode("utf-8")).decode()
+    put_body = {"message": (f"Update {path} (via OG AI)"
+                            if mode == "edit" else
+                            f"Add {path} (via OG AI)"),
+                "content": encoded, "branch": branch}
+    if mode == "edit":
+        # The Contents API requires the current blob sha to update
+        # an existing file — the one verified moments ago.
+        put_body["sha"] = pending.get("base_sha", "")
     status, _ = _gh_request(
         "PUT", f"/repos/{owner}/{repo}/contents/"
-        + quote(path, safe="/"), token,
-        json_body={"message": f"Add {path} (via OG AI)",
-                   "content": encoded, "branch": branch})
+        + quote(path, safe="/"), token, json_body=put_body)
     if status == 401:
         return _revoked(uid, who)
     if status in (409, 422):
+        if mode == "edit":
+            why = (f"the file {path} moved again while OG was "
+                   "writing (its sha no longer matches the verified "
+                   "preview)")
+        else:
+            why = (f"a file already exists at {path} on the new "
+                   "branch — GitHub refused to overwrite it")
         body = (f"The visitor ({who}) approved a pull request for "
                 f"{full}, and OG created the branch {branch} — but "
-                f"GitHub refused the file: a file already exists at "
-                f"{path}, and OG v1 only creates NEW files (it "
-                "never edits existing ones). No pull request was "
-                "opened. Tell them plainly, in persona.")
-        return [{"title": "🐙 GitHub PR — file exists", "body": body,
-                 "href": f"https://github.com/{full}"}]
+                f"GitHub refused the file commit: {why}. No pull "
+                "request was opened. Tell them plainly, in persona.")
+        return [{"title": "🐙 GitHub PR — commit refused",
+                 "body": body, "href": f"https://github.com/{full}"}]
     if status not in (200, 201):
         return failed("file commit",
                       f" (the branch {branch} WAS created)")
 
     thing = (pending.get("thing") or "").strip()
-    title = (thing[:60] if thing else f"Add {path}")
-    title = title[0].upper() + title[1:] if title else f"Add {path}"
+    fallback = f"Update {path}" if mode == "edit" else f"Add {path}"
+    title = (thing[:60] if thing else fallback)
+    title = title[0].upper() + title[1:] if title else fallback
+    pr_body = (f"Drafted by OG in chat and approved by the repo "
+               f"owner before anything was written.\n\n"
+               f"{'Edited file' if mode == 'edit' else 'New file'}: "
+               f"`{path}` on branch `{branch}`.")
+    pkg_test = (pending.get("pkg") or {}).get("test")
+    if pkg_test is not None:
+        pr_body += ("\n\nChecks OG ran before opening: "
+                    + _checks_line(pkg_test, path))
     status, pr = _gh_request(
         "POST", f"/repos/{owner}/{repo}/pulls", token,
-        json_body={
-            "title": title,
-            "head": branch,
-            "base": default_branch,
-            "body": (f"Drafted by OG in chat and approved by the "
-                     f"repo owner before anything was written.\n\n"
-                     f"New file: `{path}` on branch `{branch}`."),
-        })
+        json_body={"title": title, "head": branch,
+                   "base": default_branch, "body": pr_body})
     if status == 401:
         return _revoked(uid, who)
     if status != 201 or not isinstance(pr, dict) \
@@ -835,13 +1598,341 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
         return failed("pull request opening",
                       f" (the file WAS committed on branch {branch})")
     pr_url = pr["html_url"]
+    head_sha = (pr.get("head") or {}).get("sha", "")
+    if head_sha:
+        _register_checks_watch(uid, {
+            "repo_full": full, "owner": owner, "repo": repo,
+            "pr_number": pr.get("number"), "pr_url": pr_url,
+            "branch": branch, "head_sha": head_sha,
+            "status": "pending", "checks": [], "notified": False,
+            "created": time.time(), "updated": time.time()})
+        _start_checks_watch(uid, pr_url)
+    action = "edited file" if mode == "edit" else "new file"
     body = (f"DONE — the pull request the visitor ({who}) approved "
-            f"is now OPEN on {full}: \"{title}\" — new file {path} "
+            f"is now OPEN on {full}: \"{title}\" — {action} {path} "
             f"on branch {branch}. The PR URL is {pr_url}. Confirm "
             "it to them in persona with that URL — it is already "
-            "open; do not say you will open it.")
+            "open; do not say you will open it."
+            + (" OG is also tracking the PR's GitHub Actions "
+               "checks: the outcome lands in the visitor's "
+               "notifications, and they can ask 'did the checks "
+               "pass on my PR?' — mention that once, briefly."
+               if head_sha else ""))
     return [{"title": "🐙 GitHub PR opened", "body": body,
              "href": pr_url}]
+
+
+# --- GitHub Actions check tracking (Brent's rule: test it with GitHub) ---------
+# After a PR opens, OG watches its check runs: a bounded background
+# poll (~20 min) plus a lazy refresh when the visitor asks. The
+# terminal outcome is recorded through og_notify exactly once per
+# PR. Watches are per visitor and durable (Postgres when configured,
+# else a JSON file next to the token store).
+
+_checks_lock = threading.Lock()
+_CHECK_TERMINAL = ("success", "failure", "none", "stopped")
+
+
+def _checks_db_connect():
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+    with conn.cursor() as cur:
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS og_github_checks ("
+            "uid TEXT PRIMARY KEY, data JSONB)")
+    conn.commit()
+    return conn
+
+
+def _load_checks_store() -> Dict:
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _checks_db_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT uid, data FROM og_github_checks")
+                    return {u: d for u, d in cur.fetchall()}
+        except Exception as e:
+            logger.warning(f"GitHub checks DB load failed, "
+                           f"using file: {e}")
+    if os.path.exists(_CHECKS_STORE_FILE):
+        try:
+            with open(_CHECKS_STORE_FILE, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning(f"Could not load checks store: {e}")
+    return {}
+
+
+def _save_checks_store(store: Dict):
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _checks_db_connect() as conn:
+                with conn.cursor() as cur:
+                    for uid, data in store.items():
+                        cur.execute(
+                            "INSERT INTO og_github_checks (uid, data) "
+                            "VALUES (%s, %s) ON CONFLICT (uid) DO "
+                            "UPDATE SET data = EXCLUDED.data",
+                            (uid, _Jsonb(data)))
+                    cur.execute("SELECT uid FROM og_github_checks")
+                    existing = {row[0] for row in cur.fetchall()}
+                    for stale in existing - set(store.keys()):
+                        cur.execute(
+                            "DELETE FROM og_github_checks WHERE "
+                            "uid = %s", (stale,))
+                conn.commit()
+            return
+        except Exception as e:
+            logger.warning(f"GitHub checks DB save failed, "
+                           f"using file: {e}")
+    try:
+        with open(_CHECKS_STORE_FILE, 'w') as f:
+            json.dump(store, f)
+    except Exception as e:
+        logger.warning(f"Could not save checks store: {e}")
+
+
+def _get_watches(uid: str) -> list:
+    if not uid:
+        return []
+    with _checks_lock:
+        store = _load_checks_store()
+    watches = store.get(uid)
+    return list(watches) if isinstance(watches, list) else []
+
+
+def _register_checks_watch(uid: str, watch: Dict):
+    with _checks_lock:
+        store = _load_checks_store()
+        watches = store.get(uid)
+        if not isinstance(watches, list):
+            watches = []
+        watches.append(watch)
+        store[uid] = watches[-_CHECKS_KEEP:]
+        _save_checks_store(store)
+
+
+def _update_watch(uid: str, pr_url: str, **fields):
+    with _checks_lock:
+        store = _load_checks_store()
+        watches = store.get(uid)
+        if not isinstance(watches, list):
+            return
+        for watch in watches:
+            if isinstance(watch, dict) \
+                    and watch.get("pr_url") == pr_url:
+                watch.update(fields)
+                watch["updated"] = time.time()
+        _save_checks_store(store)
+
+
+def _get_watch(uid: str, pr_url: str) -> Optional[Dict]:
+    for watch in _get_watches(uid):
+        if isinstance(watch, dict) \
+                and watch.get("pr_url") == pr_url:
+            return watch
+    return None
+
+
+def _aggregate_check_runs(data) -> tuple:
+    """(state, lines) from a check-runs API payload. state is
+    'none' (the repo runs no Actions checks), 'pending',
+    'success' or 'failure'; lines are (name, status, conclusion)
+    per run."""
+    if not isinstance(data, dict):
+        return "pending", []
+    runs = [r for r in (data.get("check_runs") or [])
+            if isinstance(r, dict)]
+    total = data.get("total_count", len(runs))
+    if not total or not runs:
+        return "none", []
+    lines = [(r.get("name") or "check", r.get("status") or "",
+              r.get("conclusion") or "") for r in runs]
+    state = "success"
+    for _name, st, concl in lines:
+        if st != "completed":
+            state = "pending"
+        elif concl in ("failure", "cancelled", "timed_out",
+                       "action_required", "startup_failure"):
+            if state != "pending":
+                state = "failure"
+    return state, lines
+
+
+def _notify_checks(uid: str, watch: Dict, state: str):
+    """Record a PR's terminal checks outcome exactly once, via
+    the notification seam (kind 'notice' — og_notify's tidy
+    general kind). Fail-safe: a notification can never break
+    tracking."""
+    verdict = {
+        "success": ("✅ GitHub checks passed",
+                    "All GitHub Actions checks passed."),
+        "failure": ("❌ GitHub checks FAILED",
+                    "At least one GitHub Actions check failed."),
+        "none": ("🐙 No GitHub Actions checks",
+                 "That repo has no GitHub Actions checks, so "
+                 "there was nothing to run."),
+    }.get(state)
+    if verdict is None:
+        return
+    title, line = verdict
+    try:
+        import og_notify
+        og_notify.record(
+            uid, "notice",
+            f"{title} — {watch.get('repo_full')}"
+            f"#{watch.get('pr_number')}",
+            f"{line} PR: {watch.get('pr_url')}")
+    except Exception as e:
+        logger.warning(f"Checks notify failed: {e}")
+
+
+def _refresh_watch(entry: Dict, uid: str, watch: Dict) -> Optional[str]:
+    """One live check-runs read for a tracked PR; updates the
+    stored state and notifies (once) at a terminal state. Returns
+    the state, or None when the read itself failed."""
+    token = entry.get("access_token", "")
+    status, data = _gh_request(
+        "GET", f"/repos/{watch['owner']}/{watch['repo']}/commits/"
+        + quote(str(watch.get("head_sha", "")), safe="")
+        + "/check-runs", token)
+    if status == 401:
+        _update_watch(uid, watch["pr_url"], status="stopped")
+        return "stopped"
+    if status != 200:
+        return None
+    state, lines = _aggregate_check_runs(data)
+    fields = {"status": state,
+              "checks": [f"{n}: {c or s}" for n, s, c in lines]}
+    fresh = _get_watch(uid, watch["pr_url"]) or watch
+    if state in _CHECK_TERMINAL and not fresh.get("notified"):
+        fields["notified"] = True
+        _update_watch(uid, watch["pr_url"], **fields)
+        _notify_checks(uid, fresh, state)
+    else:
+        _update_watch(uid, watch["pr_url"], **fields)
+    return state
+
+
+def _start_checks_watch(uid: str, pr_url: str):
+    """The bounded background poller: first look after a short
+    delay, then on the poll cadence, until a terminal state or
+    the ~20-minute budget runs out (then the watch is marked
+    'stopped' — a later ask can still refresh it lazily)."""
+    def run():
+        deadline = time.time() + _CHECKS_POLL_BUDGET
+        delay = _CHECKS_POLL_FIRST
+        while time.time() < deadline:
+            time.sleep(delay)
+            delay = _CHECKS_POLL_SECONDS
+            watch = _get_watch(uid, pr_url)
+            if watch is None \
+                    or watch.get("status") in _CHECK_TERMINAL:
+                return
+            entry = _github_connection(uid)
+            if not entry:
+                _update_watch(uid, pr_url, status="stopped")
+                return
+            try:
+                state = _refresh_watch(entry, uid, watch)
+            except Exception as e:
+                logger.warning(f"Checks poll failed: {e}")
+                state = None
+            if state in _CHECK_TERMINAL:
+                return
+        watch = _get_watch(uid, pr_url)
+        if watch is not None \
+                and watch.get("status") not in _CHECK_TERMINAL:
+            _update_watch(uid, pr_url, status="stopped")
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _checks_answer(entry: Optional[Dict], uid: str,
+                   consume_lookup) -> Optional[list]:
+    """'Did the checks pass on my PR?' — answered from the stored
+    watch state, with ONE live refresh while the latest is still
+    pending and inside its tracking budget."""
+    watches = [w for w in _get_watches(uid) if isinstance(w, dict)]
+    who = (entry or {}).get("login") or (entry or {}).get("name") \
+        or "the visitor"
+    if not watches:
+        if not entry:
+            return None
+        if not _spend(consume_lookup, uid):
+            return None
+        body = (f"The visitor ({who}) is asking about GitHub "
+                "Actions checks, but OG is not tracking any pull "
+                "request for them — no PR they approved through OG "
+                "is being watched. Tell them plainly, in persona; "
+                "do not invent check results.")
+        return [{"title": "🐙 GitHub checks — none tracked",
+                 "body": body, "href": "/auth/github"}]
+    latest = watches[-1]
+    if entry and latest.get("status") == "pending" \
+            and time.time() - float(latest.get("created", 0)) \
+            <= _CHECKS_POLL_BUDGET:
+        try:
+            _refresh_watch(entry, uid, latest)
+        except Exception as e:
+            logger.warning(f"Checks lazy refresh failed: {e}")
+        latest = _get_watch(uid, latest["pr_url"]) or latest
+    if not _spend(consume_lookup, uid):
+        logger.info("GitHub checks answer skipped: visitor at "
+                    "daily lookup cap")
+        return None
+    state = latest.get("status", "pending")
+    state_line = {
+        "success": "✅ ALL CHECKS PASSED",
+        "failure": "❌ CHECKS FAILED",
+        "pending": "⏳ checks are still running",
+        "none": "this repo has NO GitHub Actions checks — "
+                "nothing ran",
+        "stopped": "OG stopped tracking after ~20 minutes — the "
+                   "PR page shows the current state",
+    }.get(state, state)
+    facts = [
+        f"Pull request: {latest.get('repo_full')}"
+        f"#{latest.get('pr_number')} ({latest.get('pr_url')})",
+        f"Branch: {latest.get('branch')}",
+        f"Checks state: {state_line}",
+    ]
+    for line in latest.get("checks") or []:
+        facts.append(f"- {line}")
+    if len(watches) > 1:
+        others = "; ".join(
+            f"{w.get('repo_full')}#{w.get('pr_number')}: "
+            f"{w.get('status')}" for w in watches[:-1])
+        facts.append(f"Also tracked earlier: {others}")
+    body = (f"The visitor ({who}) is asking about the GitHub "
+            "Actions checks on their pull request. Answer ONLY "
+            "from these facts — OG's tracked state, refreshed "
+            "live just now when it was still pending:\n\n"
+            + "\n".join(facts))
+    return [{"title": "🐙 GitHub checks — "
+                       f"{latest.get('repo_full')}",
+             "body": body, "href": latest.get("pr_url", "")}]
+
+
+def _clarify_answer(entry: Dict, job: Dict, message: str,
+                    uid: str) -> list:
+    """Results-level clarifying question: the ask wants repo work
+    but the repo (or the file) can't be pinned down. Exactly ONE
+    question, parked so the answer completes the ask."""
+    who = entry.get("login") or entry.get("name") or "the visitor"
+    path = job.get("path") or ""
+    thing = job.get("thing") or ""
+    if path:
+        question = f"Which repo should OG put {path} in?"
+        fields = {"repo_full": "", "thing": thing,
+                  "path_hint": path, "orig": str(message)}
+    else:
+        question = ("Which repo — and which file in it — should "
+                    "OG work on?")
+        fields = {"repo_full": "", "thing": thing,
+                  "path_hint": "", "orig": str(message)}
+    return _ask_one_question(uid, fields, question, who)
 
 
 # --- Execution --------------------------------------------------------------------
@@ -849,10 +1940,11 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
 def github_results(job, message, uid, consume_lookup):
     """Run one parsed GitHub job for this visitor. Returns
     web_search-shaped results on a hit (real data, grounded empty
-    answers, connect/reconnect guidance, draft instructions, PR
-    outcomes), or None on a true miss — disabled, upstream failure —
-    so the caller falls through to the previous search untouched.
-    Reads spend one lookup-budget unit per real answer; the PR
+    answers, connect/reconnect guidance, draft instructions,
+    verified previews, PR outcomes, checks answers), or None on a
+    true miss — disabled, upstream failure — so the caller falls
+    through to the previous search untouched. Reads and checks
+    answers spend one lookup-budget unit per real answer; the PR
     creation spends one at creation; previews, guidance, declines
     and clarifications spend nothing."""
     if not job or not GITHUB_ENABLED or not uid:
@@ -872,7 +1964,8 @@ def github_results(job, message, uid, consume_lookup):
         who = entry.get("login") or entry.get("name") or who_hint
         if kind == "decline":
             _clear_pending(uid)
-            file_label = pending.get("path_hint") or "as previewed"
+            file_label = pending.get("path") \
+                or pending.get("path_hint") or "as previewed"
             body = (f"The visitor ({who}) said NO to the drafted "
                     f"pull request for {pending.get('repo_full')} "
                     f"(file {file_label}, branch "
@@ -881,6 +1974,29 @@ def github_results(job, message, uid, consume_lookup):
                     "Confirm that to them in persona, briefly.")
             return [{"title": "🐙 GitHub PR — scrapped", "body": body,
                      "href": "/auth/github"}]
+        if pending.get("stage") == "verified" \
+                and pending.get("pkg"):
+            # Second YES: the package the visitor approved in the
+            # verified preview ships — after the budget spend and
+            # _create_pr's own final base re-verification.
+            pkg = pending["pkg"]
+            if not _spend(consume_lookup, uid):
+                _clear_pending(uid)
+                body = (f"The visitor ({who}) approved the "
+                        "verified pull request preview, but "
+                        "they've hit today's lookup limit, so OG "
+                        "can't open it right now. NOTHING was "
+                        "written to GitHub and the draft is "
+                        "scrapped. Tell them plainly, in persona.")
+                return [{"title": "🐙 GitHub PR — daily cap",
+                         "body": body, "href": "/auth/github"}]
+            try:
+                return _create_pr(
+                    entry, pending,
+                    {"path": pkg["path"],
+                     "content": pkg["content"]}, uid)
+            finally:
+                _clear_pending(uid)
         extracted = _extract_preview(uid, pending)
         if extracted is None or extracted.get("error") == "too_big":
             _clear_pending(uid)
@@ -898,6 +2014,11 @@ def github_results(job, message, uid, consume_lookup):
                     "drafted.")
             return [{"title": "🐙 GitHub PR — couldn't read draft",
                      "body": body, "href": "/auth/github"}]
+        if pending.get("verify_first"):
+            # First YES on an edit / Python change: verify, test
+            # and present the final preview. No budget spent, no
+            # write — execution needs the second YES.
+            return _verify_pending(entry, pending, extracted, uid)
         if not _spend(consume_lookup, uid):
             _clear_pending(uid)
             body = (f"The visitor ({who}) approved the drafted "
@@ -912,9 +2033,20 @@ def github_results(job, message, uid, consume_lookup):
         finally:
             _clear_pending(uid)
 
+    if kind == "pr_checks":
+        # Answered from the watch store; works even when the
+        # connection was dropped after the PR opened.
+        return _checks_answer(_github_connection(uid), uid,
+                              consume_lookup)
     entry = _github_connection(uid)
     if not entry:
+        if kind == "pr_clarify" and not job.get("repo_word"):
+            # A file-scoped coding ask that never mentioned a
+            # repo — generic chat keeps it; no hijack.
+            return None
         return _guidance("connect", who_hint)
+    if kind == "pr_clarify":
+        return _clarify_answer(entry, job, str(message), uid)
     if kind == "repos":
         return _repos_answer(entry, uid, consume_lookup)
     if kind == "repo_read":
@@ -934,17 +2066,87 @@ def github_results(job, message, uid, consume_lookup):
 _pending = {"job": None, "message": ""}
 
 
+def _repo_from_history(uid: str) -> Optional[str]:
+    """The repo this thread most recently established — read/preview
+    answers print a 'Repo: owner/name' line, and that is the only
+    history signal trusted for picking a repo (never a guess)."""
+    load_history = _deps.get("load_history")
+    if load_history is None or not uid:
+        return None
+    try:
+        history = load_history(uid)
+    except Exception as e:
+        logger.warning(f"GitHub history read failed: {e}")
+        return None
+    for entry in reversed(history or []):
+        if not isinstance(entry, dict):
+            continue
+        m = re.search(r"^Repo:\s*(\S+/\S+)\s*$",
+                      str(entry.get("content", "")), re.M)
+        if m:
+            return m.group(1)
+    return None
+
+
 def _claim_job(message: str, uid: str) -> Optional[Dict]:
     """What this message means for GitHub: an approval/decline when
-    a draft is pending, else a first-person read/write ask."""
+    a draft is pending, an answer to a pending clarifying question,
+    else a first-person read/write/checks ask."""
     low = " " + re.sub(r"\s+", " ", str(message).lower()).strip() + " "
-    if _get_pending(uid) is not None:
+    pending = _get_pending(uid)
+    if pending is not None:
         trimmed = low.strip()
         if _DECLINE_RE.match(trimmed):
             return {"kind": "decline"}
+        if pending.get("mode") == "clarify":
+            # The visitor is answering OG's ONE clarifying
+            # question: a file path (repo already known) or a
+            # repo + file. Anything else falls through to a
+            # normal parse (which re-earns the question or not).
+            path = _extract_path(message) \
+                or pending.get("path_hint") or ""
+            repo = pending.get("repo_full") \
+                or _extract_repo_name(message)
+            if not repo:
+                # A bare "demo" / "owner/demo" IS the answer to
+                # "which repo?" — take the whole reply as the name.
+                tok = str(message).strip().strip(".?! ")
+                if re.fullmatch(
+                        r"[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?", tok):
+                    repo = tok
+            if path and repo:
+                return {"kind": "pr_write", "repo": repo,
+                        "thing": pending.get("thing", ""),
+                        "path": path,
+                        "orig": (pending.get("orig", "") + " "
+                                 + str(message)).strip()}
         if _APPROVE_RE.match(trimmed):
             return {"kind": "approve"}
-    return parse_github_intent(message)
+    job = parse_github_intent(message)
+    if job is not None:
+        if job.get("kind") == "pr_clarify" and not job.get("repo"):
+            repo = _repo_from_history(uid)
+            if repo:
+                return {"kind": "pr_write", "repo": repo,
+                        "thing": job.get("thing", ""),
+                        "path": job.get("path")}
+        return job
+    # A file-scoped coding ask with no repo named in the message:
+    # claim it for the thread's repo when one is established, else
+    # it earns the one clarifying question.
+    if _WRITE_VERB_RE.search(low) or _EDIT_VERB_RE.search(low):
+        path = _extract_path(message)
+        if path:
+            repo = _repo_from_history(uid)
+            if repo:
+                return {"kind": "pr_write", "repo": repo,
+                        "thing": _extract_thing(message),
+                        "path": path}
+            return {"kind": "pr_clarify", "repo": None,
+                    "path": path,
+                    "thing": _extract_thing(message),
+                    "repo_word": False}
+    return None
 
 
 def install_github_tools(agent_instance, get_uid, consume_lookup):
