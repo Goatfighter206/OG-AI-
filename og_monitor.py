@@ -480,10 +480,13 @@ def evaluate_all(price_fn=None) -> int:
                 # center (+ opt-in channels). Fail-safe.
                 try:
                     import og_notify as _notify
+                    _tgt = {"view": "watch"}
+                    if w.get("id"):
+                        _tgt["id"] = w["id"]
                     _notify.record(
                         uid, "price_alert",
                         f"Price alert: {w.get('symbol')}",
-                        alerts[-1]["text"])
+                        alerts[-1]["text"], target=_tgt)
                 except Exception:
                     pass
         if changed:
@@ -1174,6 +1177,29 @@ def register_monitor_routes(app):
     """Attach the price-watch poll loop to app startup. The loop
     is failure-quiet: a dead feed or a bad cycle is logged and
     skipped, never raised into the app."""
+    from fastapi import Request
+
+    @app.get("/monitor/status")
+    async def monitor_status(request: Request):
+        # Round 59: the caller's own price watches for the shell's
+        # Goals seat. Read-only over the EXISTING per-uid blob (no
+        # new store); gated by the Round 44 sign-in gate like every
+        # other non-public route.
+        uid = request.cookies.get("ogai_uid") or ""
+        if not uid:
+            return {"watches": [], "pending_alerts": 0}
+        out = []
+        for w in _watches(uid):
+            out.append({
+                "id": w.get("id"), "symbol": w.get("symbol"),
+                "kind": w.get("kind"), "terms": _watch_terms(w),
+                "base": w.get("base"), "status": w.get("status"),
+                "created": w.get("created"),
+                "fired_price": w.get("fired_price"),
+                "fired_at": w.get("fired_at"),
+            })
+        return {"watches": out,
+                "pending_alerts": len(_pending_alerts(uid))}
 
     @app.on_event("startup")
     async def _start_watch_loop():
