@@ -19,6 +19,13 @@ enabled (see .env.example):
     price_1UOJy8JgRg4PhjAq5uCiCfSu  (OG AI Blackout $100)-> blackout
     price_1UMaXZJgRg4PhjAqsEJqmSeA  (legacy OG AI Pro $9.99) -> standard
 
+Round 58 adds the RED tier ($5.99/mo, "the chat tier") between
+free and standard. No Stripe price/link exists for it yet — the
+link is a dashboard step (OG_LINK_RED env once created), so
+metadata tier=red resolves the moment a link lands; until then
+the /pro Red card honestly shows "Not open yet" and tier_link
+never falls back to the legacy link for red.
+
 Caps are per UTC day and env-overridable per tier/kind:
 OG_CAP_<TIER>_<KIND>, e.g. OG_CAP_PRO_IMAGES=50. Kinds: images,
 uploads, lookup, tts, upload_mb, transcribe (Round 8 voice notes),
@@ -67,7 +74,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-TIER_ORDER = ("free", "standard", "pro", "blue", "blackout")
+TIER_ORDER = ("free", "red", "standard", "pro", "blue", "blackout")
 PAID_TIERS = TIER_ORDER[1:]
 
 TIER_TOKEN = os.getenv("OG_TIER_" "TOKEN", "").strip()
@@ -80,46 +87,47 @@ _DEFAULT_LINKS = {
 }
 
 _DEFAULT_CAPS = {
-    # kind:      free  standard  pro   blue  blackout
-    "images":  {"free": 2,    "standard": 10,  "pro": 50,  "blue": 300,  "blackout": 1000},
-    "uploads": {"free": 3,    "standard": 25,  "pro": 30,  "blue": 100,  "blackout": 300},
-    "lookup":  {"free": 25,   "standard": 250, "pro": 250, "blue": 250,  "blackout": 1000},
-    "tts":     {"free": 60,   "standard": 60,  "pro": 300, "blue": 600,  "blackout": 2000},
-    "transcribe": {"free": 3, "standard": 15,  "pro": 50,  "blue": 150,  "blackout": 500},
-    "unity":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
-    "video":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    # kind:      free  red   standard  pro   blue  blackout
+    "images":  {"free": 2,    "red": 5,   "standard": 10,  "pro": 50,  "blue": 300,  "blackout": 1000},
+    "uploads": {"free": 3,    "red": 10,  "standard": 25,  "pro": 30,  "blue": 100,  "blackout": 300},
+    "lookup":  {"free": 25,   "red": 100, "standard": 250, "pro": 250, "blue": 250,  "blackout": 1000},
+    "tts":     {"free": 60,   "red": 60,  "standard": 60,  "pro": 300, "blue": 600,  "blackout": 2000},
+    "transcribe": {"free": 3, "red": 8,   "standard": 15,  "pro": 50,  "blue": 150,  "blackout": 500},
+    "unity":   {"free": 1,    "red": 2,   "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    "video":   {"free": 1,    "red": 2,   "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     # Round 30 (OG Songs): sung tracks per day. At the studio's
     # $0.15/generated-minute and a ~2-3 min song (~$0.38), the
     # ladder stays cheaper per unit than story videos above.
-    "song":    {"free": 1,    "standard": 2,   "pro": 5,   "blue": 15,   "blackout": 50},
-    "shortlink": {"free": 5,  "standard": 25,  "pro": 50,  "blue": 100,  "blackout": 500},
-    "calorie": {"free": 10,   "standard": 50,  "pro": 100, "blue": 200,  "blackout": 500},
-    "watch":   {"free": 3,    "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
-    "order":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
-    "trade":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
-    "browser_min": {"free": 0, "standard": 0,  "pro": 0,   "blue": 60,   "blackout": 300},
+    "song":    {"free": 1,    "red": 1,   "standard": 2,   "pro": 5,   "blue": 15,   "blackout": 50},
+    "shortlink": {"free": 5,  "red": 10,  "standard": 25,  "pro": 50,  "blue": 100,  "blackout": 500},
+    "calorie": {"free": 10,   "red": 25,  "standard": 50,  "pro": 100, "blue": 200,  "blackout": 500},
+    "watch":   {"free": 3,    "red": 5,   "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
+    "order":   {"free": 1,    "red": 2,   "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    "trade":   {"free": 1,    "red": 2,   "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    "browser_min": {"free": 0, "red": 0,  "standard": 0,  "pro": 0,   "blue": 60,   "blackout": 300},
     # Round 29 (OG Watch): marketplace watch slots per visitor, and
     # the separate daily BACKGROUND-minute budget those scheduled
     # checks draw from (never the interactive browser_min above).
-    "fbwatch":   {"free": 0,    "standard": 1,   "pro": 3,   "blue": 5,    "blackout": 10},
-    "watch_min": {"free": 0,    "standard": 8,   "pro": 32,  "blue": 60,   "blackout": 96},
-    "upload_mb": {"free": 8,  "standard": 8,   "pro": 25,  "blue": 25,   "blackout": 25},
+    "fbwatch":   {"free": 0,    "red": 1,   "standard": 1,   "pro": 3,   "blue": 5,    "blackout": 10},
+    "watch_min": {"free": 0,    "red": 4,   "standard": 8,   "pro": 32,  "blue": 60,   "blackout": 96},
+    "upload_mb": {"free": 8,  "red": 8,   "standard": 8,   "pro": 25,  "blue": 25,   "blackout": 25},
 }
 
 # Round 20: the largest single trade (USD value) a tier may approve.
 # OG refuses the preview above the ceiling and states the limit.
 _DEFAULT_TRADE_CEILINGS = {
-    "free": 100, "standard": 500, "pro": 2500,
+    "free": 100, "red": 250, "standard": 500, "pro": 2500,
     "blue": 10000, "blackout": 50000,
 }
 
 # Round 21: the file-locker quota per tier — the storage ladder
 # Brent locked 2026-10-08 (Free: NO locker, uploads stay temporary;
-# Standard 5 GB, Pro 25 GB, Blue 50 GB, Blackout 100 GB). Env
+# Standard 5 GB, Pro 25 GB, Blue 50 GB, Blackout 100 GB; Round 58
+# slots Red in between at 1 GB). Env
 # OG_STORAGE_GB_<TIER> (a GB number) overrides a tier's quota.
 _GB = 1024 ** 3
 STORAGE_BYTES = {
-    "free": 0, "standard": 5 * _GB, "pro": 25 * _GB,
+    "free": 0, "red": 1 * _GB, "standard": 5 * _GB, "pro": 25 * _GB,
     "blue": 50 * _GB, "blackout": 100 * _GB,
 }
 
@@ -148,6 +156,7 @@ def trade_ceiling(tier: str) -> float:
 
 BADGES = {
     "free": "✦ Upgrade",
+    "red": "🔴 Red",
     "standard": "⭐ Standard",
     "pro": "💎 Pro",
     "blue": "💙 Blue",
@@ -156,13 +165,15 @@ BADGES = {
 
 NAMES = {
     "free": "Free",
+    "red": "Red",
     "standard": "Standard",
     "pro": "Pro",
     "blue": "Blue",
     "blackout": "Blackout",
 }
 
-PRICES = {"standard": 10, "pro": 25, "blue": 50, "blackout": 100}
+PRICES = {"red": 5.99, "standard": 10, "pro": 25, "blue": 50,
+          "blackout": 100}
 
 
 def _token(pro_token: str) -> str:
@@ -243,15 +254,23 @@ def cap(tier: str, kind: str) -> int:
 # to a minimal taste: 1 image / 0 video / 0 songs /
 # 3 voice replies — free is the floor the next round's
 # Red tier must clear on every priced kind.)
+# Round 58 (owner, same day): RED slots in at a 10% profit
+# floor — worst case <= $4.92/mo ($5.99 net of Stripe =
+# $5.516, minus 10% of price $0.599). Red is "the chat
+# tier": owner set its pool at 125,000/week ("lower than
+# standard by half") with tiny generator tastes that still
+# clear free on every kind (2 images / 1 video / 1 song /
+# 5 tts). Red spend: generators $0.880/wk + chat $0.075/wk
+# = $4.14/mo <= $4.92 (r55tests pins the sum).
 # No weekly row exceeds its old daily cap x7 (pinned in
 # r55tests). Env OG_WCAP_<TIER>_<KIND> overrides a row,
 # mirroring cap().
 _WEEKLY_CAPS = {
-    # kind:      free  standard  pro   blue  blackout
-    "images":  {"free": 1,    "standard": 7,   "pro": 25,  "blue": 40,  "blackout": 100},
-    "video":   {"free": 0,    "standard": 2,   "pro": 3,   "blue": 4,   "blackout": 5},
-    "song":    {"free": 0,    "standard": 1,   "pro": 3,   "blue": 4,   "blackout": 6},
-    "tts":     {"free": 3,    "standard": 16,  "pro": 40,  "blue": 60,  "blackout": 350},
+    # kind:      free  red   standard  pro   blue  blackout
+    "images":  {"free": 1,    "red": 2,   "standard": 7,   "pro": 25,  "blue": 40,  "blackout": 100},
+    "video":   {"free": 0,    "red": 1,   "standard": 2,   "pro": 3,   "blue": 4,   "blackout": 5},
+    "song":    {"free": 0,    "red": 1,   "standard": 1,   "pro": 3,   "blue": 4,   "blackout": 6},
+    "tts":     {"free": 3,    "red": 5,   "standard": 16,  "pro": 40,  "blue": 60,  "blackout": 350},
 }
 
 # Weekly chat-token pools. Free's pool was the old 25,000/day
@@ -273,7 +292,7 @@ _WEEKLY_CAPS = {
 # ever has to move, the totals must still fit — trim
 # generators before the chat pool.
 _WEEKLY_CHAT_TOKENS = {
-    "free": 25000, "standard": 250000, "pro": 1250000,
+    "free": 25000, "red": 125000, "standard": 250000, "pro": 1250000,
     "blue": 2000000, "blackout": 3000000,
 }
 
@@ -492,12 +511,17 @@ def tier_link(tier: str, legacy_pro_link: str = "") -> str:
     """Checkout URL for a tier: env OG_LINK_<TIER> > the created
     Stripe link > the legacy OG_PRO_LINK (# = unset, never used).
     The created links win over the legacy one on purpose: the old
-    $9.99 link must not be reachable from the site anymore."""
+    $9.99 link must not be reachable from the site anymore.
+    Red has no created link yet (dashboard step): env only, and
+    NEVER the legacy fallback — an empty link renders the card's
+    honest "Not open yet" state instead of a wrong checkout."""
     env = os.getenv(f"OG_LINK_{tier.upper()}")
     if env:
         return env
     if tier in _DEFAULT_LINKS:
         return _DEFAULT_LINKS[tier]
+    if tier == "red":
+        return ""
     return legacy_pro_link
 
 
@@ -513,6 +537,17 @@ def public_pro_url() -> str:
 # cumulative feature set, so each list is longer than the one before.
 
 _FEATURES = {
+    "red": [
+        "Chat on a weekly pool — 125K tokens a week",
+        "Live data pack: news, weather, scores, stocks, crypto",
+        "2 images a week, drawn by OG",
+        "10 file uploads a day (PDFs & photos OG can read)",
+        "1 GB file storage",
+        "Voice replies — OG talks back out loud",
+        "Voice notes — talk instead of typing (8 a day)",
+        "Weekly fences: 1 story video · 1 song · 5 voice replies a week",
+        "Token packs unlocked — buy more tokens when the week runs dry",
+    ],
     "standard": [
         "Chat on a weekly pool — 250K tokens a week",
         "Web lookup + live data: news, weather, scores, stocks, crypto",
@@ -569,6 +604,7 @@ def _cumulative(tier: str):
 
 _CARD_STYLE = {
     # tier: (card css class, heading, tagline)
+    "red": ("card-red", "🔴 OG AI Red", "The chat tier — the cheapest way in, chat for days."),
     "standard": ("card-std", "⭐ OG AI Standard", "The full OG, uncapped."),
     "pro": ("card-pro", "💎 OG AI Pro", "More art, bigger files, first in line for new tools."),
     "blue": ("card-blue", "💙 OG AI Blue", "The watcher tier — monitoring included, priority speed."),
@@ -577,9 +613,11 @@ _CARD_STYLE = {
 
 
 def ladder_page_html(links, uid=None) -> str:
-    """The /pro page: four escalating tier cards with checkout buttons.
+    """The /pro page: five escalating tier cards with checkout buttons.
 
-    `links` maps tier -> checkout URL.
+    `links` maps tier -> checkout URL. A tier whose link is not
+    configured yet (Red until its Stripe link lands) renders an
+    honest "Not open yet" block instead of a checkout button.
     """
     if uid:
         links = {t: (f"{u}&client_reference_id={uid}" if "?" in u
@@ -590,13 +628,18 @@ def ladder_page_html(links, uid=None) -> str:
     for tier in PAID_TIERS:
         cls, heading, tagline = _CARD_STYLE[tier]
         feats = "".join(f"<li>{f}</li>" for f in _cumulative(tier))
+        url = links.get(tier, "")
+        if url.startswith("http"):
+            btn = f'<a class="btn" href="{url}">Get {NAMES[tier]} →</a>'
+        else:
+            btn = '<span class="btn btn-off">Not open yet</span>'
         cards.append(f"""
   <section class="card {cls}">
     <h2>{heading}</h2>
     <div class="price">${PRICES[tier]}<span>/month</span></div>
     <p class="tag">{tagline}</p>
     <ul>{feats}</ul>
-    <a class="btn" href="{links[tier]}">Get {NAMES[tier]} →</a>
+    {btn}
   </section>""")
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -614,7 +657,11 @@ def ladder_page_html(links, uid=None) -> str:
   .tag {{ color:#bbb; margin:4px 0 12px; line-height:1.45; }}
   .card ul {{ margin:0 0 16px; padding-left:20px; color:#ddd; line-height:1.65; }}
   .btn {{ display:block; text-align:center; padding:12px; border-radius:999px; border:2px solid #ffc107; color:#ffc107; text-decoration:none; font-weight:bold; background:rgba(255,193,7,.08); }}
+  .btn-off {{ display:block; border:2px dashed #444; color:#888; background:transparent; cursor:default; }}
   /* Escalation: every tier is visibly MORE than the one before. */
+  .card-red {{ max-width:460px; border-color:rgba(229,57,53,.6); box-shadow:0 0 18px rgba(229,57,53,.22); }}
+  .card-red h2 {{ color:#ff7a6b; }}
+  .card-red .btn {{ border-color:#e53935; color:#ff7a6b; background:rgba(229,57,53,.08); }}
   .card-std {{ max-width:520px; }}
   .card-pro {{ max-width:580px; border-color:rgba(255,193,7,.55); padding:24px 26px; }}
   .card-pro h2 {{ font-size:1.3em; }}
@@ -752,8 +799,72 @@ def _buyer_needs_account(raw_request) -> bool:
         return False
 
 
+def commercial_grid() -> dict:
+    """Round 58 — the single source of truth, served whole.
+
+    Owner rule (2026-10-10): "automatically update anything
+    tied to the thing we changed." Every commercial number a
+    client can display — tier prices, weekly caps, chat pools,
+    daily caps, browser minutes, storage, and BOTH token-pack
+    tables — is computed here straight from this module's
+    tables (token tables lazily from og_tokenpacks), so a
+    client that renders GET /tiers (the Unity app's plan
+    cards are the first customer) can never drift from the
+    numbers the server actually enforces. Public pricing
+    info only; no per-user data."""
+    import og_tokenpacks as _tp  # lazy: no import cycle
+
+    tiers = []
+    for t in TIER_ORDER:
+        sbytes = storage_bytes(t)
+        tiers.append({
+            "tier": t,
+            "name": NAMES[t],
+            "badge": BADGES[t],
+            "price": PRICES.get(t, 0),
+            "chat_tokens_week": weekly_chat_tokens(t),
+            "weekly_caps": {k: weekly_cap(t, k)
+                            for k in ("images", "video", "song",
+                                      "tts")},
+            "daily_caps": {k: cap(t, k)
+                           for k in sorted(_DEFAULT_CAPS)},
+            "browser_min": cap(t, "browser_min"),
+            "storage_bytes": sbytes,
+            "storage_gb": round(sbytes / _GB, 2),
+            "trade_ceiling": trade_ceiling(t),
+            "checkout_open": bool(tier_link(t)),
+        })
+    return {
+        "tiers": tiers,
+        "token_packs": {
+            "prices": list(_tp.PACK_PRICES),
+            "burn_rates": dict(_tp.RATES),
+            "tables": {
+                "margin_60": {
+                    "tiers": list(_tp.MARGIN_60_TIERS),
+                    "tokens_per_dollar": _tp.TOKENS_PER_DOLLAR_60,
+                    "packs": {str(p): _tp.PACK_TOKENS_60[p]
+                              for p in _tp.PACK_PRICES},
+                },
+                "margin_40": {
+                    "tiers": [t for t in PAID_TIERS
+                              if t not in _tp.MARGIN_60_TIERS],
+                    "tokens_per_dollar": _tp.TOKENS_PER_DOLLAR,
+                    "packs": {str(p): _tp.PACK_TOKENS[p]
+                              for p in _tp.PACK_PRICES},
+                },
+            },
+        },
+    }
+
+
 def register_tier_routes(app):
-    """Mount /pro (the ladder page) and /pro/success on the app."""
+    """Mount /pro (the ladder page), /pro/success and the
+    Round 58 grid payload (/tiers) on the app."""
+
+    @app.get("/tiers")
+    async def tiers_grid():
+        return commercial_grid()
 
     @app.get("/pro", response_class=HTMLResponse)
     async def pro_upgrade(raw_request: Request):
