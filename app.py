@@ -2472,6 +2472,7 @@ _og_tiers.bind({"pro_token": PRO_TOKEN, "pro_link": PRO_UPGRADE_URL,
                 "webhook_enabled": WEBHOOK_ENABLED,
                 "is_entitled": _uid_is_entitled, "bump_stat": _bump_stat,
                 "load_store": _load_usage_store, "lock": _usage_lock,
+                "save_store": _save_usage_store,
                 "entitled_key": PRO_ENTITLED_KEY,
                 "cookie_max_age": COOKIE_MAX_AGE})
 _og_tiers.register_tier_routes(app)
