@@ -196,28 +196,41 @@ def _usage_get(key: str):
 
 
 def _songs_used_today(uid: str) -> int:
+    """Today's slice of the usage entry (substrate reader — the
+    cap itself is weekly, Round 55)."""
     entry = _usage_get(f"song:{uid}")
     if not entry or entry.get("date") != _today():
         return 0
     return int(entry.get("count", 0))
 
 
-def _song_left(uid: str, tier: str) -> int:
-    return max(0, int(_tiers.cap(tier, "song"))
-               - _songs_used_today(uid))
+def _songs_used_week(uid: str) -> int:
+    """Sung tracks this visitor has generated in the trailing
+    7 days (Round 55: the song cap is weekly-only)."""
+    return _tiers.week_used(_usage_get(f"song:{uid}"))
+
+
+def _song_week_left(uid: str, tier: str) -> int:
+    cap_w = _tiers.weekly_cap(tier, "song")
+    if cap_w is None:
+        return 1
+    return max(0, int(cap_w) - _songs_used_week(uid))
 
 
 def _charge_song(uid: str) -> None:
-    """Spend one unit of the daily song cap. Called ONLY after
+    """Spend one unit of the weekly song cap. Called ONLY after
     a generation completes and verifies — failures never
-    charge."""
+    charge. (The per-day entry stays as the storage substrate;
+    its per-day map is what the weekly sum reads.)"""
     key = f"song:{uid}"
     with _deps["usage_lock"]:
         store = _deps["load_usage"]()
         entry = store.get(key)
         if not isinstance(entry, dict) or entry.get("date") != _today():
-            entry = {"date": _today(), "count": 0}
+            old, entry = entry, {"date": _today(), "count": 0}
+            _tiers.carry_days(old, entry)
         entry["count"] = int(entry.get("count", 0)) + 1
+        _tiers.note_day(entry, _today(), entry["count"])
         store[key] = entry
         _deps["save_usage"](store)
 
@@ -825,14 +838,16 @@ def _result(tag: str, title: str, body: str, href: str = "") -> List[Dict]:
     return [{"title": title, "body": f"[{tag}] " + body, "href": href}]
 
 
-def _cap_body(tier: str, note: str = "") -> List[Dict]:
-    body = (f"The visitor is at today's song cap for their plan "
-            f"({int(_tiers.cap(tier, 'song'))} per day) — songs "
-            f"reset tomorrow. {note} Tell them plainly, in "
-            f"persona: the lyrics themselves they can still get "
-            f"right here in chat any time; the SUNG track is "
-            f"what's capped. Higher plans sing more songs a "
-            f"day: {_pro_url()}")
+def _cap_body(tier: str, uid: str, note: str = "") -> List[Dict]:
+    cap_w = int(_tiers.weekly_cap(tier, "song") or 0)
+    refill = _tiers.week_refill_text(_usage_get(f"song:{uid}"))
+    body = (f"The visitor is at THIS WEEK's song cap for their "
+            f"plan ({cap_w} per week) — there is no daily reset. "
+            f"The weekly pool has no fixed reset day: {refill}. "
+            f"{note} Tell them plainly, in persona: the lyrics "
+            f"themselves they can still get right here in chat "
+            f"any time; the SUNG track is what's capped. Higher "
+            f"plans sing more songs a week: {_pro_url()}")
     return _result("SONG: AT-CAP", "🎵 Songs — capped", body)
 
 
@@ -1055,11 +1070,13 @@ def _approve(uid: str, tier: str):
         _clear_pending(uid)
         return False, "A track is already in the studio for " \
             "you — let that one finish first.", None
-    if _song_left(uid, tier) <= 0:
+    if _song_week_left(uid, tier) <= 0:
         _clear_pending(uid)
-        return False, "You're at today's song cap for your " \
-            "plan, so this one can't be tracked. The lyrics " \
-            "themselves stay right here in chat.", None
+        return False, "You're at this week's song cap for " \
+            "your plan, so this one can't be tracked. The " \
+            "weekly pool refills as your old days roll off " \
+            "it — the lyrics themselves stay right here in " \
+            "chat.", None
     rec = _new_job(uid, pending)
     _clear_pending(uid)
     _store_put(rec)
@@ -1088,8 +1105,8 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "visitor. Tell them, in persona: one at a time — "
                 "the tracking one lands right here in the thread "
                 "when it's done, then they can line up the next.")
-        if _song_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _song_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         topic = job.get("topic", "")
         if not topic:
             _set_pending(uid, {"stage": "await_topic",
@@ -1105,8 +1122,8 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
     if kind == "topic":
         topic = job.get("topic", "")
         _clear_pending(uid)
-        if _song_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _song_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         return _start_song(uid, topic)
     if kind == "replace":
         _clear_pending(uid)
@@ -1116,8 +1133,8 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A track is ALREADY being generated for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the tracking one to land in the thread.")
-        if _song_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _song_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         return _start_song(uid, job.get("topic", ""),
                            job.get("style", ""))
     if kind == "from_thread":
@@ -1127,8 +1144,8 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A track is ALREADY being generated for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the tracking one to land in the thread.")
-        if _song_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _song_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         pending = {"stage": "await_approval", "hist_len": 0,
                    "topic": ""}
         _set_pending(uid, pending)
@@ -1154,9 +1171,10 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"{captured['style']}; {len(sections)} sections, "
             f"about {_est_min(captured)} minutes of sung "
             f"track. Replying YES tracks it (one of their "
-            f"{int(_tiers.cap(tier, 'song'))} daily songs); "
-            f"NO scraps it. Nothing is generated before their "
-            f"YES. Songs left today: {_song_left(uid, tier)}.")
+            f"{int(_tiers.weekly_cap(tier, 'song') or 0)} "
+            f"weekly songs); NO scraps it. Nothing is "
+            f"generated before their YES. Songs left this "
+            f"week: {_song_week_left(uid, tier)}.")
         return _result("SONG: APPROVE?", "🎵 Song — approval",
                        body)
     if kind == "approve":
@@ -1175,7 +1193,7 @@ def song_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"and a download button when it's done (studio "
             f"takes a minute or a few). They don't need to do "
             f"anything — and it only counts against their "
-            f"daily songs when it FINISHES, so a failed take "
+            f"weekly songs when it FINISHES, so a failed take "
             f"costs them nothing.")
         return _result("SONG: TRACKING", "🎵 Song — in the studio",
                        body)
@@ -1497,9 +1515,9 @@ def register_song_routes(app):
         except Exception:
             locker_ok = False
         return {"enabled": True, "tier": tier,
-                "cap": int(_tiers.cap(tier, "song")),
-                "used": _songs_used_today(uid),
-                "left": _song_left(uid, tier),
+                "cap": int(_tiers.weekly_cap(tier, "song") or 0),
+                "used": _songs_used_week(uid),
+                "left": _song_week_left(uid, tier),
                 "locker_ok": locker_ok,
                 "pending": pending_view,
                 "job": _job_view(
