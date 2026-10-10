@@ -327,6 +327,7 @@ import og_accounts as _og_accounts
 import og_notify as _og_notify
 import og_library as _og_library
 import og_store_ready as _ogs
+import og_selfcheck as _og_selfcheck
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -1796,6 +1797,7 @@ def get_agent() -> AIAgent:
         _og_video.install_video_tools(agent, lambda: _current_uid.get("uid", ""))
         _og_watch.install_watch_tools(agent, lambda: _current_uid.get("uid", ""), lambda: _current_tier.get("tier", "free"))
         _og_songs.install_song_tools(agent, lambda: _current_uid.get("uid", ""))
+        _og_selfcheck.install_selfcheck_tools(agent, lambda: _current_uid.get("uid", ""))
         _reset_memory_store()
 
     return agent
@@ -2569,6 +2571,8 @@ _og_accounts.register_attach_hook(_og_tiers.migrate_entitlement)
 _og_notify.register_notify_routes(app)
 _og_library.register_library_routes(app)
 _ogs.register_store_routes(app)
+_og_selfcheck.bind_app({"load_usage": _load_usage_store, "save_usage": _save_usage_store, "usage_lock": _usage_lock})
+_og_selfcheck.register_selfcheck_routes(app)
 
 @app.post("/stripe/webhook")
 async def stripe_webhook(raw_request: Request):
