@@ -47,6 +47,7 @@ env vars land.
 
 import hmac
 import os
+from datetime import datetime, timezone
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -379,6 +380,35 @@ def entitlement_tier_for(uid):
     return entitlement_tier(entitled.get(uid))
 
 
+def _stamp_entitlement(uid, tier):
+    """Persist a /pro/success grant into the entitled store (Round 42).
+
+    Mirrors the Stripe webhook's record (app.py _grant_entitlement)
+    field-for-field, so tier_of() resolves the tier from the uid alone
+    — no ogai_tier cookie needed (e.g. the Unity app client, which
+    never carries one). The success path has no Stripe session or
+    customer email, so those fields take _grant_entitlement's own
+    defaults (""). Re-landing refreshes the same record. No-op when
+    there is no uid or no save path is bound.
+    """
+    save = _DEPS.get("save_store")
+    if not uid or save is None:
+        return
+    with _DEPS["lock"]:
+        store = _DEPS["load_store"]()
+        entitled = store.get(_DEPS["entitled_key"])
+        if not isinstance(entitled, dict):
+            entitled = {}
+        entitled[uid] = {
+            "granted": datetime.now(timezone.utc).isoformat(),
+            "session": "",
+            "email": "",
+            "tier": tier if tier in PAID_TIERS else "standard",
+        }
+        store[_DEPS["entitled_key"]] = entitled
+        save(store)
+
+
 def tier_of(cookies, uid=""):
     """Resolve a visitor's tier: tier cookie > legacy cookie (standard)
     > webhook entitlement > free."""
@@ -418,6 +448,10 @@ def register_tier_routes(app):
         tier = (raw_request.query_params.get("tier") or "").lower()
         if tier not in PAID_TIERS:
             tier = "standard"
+        # Round 42: stamp the grant onto the account uid as well, so
+        # the tier follows the account to clients that never hold the
+        # ogai_tier cookie. The cookie flow above/below is unchanged.
+        _stamp_entitlement(raw_request.cookies.get("ogai_uid"), tier)
         response.set_cookie(
             "ogai_tier", cookie_value(tier, _DEPS["pro_token"]),
             max_age=_DEPS["cookie_max_age"], path="/", httponly=True,
