@@ -261,6 +261,22 @@ def _mark_delivered(uid: str, alert_ids: set):
             changed = True
     if changed:
         _put_blob(uid, "alerts", alerts)
+        # Notifications (optional layer): every delivered
+        # match / price-drop also lands in the visitor's
+        # notification center (+ opt-in channels). Fail-safe.
+        try:
+            import og_notify as _notify
+            for a in alerts:
+                if a.get("id") in alert_ids and a.get(
+                        "kind") in ("match", "drop"):
+                    _notify.record(
+                        uid, "watch_match",
+                        "Watch price drop"
+                        if a.get("kind") == "drop"
+                        else "Watch match",
+                        a.get("text", ""))
+        except Exception:
+            pass
 
 
 # --- The vault -------------------------------------------------------------------
