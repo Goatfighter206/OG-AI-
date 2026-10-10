@@ -246,27 +246,41 @@ def _usage_get(key: str):
 
 
 def _videos_used_today(uid: str) -> int:
+    """Today's slice of the usage entry (substrate reader — the
+    cap itself is weekly, Round 55)."""
     entry = _usage_get(f"video:{uid}")
     if not entry or entry.get("date") != _today():
         return 0
     return int(entry.get("count", 0))
 
 
-def _video_left(uid: str, tier: str) -> int:
-    return max(0, int(_tiers.cap(tier, "video"))
-               - _videos_used_today(uid))
+def _videos_used_week(uid: str) -> int:
+    """Story videos this visitor has rendered in the trailing
+    7 days (Round 55 weekly ceiling; og_tiers.week_used)."""
+    return _tiers.week_used(_usage_get(f"video:{uid}"))
+
+
+def _video_week_left(uid: str, tier: str) -> int:
+    cap_w = _tiers.weekly_cap(tier, "video")
+    if cap_w is None:
+        return 1
+    return max(0, int(cap_w) - _videos_used_week(uid))
 
 
 def _charge_video(uid: str) -> None:
-    """Spend one unit of the daily video cap. Called ONLY after a
-    render completes and verifies — failures never charge."""
+    """Spend one unit of the weekly video cap. Called ONLY after a
+    render completes and verifies — failures never charge.
+    (Round 55: also mirrors the entry's per-day map, note_day,
+    carrying it over the day roll.)"""
     key = f"video:{uid}"
     with _deps["usage_lock"]:
         store = _deps["load_usage"]()
         entry = store.get(key)
         if not isinstance(entry, dict) or entry.get("date") != _today():
-            entry = {"date": _today(), "count": 0}
+            old, entry = entry, {"date": _today(), "count": 0}
+            _tiers.carry_days(old, entry)
         entry["count"] = int(entry.get("count", 0)) + 1
+        _tiers.note_day(entry, _today(), entry["count"])
         store[key] = entry
         _deps["save_usage"](store)
 
@@ -749,15 +763,18 @@ def _result(tag: str, title: str, body: str, href: str = "") -> List[Dict]:
     return [{"title": title, "body": f"[{tag}] " + body, "href": href}]
 
 
-def _cap_body(tier: str, note: str = "") -> List[Dict]:
-    body = (f"The visitor is at today's story-video cap for their "
-            f"plan ({int(_tiers.cap(tier, 'video'))} per day) — "
-            f"story videos reset tomorrow. {note} Tell them plainly, "
-            f"in persona: the story itself they can still read right "
-            f"here in chat any time; the VIDEO is what's capped. "
-            f"Higher plans make more videos a day: {_pro_url()}")
-    return _result("STORY-VIDEO: AT-CAP", "🎬 Story videos — capped",
-                   body)
+def _cap_body(tier: str, uid: str, note: str = "") -> List[Dict]:
+    cap_w = int(_tiers.weekly_cap(tier, "video") or 0)
+    refill = _tiers.week_refill_text(_usage_get(f"video:{uid}"))
+    body = (f"The visitor is at THIS WEEK's story-video cap for "
+            f"their plan ({cap_w} per week) — there is no daily "
+            f"reset. The weekly pool has no fixed reset day: "
+            f"{refill}. {note} Tell them plainly, in persona: "
+            f"the story itself they can still read right here in "
+            f"chat any time; the VIDEO is what's capped. Higher "
+            f"plans make more videos a week: {_pro_url()}")
+    return _result("STORY-VIDEO: AT-CAP",
+                   "🎬 Story videos — capped", body)
 
 
 def _down_body() -> List[Dict]:
@@ -924,11 +941,12 @@ def _approve(uid: str, tier: str):
         _clear_pending(uid)
         return False, "A video is already cooking for you — " \
             "let that one finish first.", None
-    if _video_left(uid, tier) <= 0:
+    if _video_week_left(uid, tier) <= 0:
         _clear_pending(uid)
-        return False, "You're at today's story-video cap for " \
-            "your plan, so this one can't render. The story " \
-            "itself stays right here in chat.", None
+        return False, "You're at this week's story-video cap " \
+            "for your plan, so this one can't render. The weekly " \
+            "pool refills as your old days roll off it — the " \
+            "story itself stays right here in chat.", None
     rec = _new_job(uid, pending)
     _clear_pending(uid)
     _store_put(rec)
@@ -958,8 +976,8 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "visitor. Tell them, in persona: one at a time — "
                 "the cooking one lands right here in the thread "
                 "when it's done, then they can line up the next.")
-        if _video_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _video_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         topic = job.get("topic", "")
         if not topic:
             _set_pending(uid, {"stage": "await_topic",
@@ -976,8 +994,8 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
     if kind == "topic":
         topic = job.get("topic", "")
         _clear_pending(uid)
-        if _video_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _video_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         return _start_story(uid, topic)
     if kind == "replace":
         _clear_pending(uid)
@@ -987,8 +1005,8 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A story video is ALREADY rendering for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the cooking one to land in the thread.")
-        if _video_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _video_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         return _start_story(uid, job.get("topic", ""))
     if kind == "from_thread":
         if _active_job(uid):
@@ -997,8 +1015,8 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A story video is ALREADY rendering for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the cooking one to land in the thread.")
-        if _video_left(uid, tier) <= 0:
-            return _cap_body(tier)
+        if _video_week_left(uid, tier) <= 0:
+            return _cap_body(tier, uid)
         pending = {"stage": "await_approval", "hist_len": 0,
                    "topic": ""}
         _set_pending(uid, pending)
@@ -1026,10 +1044,10 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"{_est_min(captured['words'])} minutes of video, "
             f"a picture per scene, your voice narrating. Replying "
             f"YES cooks it (one of their "
-            f"{int(_tiers.cap(tier, 'video'))} daily story "
-            f"videos); NO scraps it. Nothing renders before "
-            f"their YES. Videos left today: "
-            f"{_video_left(uid, tier)}.")
+            f"{int(_tiers.weekly_cap(tier, 'video') or 0)} "
+            f"weekly story videos); NO scraps it. Nothing "
+            f"renders before their YES. Videos left this "
+            f"week: {_video_week_left(uid, tier)}.")
         return _result("STORY-VIDEO: APPROVE?",
                        "🎬 Story video — approval", body)
     if kind == "approve":
@@ -1049,7 +1067,7 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"and a download button when it's done (a few "
             f"minutes for a story this size). They don't need to "
             f"do anything — and it only counts against their "
-            f"daily videos when it FINISHES, so a failed render "
+            f"weekly videos when it FINISHES, so a failed render "
             f"costs them nothing.")
         return _result("STORY-VIDEO: COOKING",
                        "🎬 Story video — cooking", body)
@@ -1623,9 +1641,9 @@ def register_video_routes(app):
         except Exception:
             locker_ok = False
         return {"enabled": True, "tier": tier,
-                "cap": int(_tiers.cap(tier, "video")),
-                "used": _videos_used_today(uid),
-                "left": _video_left(uid, tier),
+                "cap": int(_tiers.weekly_cap(tier, "video") or 0),
+                "used": _videos_used_week(uid),
+                "left": _video_week_left(uid, tier),
                 "locker_ok": locker_ok,
                 "pending": pending_view,
                 "job": _job_view(
