@@ -142,6 +142,11 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
 # OPENAI_API_KEY is set; else 503 and the page uses device voice.
 TTS_DAILY_LIMIT = int(os.getenv("OG_TTS_DAILY_LIMIT", "60"))
 TTS_MAX_CHARS = 600
+# Round 37: per-avatar voices for the Unity app stage avatars.
+# /tts accepts an optional "voice" field; only these OpenAI
+# voices pass through — missing/invalid keeps the default.
+TTS_VOICES = {"onyx", "fable", "echo", "nova", "shimmer", "alloy"}
+TTS_DEFAULT_VOICE = "onyx"
 
 def _consume_tts_call(uid: str, limit: int = None) -> bool:
     """Record one /tts call today (UTC); False at cap."""
@@ -2361,6 +2366,9 @@ async def text_to_speech(raw_request: Request):
     text = str(body.get("text", "")).strip()[:TTS_MAX_CHARS]
     if not text:
         raise HTTPException(status_code=400, detail="No text to speak")
+    _voice = body.get("voice")
+    voice = (_voice if isinstance(_voice, str) and _voice in TTS_VOICES
+             else TTS_DEFAULT_VOICE)
     uid = raw_request.cookies.get("ogai_uid") or "anon"
     _tts_tier = _tier_of(raw_request.cookies,
                          uid if uid != "anon" else "")
@@ -2372,7 +2380,7 @@ async def text_to_speech(raw_request: Request):
             r = await client.post(
                 "https://api.openai.com/v1/audio/speech",
                 headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "tts-1", "voice": "onyx", "input": text},
+                json={"model": "tts-1", "voice": voice, "input": text},
             )
     except Exception as e:
         logger.warning(f"TTS request failed: {e}")
