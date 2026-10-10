@@ -2041,3 +2041,16 @@ body.og-mood-win img.og-avatar-sm { animation: ogWin2 .9s ease-in-out 1; }
     .input-wrapper input#messageInput::placeholder { color: #b5b5b5; opacity: 1; }
     .input-wrapper button#plusBtn { flex: 0 0 auto; width: 38px; height: 38px; min-height: 0; }
 }
+
+/* --- Round 49: chat scroll lock ----------------------------------
+   The chat text area moves ONLY up and down (owner, 2026-10-10):
+   the page and the chat column can never pan sideways, the
+   message scroller clips horizontally, and flex children may
+   shrink — wide content (code blocks keep their own .code-pre
+   overflow-x:auto) scrolls inside its own box, never pushing
+   the column sideways. */
+html, body { overflow-x: clip; }
+.chat-container { overflow-x: clip; min-width: 0; }
+#messagesArea { overflow-x: hidden; overscroll-behavior-x: none; }
+.messages-area .message { min-width: 0; max-width: 100%; }
+.messages-area .message-content { min-width: 0; }
