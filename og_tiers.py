@@ -409,6 +409,29 @@ def _stamp_entitlement(uid, tier):
         save(store)
 
 
+def migrate_entitlement(old_uid, new_uid, email=""):
+    """Round 44 attach step (bound as an og_accounts login hook):
+    a guest buyer earns an entitlement under their anonymous uid;
+    when they sign in to an existing account instead of signing
+    up, move that record onto the account's uid so the purchase
+    attaches. No-op when there is no guest record, when the
+    account uid already holds one (an account's own record is
+    never overwritten), or when no save path is bound."""
+    save = _DEPS.get("save_store")
+    if not old_uid or not new_uid or old_uid == new_uid or save is None:
+        return
+    with _DEPS["lock"]:
+        store = _DEPS["load_store"]()
+        entitled = store.get(_DEPS["entitled_key"])
+        if not isinstance(entitled, dict):
+            return
+        if old_uid not in entitled or new_uid in entitled:
+            return
+        entitled[new_uid] = entitled.pop(old_uid)
+        store[_DEPS["entitled_key"]] = entitled
+        save(store)
+
+
 def tier_of(cookies, uid=""):
     """Resolve a visitor's tier: tier cookie > legacy cookie (standard)
     > webhook entitlement > free."""
@@ -419,6 +442,25 @@ def tier_of(cookies, uid=""):
 def images_left(tier, used):
     """Images remaining today for a tier, given today's usage count."""
     return max(0, cap(tier, "images") - used)
+
+
+def _buyer_needs_account(raw_request) -> bool:
+    """Round 44 buyer flow: True only while the sign-in gate is
+    in force AND this request carries no live account session —
+    i.e. an entitled guest buyer who still needs the account
+    step. With the gate off, /pro/success keeps its exact
+    pre-Round-44 behavior (the Round 42 contract). Lazy import:
+    og_accounts is the session authority and is never imported
+    at module level; any failure falls back to False."""
+    try:
+        import og_accounts
+        if not og_accounts.gate_enabled():
+            return False
+        return og_accounts._session_for(
+            raw_request.cookies.get(og_accounts.SESSION_COOKIE)
+        ) is None
+    except Exception:
+        return False
 
 
 def register_tier_routes(app):
@@ -444,7 +486,6 @@ def register_tier_routes(app):
             if not uid or not _DEPS["is_entitled"](uid):
                 return HTMLResponse(content=_PENDING_HTML, status_code=200)
         _DEPS["bump_stat"]("pro_success")
-        response = RedirectResponse(url="/", status_code=302)
         tier = (raw_request.query_params.get("tier") or "").lower()
         if tier not in PAID_TIERS:
             tier = "standard"
@@ -452,6 +493,16 @@ def register_tier_routes(app):
         # the tier follows the account to clients that never hold the
         # ogai_tier cookie. The cookie flow above/below is unchanged.
         _stamp_entitlement(raw_request.cookies.get("ogai_uid"), tier)
+        if _DEPS["webhook_enabled"] and _buyer_needs_account(raw_request):
+            # Round 44: a guest buyer — payment confirmed above, but
+            # no account session. The grant rides on their visitor
+            # uid until they sign up here (signup attaches this uid)
+            # or sign in (the login attach hook migrates it). Tier
+            # cookies would do nothing while the gate is on, so the
+            # landing is this one-step page instead of a redirect.
+            return HTMLResponse(content=_PAID_GUEST_HTML,
+                                status_code=200)
+        response = RedirectResponse(url="/", status_code=302)
         response.set_cookie(
             "ogai_tier", cookie_value(tier, _DEPS["pro_token"]),
             max_age=_DEPS["cookie_max_age"], path="/", httponly=True,
@@ -479,4 +530,26 @@ _PENDING_HTML = """<!DOCTYPE html>
 then head back and chat, Pro will already be on.</p>
 <p>If you didn't finish paying, no charge was made and nothing is unlocked yet.</p>
 <a class="btn" href="/">← Back to OG</a>
+</body></html>"""
+
+
+_PAID_GUEST_HTML = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OG AI — You're paid</title>
+<style>
+  body { background:#0a0a0a; color:#f2f2f2; font-family: Arial, sans-serif; margin:0; padding:32px 20px; text-align:center; }
+  h1 { color:#ffc107; letter-spacing:1px; }
+  p { color:#ccc; line-height:1.6; max-width:520px; margin:12px auto; }
+  a.btn { display:inline-block; margin-top:18px; padding:12px 30px; border:2px solid #ffc107; border-radius:999px; color:#ffc107; text-decoration:none; font-weight:bold; background:rgba(255,193,7,0.08); }
+</style></head><body>
+<h1>💰 You're paid ✓ — one step left</h1>
+<p>Stripe confirmed your plan. OG runs on accounts now, so create
+your account — or sign in if you already have one — and your plan
+switches on for that account.</p>
+<p>Do it here, in this browser: your purchase is riding on this
+visit, and signing up or signing in here attaches it to your
+account. If you sign in to an existing account, the plan moves
+onto it automatically.</p>
+<a class="btn" href="/">Create account / Sign in →</a>
 </body></html>"""
