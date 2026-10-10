@@ -41,8 +41,11 @@ OG_FREE_DAILY_TOKENS in app.py. Round 55 (owner ruling
 priced kinds — chat tokens, images, video, song, tts — the
 caps are WEEKLY, full stop; there is no daily enforcement layer
 for them anymore. Every tier carries a weekly chat-token pool
-(_WEEKLY_CHAT_TOKENS; free's pool is the old 25,000/day x7 =
-175,000/week — same total, weekly window) and weekly ceilings
+(_WEEKLY_CHAT_TOKENS; free's pool was the old 25,000/day x7 =
+175,000/week in Round 55, then Round 57 trimmed free to a
+25,000/week minimal taste — below every paid tier, even the
+coming Red tier's tiny generator taste)
+and weekly ceilings
 for images/video/song/tts (_WEEKLY_CAPS). The weekly window is
 trailing 7 UTC days, read from a per-day map the existing
 writers maintain on the same usage-store entries
@@ -235,21 +238,29 @@ def cap(tier: str, kind: str) -> int:
 # standard <= $7.41, pro <= $18.98; blue/blackout stay 40%.
 # Unit costs: image $0.04, video $0.375, song ~$0.38,
 # tts ~$0.009/call. Weekly generator spend by tier:
-# free $3.14, standard $1.554, pro $3.625, blue $5.16,
-# blackout $11.305. No weekly row exceeds its old daily
-# cap x7 (pinned in r55tests). Env OG_WCAP_<TIER>_<KIND>
-# overrides a row, mirroring cap().
+# free $0.067, standard $1.554, pro $3.625, blue $5.16,
+# blackout $11.305. (Round 57 trimmed free from $3.14/wk
+# to a minimal taste: 1 image / 0 video / 0 songs /
+# 3 voice replies — free is the floor the next round's
+# Red tier must clear on every priced kind.)
+# No weekly row exceeds its old daily cap x7 (pinned in
+# r55tests). Env OG_WCAP_<TIER>_<KIND> overrides a row,
+# mirroring cap().
 _WEEKLY_CAPS = {
     # kind:      free  standard  pro   blue  blackout
-    "images":  {"free": 7,    "standard": 7,   "pro": 25,  "blue": 40,  "blackout": 100},
-    "video":   {"free": 2,    "standard": 2,   "pro": 3,   "blue": 4,   "blackout": 5},
-    "song":    {"free": 2,    "standard": 1,   "pro": 3,   "blue": 4,   "blackout": 6},
-    "tts":     {"free": 150,  "standard": 16,  "pro": 40,  "blue": 60,  "blackout": 350},
+    "images":  {"free": 1,    "standard": 7,   "pro": 25,  "blue": 40,  "blackout": 100},
+    "video":   {"free": 0,    "standard": 2,   "pro": 3,   "blue": 4,   "blackout": 5},
+    "song":    {"free": 0,    "standard": 1,   "pro": 3,   "blue": 4,   "blackout": 6},
+    "tts":     {"free": 3,    "standard": 16,  "pro": 40,  "blue": 60,  "blackout": 350},
 }
 
-# Weekly chat-token pools. Free's pool is the old 25,000/day
-# allowance x7 = 175,000/week (same total, weekly window — the
-# daily meter is gone). The chat model is OPENAI_MODEL, default
+# Weekly chat-token pools. Free's pool was the old 25,000/day
+# allowance x7 = 175,000/week in Round 55; Round 57 trimmed
+# it to a 25,000/week minimal taste (owner: free below
+# every paid tier on everything, Red included). Free's
+# total worst case is now ~$0.36/mo (generators $0.067/wk
+# + chat $0.015/wk). The chat model is
+# OPENAI_MODEL, default
 # gpt-4o-mini; OpenAI's list price for it is $0.15/1M input +
 # $0.60/1M output, so the paid pools are sized billing EVERY
 # token at the $0.60 output rate (the worst case — no token can
@@ -262,7 +273,7 @@ _WEEKLY_CAPS = {
 # ever has to move, the totals must still fit — trim
 # generators before the chat pool.
 _WEEKLY_CHAT_TOKENS = {
-    "free": 175000, "standard": 250000, "pro": 1250000,
+    "free": 25000, "standard": 250000, "pro": 1250000,
     "blue": 2000000, "blackout": 3000000,
 }
 
@@ -291,7 +302,7 @@ def weekly_hit(tier: str, kind: str, used: int) -> bool:
 
 def chat_pool_hit(tier: str, used: int) -> bool:
     """True when `used` tokens have reached the tier's weekly
-    chat pool (every tier has one; free's is 175,000/week)."""
+    chat pool (every tier has one; free's is 25,000/week)."""
     pool = weekly_chat_tokens(tier)
     return pool is not None and used >= pool
 
@@ -299,7 +310,7 @@ def chat_pool_hit(tier: str, used: int) -> bool:
 def weekly_chat_tokens(tier: str):
     """Weekly chat-token pool for a tier. Env
     OG_WCAP_<TIER>_CHAT_TOKENS wins. Free's pool defaults to
-    the table's 175,000 but follows OG_FREE_DAILY_TOKENS (or
+    the table's 25,000 but follows OG_FREE_DAILY_TOKENS (or
     the legacy OG_FREE_DAILY_LIMIT) x7 when either is set, so
     the old daily knob still scales the free allowance."""
     env = os.getenv(f"OG_WCAP_{tier.upper()}_CHAT_TOKENS")
