@@ -30,6 +30,10 @@ imageio-ffmpeg>=0.5.1
 # payloads never leave the server
 segno>=1.5
 
+# Notifications (Round 31): Web Push protocol — VAPID signing +
+# payload encryption for the opt-in push channel
+pywebpush>=2.0
+
 # Token counting for the free-tier token budget (falls back to an estimate if absent)
 tiktoken>=0.6.0
 
