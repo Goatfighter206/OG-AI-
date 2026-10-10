@@ -57,6 +57,26 @@ a uid only ever sees its own records, prefs and subs.
 STORAGE HYGIENE. At most 100 records kept per user
 (newest wins); storage_warning records dedupe: a second
 unread warning within 24 hours is not recorded again.
+
+ROUND 38 (approval + sign-in alerts; Brent, 2026-10-10).
+Two new kinds — approval_needed and signin_needed — are
+recorded by og_browser when OG needs the visitor: a parked
+approval, or a login wall only the visitor can pass. These
+kinds carry their OWN switches in the prefs contract
+(all DEFAULT TRUE, all merged per-key on POST):
+  alerts       — the master switch (the producers check it
+                 via alerts_enabled(); record() enforces it
+                 too: off means NO record at all).
+  alerts_email — email channel for THESE kinds only.
+  alerts_push  — push channel for THESE kinds only.
+The two channel switches OVERRIDE the global email/push
+prefs for these kinds (no double gate): an alert-kind
+record emails iff alerts_email is on, pushes iff
+alerts_push is on (and a subscription exists — the fanout
+already no-ops without one). Every other kind keeps the
+global email/push behavior exactly as before. The web
+switches live on the "Notification settings" page
+(/static/og_notification_settings.js).
 """
 
 import base64
@@ -83,7 +103,9 @@ STORAGE_DEDUPE_SECONDS = 24 * 60 * 60
 TITLE_CAP = 160
 BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
-         "song_done", "storage_warning", "notice")
+         "song_done", "storage_warning", "notice",
+         "approval_needed", "signin_needed")
+ALERT_KINDS = ("approval_needed", "signin_needed")
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
 try:
@@ -207,7 +229,24 @@ def _prefs(uid: str) -> dict:
     if not isinstance(prefs, dict):
         prefs = {}
     return {"email": bool(prefs.get("email")),
-            "push": bool(prefs.get("push"))}
+            "push": bool(prefs.get("push")),
+            # Round 38: the alert kinds' own switches —
+            # all default ON (alerts send until turned off).
+            "alerts": bool(prefs.get("alerts", True)),
+            "alerts_email": bool(prefs.get("alerts_email", True)),
+            "alerts_push": bool(prefs.get("alerts_push", True))}
+
+
+def alerts_enabled(uid) -> bool:
+    """Round 38: the producers' master-switch check for the
+    approval + sign-in alerts. FAIL-SAFE by contract: any
+    prefs-read failure means ON (the alert still sends)."""
+    try:
+        if not uid or not isinstance(uid, str):
+            return True
+        return bool(_prefs(uid).get("alerts", True))
+    except Exception:
+        return True
 
 
 def _subs(uid: str) -> list:
@@ -240,6 +279,16 @@ def record(uid, kind, title, body) -> None:
                         and now - float(it.get("ts") or 0)
                         < STORAGE_DEDUPE_SECONDS):
                     return  # already warned, still unread
+        # Round 38: the alert kinds answer to their own
+        # switches. A prefs-read failure defaults to sending
+        # ({} -> every alert switch reads as its True
+        # default); other kinds are unaffected either way.
+        try:
+            prefs = _prefs(uid)
+        except Exception:
+            prefs = {}
+        if kind in ALERT_KINDS and not prefs.get("alerts", True):
+            return  # master switch off: no record at all
         items.append({
             "id": uuid.uuid4().hex[:16],
             "kind": kind,
@@ -249,11 +298,20 @@ def record(uid, kind, title, body) -> None:
             "read": False,
         })
         _put("items:" + uid, items[-MAX_ITEMS:])
-        prefs = _prefs(uid)
-        if prefs.get("email"):
-            _email_fanout(uid, title, body)
-        if prefs.get("push"):
-            _push_fanout(uid, kind, title, body)
+        if kind in ALERT_KINDS:
+            # The alert channel switches OVERRIDE the global
+            # email/push prefs for these kinds — no double
+            # gate. Push still needs a stored subscription;
+            # the fanout no-ops without one.
+            if prefs.get("alerts_email", True):
+                _email_fanout(uid, title, body)
+            if prefs.get("alerts_push", True):
+                _push_fanout(uid, kind, title, body)
+        else:
+            if prefs.get("email"):
+                _email_fanout(uid, title, body)
+            if prefs.get("push"):
+                _push_fanout(uid, kind, title, body)
     except Exception as e:
         logger.warning(f"Notify record failed (swallowed): {e}")
 
@@ -506,20 +564,34 @@ def register_notify_routes(app):
     async def notifications_prefs_get(request: Request):
         uid = _uid_of(request)
         if not uid:
-            return {"email": False, "push": False}
+            return {"email": False, "push": False,
+                    "alerts": True, "alerts_email": True,
+                    "alerts_push": True}
         return _prefs(uid)
 
     @app.post("/notifications/prefs")
     async def notifications_prefs_post(request: Request):
         uid = _uid_of(request)
         if not uid:
-            return {"email": False, "push": False}
+            return {"email": False, "push": False,
+                    "alerts": True, "alerts_email": True,
+                    "alerts_push": True}
         body = await _json_body(request)
+        # Partial updates MERGE: only the keys present in the
+        # body change; every other field keeps its value, so
+        # an older client posting just {email} can never
+        # clobber the Round 38 alert switches (and vice versa).
         prefs = _prefs(uid)
         if "email" in body:
             prefs["email"] = bool(body.get("email"))
         if "push" in body:
             prefs["push"] = bool(body.get("push"))
+        if "alerts" in body:
+            prefs["alerts"] = bool(body.get("alerts"))
+        if "alerts_email" in body:
+            prefs["alerts_email"] = bool(body.get("alerts_email"))
+        if "alerts_push" in body:
+            prefs["alerts_push"] = bool(body.get("alerts_push"))
         _put("prefs:" + uid, prefs)
         return prefs
 
