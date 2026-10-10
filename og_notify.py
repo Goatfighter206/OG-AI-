@@ -104,8 +104,10 @@ TITLE_CAP = 160
 BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
          "song_done", "storage_warning", "notice",
-         "approval_needed", "signin_needed")
-ALERT_KINDS = ("approval_needed", "signin_needed")
+         "approval_needed", "signin_needed", "system_check")
+# Round 50: system_check joins the alert kinds — the twice-daily
+# self-check reports through the same own-switches posture.
+ALERT_KINDS = ("approval_needed", "signin_needed", "system_check")
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
 try:
