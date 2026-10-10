@@ -157,6 +157,41 @@ def _put_blob(uid: str, kind: str, value):
         _save_file_store(store)
 
 
+def _del_blob(uid: str, kind: str):
+    if not uid:
+        return
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _db_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM og_ordering_data "
+                        "WHERE uid=%s AND kind=%s", (uid, kind))
+                conn.commit()
+            return
+        except Exception as e:
+            logger.warning(f"Ordering DB delete failed, using file: {e}")
+    with _order_lock:
+        store = _load_file_store()
+        mine = store.get(uid)
+        if isinstance(mine, dict) and kind in mine:
+            del mine[kind]
+            if mine:
+                store[uid] = mine
+            else:
+                store.pop(uid, None)
+            _save_file_store(store)
+
+
+def purge_uid(uid: str):
+    """Account deletion (Round 36, og_store_ready): saved
+    usuals + the last handed-off order this uid owns."""
+    if not uid:
+        return
+    for kind in ("usuals", "last"):
+        _del_blob(uid, kind)
+
+
 def _usuals(uid: str) -> Dict:
     usuals = _blob(uid, "usuals", {})
     return usuals if isinstance(usuals, dict) else {}
