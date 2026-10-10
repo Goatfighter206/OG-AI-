@@ -7,13 +7,17 @@ regexes and tables, _parse_post, _extract_url, _is_start_request
 — lives here now, and og_browser imports every name back, so
 callers and suites see the same attributes on og_browser.
 
-Everything here is PURE TEXT LOGIC over the visitor's own words:
-no session state, no network, no Steel. _claim_job — which reads
-live session state — stayed in og_browser.py.
+Everything here is PURE LOGIC: the claim parsing over the
+visitor's own words, plus (Round 49) the approval-gate and
+element-matching cluster over page-snapshot dicts. No session
+state, no network, no Steel anywhere in this module.
+_claim_job — which reads live session state — stayed in
+og_browser.py.
 """
 
 import re
-from typing import Dict, Optional
+import urllib.parse
+from typing import Dict, List, Optional
 
 # --- Chat parsing ---------------------------------------------------------------
 
@@ -208,6 +212,30 @@ _NAV_VERB_RE = re.compile(
     r"take me( over)? to|head( over)? to|go over to|"
     r"jump over to|swing by)\b", re.I)
 
+# Round 49: always-allow removal asks ("stop always allowing
+# facebook.com", "remove facebook from always allow", "take X
+# off my always-allow list"). Pure text like everything here;
+# _claim_job checks this BEFORE its YES/NO block — the ask
+# starts with "stop"/"don't", which _DECLINE_RE would otherwise
+# eat as a NO on a parked approval. The capture is the site
+# WORDS; og_browser resolves them to a host.
+_DISALLOW_RE = re.compile(
+    r"\b(?:stop|don'?t|do not) always[- ]allow(?:ing)?\s+"
+    r"(.+?)\s*[.!?]*$"
+    r"|\bremove\s+(.+?)\s+from\s+(?:my\s+)?always[- ]allow"
+    r"(?:\s+list)?\b"
+    r"|\btake\s+(.+?)\s+off\s+(?:my\s+)?always[- ]allow"
+    r"(?:\s+list)?\b", re.I)
+
+
+def _parse_disallow(raw: str) -> Optional[str]:
+    """The site words of an always-allow removal ask, else None."""
+    m = _DISALLOW_RE.search(str(raw or ""))
+    if not m:
+        return None
+    words = next((g for g in m.groups() if g), "")
+    return words.strip() or None
+
 
 def _extract_url(message: str) -> str:
     m = _URL_TOKEN_RE.search(str(message))
@@ -282,4 +310,174 @@ def _is_start_request(message: str, low: str) -> bool:
         return False
     return True
 
+
+
+
+# --- The approval gate + element matching (Round 49 move) ----------------
+# Byte-identical move out of og_browser.py, same reason as the
+# Round 46 motion above: that file's push payload hit the
+# wrapper's argv ceiling again in Round 49 (135,330 of
+# ~131,072 bytes). These are PURE functions over page-snapshot
+# dicts — no session state, no network, no Steel — and
+# og_browser imports every name back, so callers and suites
+# see the same attributes on og_browser.
+
+# --- The approval gate --------------------------------------------------------
+
+# A click on anything whose label reads like a consequential verb is
+# never taken silently — it is parked for a YES (plan 6.2.2).
+_GATE_RE = re.compile(
+    r"\b(submit|post|publish|send|buy|checkout|check\s?out|pay|payment|"
+    r"purchase|order\s+now|place\s+(the\s+)?order|delete|remove|comment|"
+    r"reply|follow|subscribe|sign\s?up|register|book\s+now|reserve|"
+    r"confirm|donate|apply\s+now|join\s+now)\b", re.I)
+
+
+def _gate_reason(el: Dict, action: Dict) -> str:
+    """'' when the action is free to run, else WHY it needs a YES.
+    Typing is a draft (visitor can still hand it back); Enter inside
+    a form submits the form; submit/consequential clicks commit."""
+    do = action.get("do")
+    if do == "enter":
+        if el.get("in_form"):
+            return "pressing Enter in that form field submits the form"
+        return ""
+    if do == "click":
+        if el.get("type") == "submit":
+            return "that button submits a form"
+        if el.get("tag") == "button" and el.get("in_form") \
+                and el.get("type") in ("", "submit"):
+            return "that button submits a form"
+        label = str(el.get("label") or "")
+        if _GATE_RE.search(label):
+            return f"'{label}' is a commit-style action, not a read"
+    return ""
+
+
+def _describe_action(action: Dict, el: Optional[Dict], snap: Dict) -> str:
+    """The exact action, in plain words, for the approval prompt."""
+    host = ""
+    try:
+        host = urllib.parse.urlparse(snap.get("url", "")).hostname or ""
+    except Exception:
+        pass
+    do = action.get("do")
+    label = (el or {}).get("label") or ""
+    if do == "click":
+        return f"click '{label}' on {host}"
+    if do == "enter":
+        return (f"press Enter in the '{label}' field on {host} "
+                "(that submits the form)")
+    return f"{do} on {host}"
+
+
+def _element_signature(el: Dict) -> Dict:
+    return {"label": el.get("label", ""), "href": el.get("href", ""),
+            "tag": el.get("tag", ""), "url": ""}
+
+
+def _find_element(elements: List[Dict], words: str) -> Dict:
+    """Resolve a visitor's click target words against the snapshot.
+    Returns {"el"} on a unique match, {"ambiguous": [...]}, or {}."""
+    want = " ".join(str(words).lower().split())
+    if not want:
+        return {}
+    scored = []
+    for el in elements:
+        label = " ".join(str(el.get("label") or "").lower().split())
+        if not label:
+            continue
+        if label == want:
+            scored.append((3, el))
+        elif want in label:
+            scored.append((2, el))
+        elif label in want:
+            scored.append((1, el))
+        else:
+            overlap = len(set(want.split()) & set(label.split()))
+            if overlap >= 2:
+                scored.append((0, el))
+    if not scored:
+        return {}
+    top = max(s for s, _ in scored)
+    best = [el for s, el in scored if s == top]
+    if len(best) > 1:
+        return {"ambiguous": best[:4]}
+    return {"el": best[0]}
+
+
+def _find_field(elements: List[Dict], words: str) -> Dict:
+    """Resolve a typing target: an input/textarea/select (or a
+    role=textbox composer) by words, or the page's obvious
+    search/main field when words are empty."""
+    fields = [el for el in elements
+              if el.get("tag") in ("input", "textarea", "select")
+              or el.get("role") == "textbox"]
+    if not fields:
+        return {}
+    if words:
+        found = _find_element(fields, words)
+        if found:
+            return found
+    for el in fields:
+        hay = (str(el.get("label") or "") + " "
+               + str(el.get("type") or "")).lower()
+        if any(k in hay for k in ("search", "query", "q", "find")):
+            return {"el": el}
+    return {"el": fields[0]} if len(fields) == 1 else {}
+
+
+_COMPOSER_LABEL_RE = re.compile(
+    r"what'?s on your mind|write something|write a post|"
+    r"create (a )?post|say something|share something|"
+    r"composer|status|post", re.I)
+
+
+def _find_composer(elements: List[Dict]) -> Optional[Dict]:
+    """The page's post composer, if one is visible: a field
+    (input/textarea/select/role=textbox) whose label reads like a
+    post box, else the page's lone role=textbox, else a lone
+    textarea. Generic by label — no site-specific selectors."""
+    fields = [el for el in elements
+              if el.get("tag") in ("input", "textarea", "select")
+              or el.get("role") == "textbox"]
+    if not fields:
+        return None
+    for el in fields:
+        if _COMPOSER_LABEL_RE.search(str(el.get("label") or "")):
+            return el
+    boxes = [el for el in fields if el.get("role") == "textbox"]
+    if len(boxes) == 1:
+        return boxes[0]
+    areas = [el for el in fields if el.get("tag") == "textarea"]
+    if len(areas) == 1:
+        return areas[0]
+    return None
+
+
+_POST_BUTTON_RE = re.compile(
+    r"^(post|publish|share|tweet|send)$", re.I)
+_POST_BUTTON_LOOSE_RE = re.compile(r"\b(post|publish)\b", re.I)
+
+
+def _find_post_button(elements: List[Dict]) -> Optional[Dict]:
+    """The composer's commit button: an exact 'Post' / 'Publish' /
+    'Share' label first, then any button-ish element whose label
+    carries post/publish. Clicking it ALWAYS goes through the
+    approval gate (its label matches the gate verbs by design)."""
+    clickables = [el for el in elements
+                  if el.get("tag") in ("button", "a", "input")
+                  or el.get("role") in ("button", "")]
+    exact = [el for el in clickables
+             if _POST_BUTTON_RE.match(
+                 str(el.get("label") or "").strip())]
+    if len(exact) == 1:
+        return exact[0]
+    if exact:
+        return exact[0]
+    loose = [el for el in clickables
+             if el.get("tag") == "button"
+             and _POST_BUTTON_LOOSE_RE.search(
+                 str(el.get("label") or ""))]
+    return loose[0] if len(loose) == 1 else None
 
