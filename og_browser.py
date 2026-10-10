@@ -652,12 +652,30 @@ def _steel_api(method: str, path: str, body: Optional[Dict] = None,
     return parsed if isinstance(parsed, dict) else {}
 
 
+# Round 47: Steel's Launch plan caps a single session at 15
+# minutes ("Max session time" on the Steel dashboard) no matter
+# what timeout the create asks for — and an over-cap ask is
+# REFUSED outright (HTTP 400), which is exactly what killed
+# every Blackout start: the full 600-minute daily budget was
+# being sent as one session's timeout (36,000,000 ms). The
+# clamp below is only a backstop: OG's own accounting (elapsed
+# accrual, _session_minutes_left, _end_session, the 20-minute
+# idle kill) owns the visitor's daily budget and never reads
+# this value; if Steel releases a session at the cap, the next
+# touch ends it and accrues the minutes actually used.
+_STEEL_SESSION_CAP_MIN = 15
+_STEEL_SESSION_CAP_MS = _STEEL_SESSION_CAP_MIN * 60 * 1000
+
+
 def _steel_create_session(budget_minutes: int,
                           profile_id: Optional[str] = None,
                           persist: bool = False) -> Dict:
-    """Create a Steel session hard-capped at the budget: Steel's
-    timeout (ms) is set at creation and cannot be extended live.
-    Proxy OFF and captcha-solving OFF per the plan.
+    """Create a Steel session: Steel's timeout (ms) is set at
+    creation and cannot be extended live, and is clamped to
+    Steel's own 15-minute per-session cap (Round 47) — the
+    daily budget itself is enforced by OG's accounting, not
+    by this timeout. Proxy OFF and captcha-solving OFF per the
+    plan.
 
     Round 29 (B4 vault): with persist=True the session runs on the
     visitor's Steel profile — created fresh (Steel returns its
@@ -666,7 +684,10 @@ def _steel_create_session(budget_minutes: int,
     session is released, so log-ins the visitor typed themselves
     survive into later sessions. OG stores only the profile id."""
     body = {
-        "timeout": int(budget_minutes) * 60 * 1000,
+        # Round 47: never hand Steel the whole daily budget as
+        # one session's timeout — clamp to its session cap.
+        "timeout": min(int(budget_minutes) * 60 * 1000,
+                       _STEEL_SESSION_CAP_MS),
         "useProxy": False,
         "solveCaptcha": False,
         "blockAds": True,
@@ -1712,10 +1733,16 @@ def _dark_text() -> List[Dict]:
 
 def _plan_math_text(plan: Dict, tier: str) -> str:
     if plan["mode"] == "tier":
+        # Round 47: per-session truth — one session also stops
+        # at the browser service's own 15-minute session cap, so
+        # the honest per-session number is the smaller of the
+        # day's remaining pool and that cap.
+        per_session = min(int(plan["budget"]),
+                          _STEEL_SESSION_CAP_MIN)
         return (f"Your {tier} plan carries {plan['cap']} browser "
                 f"minutes a day and you've used {plan['used']}, so "
-                f"this session can run up to {plan['budget']} minutes "
-                "(hard stop at the cap).")
+                f"this session can run up to {per_session} minutes "
+                "at a time (hard stop at the day's cap).")
     return ("Your plan doesn't carry browser minutes, BUT you get "
             "one free taste: a single 10-minute session, hard stop, "
             "once ever. This would be that taste.")
