@@ -8,8 +8,10 @@ round gives OG hands on that same connection — the visitor can ask
 about THEIR OWN mail and calendar, and OG answers from the real data:
 
   * Gmail SEARCH + READ (read-only): "any email from my landlord",
-    "search my mail for the invoice", "what's my latest email" run a
-    real Gmail API search with the visitor's own token. Answers are
+    "search my mail for the invoice", "what's my latest email",
+    "what emails did I get today" (Round 39: a rolling-24h answer
+    on the digest's newer_than:1d bound) run a real Gmail API
+    search with the visitor's own token. Answers are
     grounded ONLY in the returned subjects/senders/dates/snippets.
     Snippet-level fetches by default; a full body is pulled only when
     the visitor explicitly asks to read that message. v1 never sends,
@@ -274,7 +276,25 @@ _GMAIL_LATEST_RE = re.compile(
     r"\b(latest|newest|most recent|last)\s+(e-?mail|message)\b|"
     r"\bwhat'?s\s+(in\s+)?my\s+(inbox|gmail|mail)\b|"
     r"\bcheck\s+my\s+(e-?mail|inbox|gmail|mail)\b|"
-    r"\bany\s+new\s+(e-?mail|messages?)\b")
+    r"\bany\s+new\s+(e-?mails?|messages?)\b")
+# Round 39: natural arrival questions ("what emails did I get
+# today") matched NO pattern above and fell through to the plain
+# chat path, so a connected visitor never saw their mail. Two
+# helpers: a bare today-marker (a 'today' inside a latest-style
+# ask reroutes it to the today-bounded answer) and the arrival
+# phrasings that stand alone as a today ask. The today answer
+# itself reuses the digest's rolling-24h bound (newer_than:1d).
+_TODAY_WORD_RE = re.compile(r"\btoday\b|\btoday'?s\b")
+_GMAIL_TODAY_RE = re.compile(
+    r"\btoday'?s\s+(e-?mails?|mail|inbox|messages?)\b|"
+    r"\b(e-?mails|messages)\s+today\b|"
+    r"\bwhat\s+(e-?mails?|messages?)\b[^.?!]*\btoday\b|"
+    r"\b(e-?mails?|messages?)\s+(came|come|arrived|landed|dropped)"
+    r"\b[^.?!]*\btoday\b|"
+    r"\b(did|do)\s+i\s+(get|have|receive)\b[^.?!]*"
+    r"\b(e-?mail|mail|inbox|messages?)\b[^.?!]*\btoday\b|"
+    r"\b(any|new|recent)\s+(e-?mails?|messages?)\b[^.?!]*\btoday\b|"
+    r"\binbox\b[^.?!]*\btoday\b")
 _GMAIL_SEARCH_RE = re.compile(
     r"\b(search|find|look)\b[^.?!]*\b(mail|gmail|e-?mail|inbox)\b|"
     r"\b(e-?mails?|messages?)\s+(from|about|regarding|mentioning)\b|"
@@ -536,11 +556,19 @@ def parse_google_intent(message: str, tz=None, now: datetime = None
             # Explicit read: pull that message's full text (newest
             # match when no query terms were given).
             return {"kind": "gmail_read", "query": q}
+        today = bool(_TODAY_WORD_RE.search(low))
         if q or _GMAIL_SEARCH_RE.search(low):
+            # A real search (query terms) keeps its exact mapping;
+            # the no-terms fallback is a latest-style ask, and a
+            # 'today' inside it makes it a today ask (Round 39).
             return ({"kind": "gmail_search", "query": q} if q
+                    else {"kind": "gmail_today"} if today
                     else {"kind": "gmail_latest"})
         if _GMAIL_LATEST_RE.search(low):
-            return {"kind": "gmail_latest"}
+            return ({"kind": "gmail_today"} if today
+                    else {"kind": "gmail_latest"})
+        if _GMAIL_TODAY_RE.search(low):
+            return {"kind": "gmail_today"}
         return None
     if _CAL_READ_RE.search(low):
         return {"kind": "cal_read"}
@@ -796,11 +824,21 @@ def _gmail_answer(job: Dict, token: str, who: str,
             results = [{"title": "📧 The visitor's Gmail — message",
                         "body": body, "href": _GMAIL_WEB}]
     else:
+        if kind == "gmail_today":
+            # Round 39: bound the list to a rolling 24h — the same
+            # newer_than:1d the Round 18 digest uses for its mail
+            # section (NOT a timezone calendar-day query).
+            query = "newer_than:1d"
         messages = _gmail_list(token, query, _MAX_RESULTS)
         if messages is None:
             return None
         if not messages:
-            what = f" for '{query}'" if query else ""
+            if kind == "gmail_today":
+                what = " for mail from today (the last 24 hours)"
+            elif query:
+                what = f" for '{query}'"
+            else:
+                what = ""
             body = (f"The visitor ({who}) asked about their email. A "
                     f"real Gmail search{what} (their own mailbox) "
                     "returned NO messages. Tell them plainly, in "
@@ -809,8 +847,12 @@ def _gmail_answer(job: Dict, token: str, who: str,
             results = [{"title": "📧 Gmail — no matches",
                         "body": body, "href": _GMAIL_WEB}]
         else:
-            label = "latest email" if kind == "gmail_latest" \
-                else f"Gmail search results for '{query}'"
+            if kind == "gmail_today":
+                label = "email from today (the last 24 hours)"
+            elif kind == "gmail_latest":
+                label = "latest email"
+            else:
+                label = f"Gmail search results for '{query}'"
             body = (f"The visitor ({who}) is asking about their own "
                     f"email. Answer ONLY from this list — their "
                     f"actual {label}, newest first, with the "
