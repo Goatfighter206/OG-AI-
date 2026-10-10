@@ -1590,12 +1590,13 @@ _URL_TOKEN_RE = re.compile(
     # full-URL asks with subdomains never reached the browser.
     r"(?:https?://)?(?:[a-z0-9][a-z0-9-]*\.)+[a-z]{2,}"
     r"(?:/[^\s<>\"']*)?", re.I)
-# Round 26: the full natural start-verb set (see _is_start_request;
-# supersedes Round 25's _START_VERB_RE).
+# Round 26: the natural start-verb set (see _is_start_request).
+# Round 45 added the "take me to" family (r45 NOTES).
 _NAV_START_RE = re.compile(
     r"\b(open|visit|browse|navigate|load|pull up|bring up|pop up|"
     r"show( me)?|display|go to|start|launch|fire up|use|get on|"
-    r"hop on)\b|\bput\b(?:\s+\w+){0,3}?\s+up\b", re.I)
+    r"hop on|take me( over)? to|head( over)? to|go over to|"
+    r"jump over to|swing by)\b|\bput\b(?:\s+\w+){0,3}?\s+up\b", re.I)
 # Content words turn a site mention into a LOOKUP ask, not a
 # browsing ask ("show me the headlines on bbc.com" = fetch the
 # headlines as text) — unless the visitor said "browser" out loud,
@@ -1623,6 +1624,13 @@ _SITE_NAMES = {
     "weather channel": "weather.com", "home depot": "homedepot.com",
     "lowes": "lowes.com", "lowe's": "lowes.com",
     "duckduckgo": "duckduckgo.com",
+    # Round 45 (r45 NOTES): audit gaps + "coinbase". All targets
+    # allowlisted EXCEPT coinbase.com (claimed; still gate-refused).
+    "soundcloud": "soundcloud.com", "vimeo": "vimeo.com",
+    "hulu": "hulu.com", "nytimes": "nytimes.com",
+    "new york times": "nytimes.com",
+    "weather site": "weather.com", "weather website": "weather.com",
+    "coinbase": "coinbase.com",
 }
 _SITE_NAME_RE = re.compile(
     r"\b(" + "|".join(
@@ -1754,8 +1762,11 @@ _READ_RE = re.compile(
     r"\b(what do you see|read (the |this )?page|what'?s on (the |this )"
     r"page|describe the page|look at the page|what is on the page)\b",
     re.I)
-_NAV_VERB_RE = re.compile(r"\b(go to|open|visit|navigate|load|pull up)\b",
-                          re.I)
+# Round 45: _NAV_START_RE's additions mirrored for in-session nav.
+_NAV_VERB_RE = re.compile(
+    r"\b(go to|open|visit|navigate|load|pull up|"
+    r"take me( over)? to|head( over)? to|go over to|"
+    r"jump over to|swing by)\b", re.I)
 
 
 def _extract_url(message: str) -> str:
@@ -1798,12 +1809,22 @@ def _is_start_request(message: str, low: str) -> bool:
     to a proposal before starting, and Brent's bare/account asks
     ("Facebook", "check my Facebook") claimed nothing. Round 27
     keeps the anti-hijack half (content asks stay text) and makes
-    every go-somewhere/account ask START in the same turn."""
+    every go-somewhere/account ask START in the same turn.
+
+    Round 45: "take me to" verbs; blocked-name asks claim
+    url-less so the refusal fires; "site/website" exempts the veto."""
     has_browser = bool(_BROWSER_WORD_RE.search(low))
     if has_browser and _NAV_START_RE.search(low):
         return True
     site = _extract_url(message) or _resolve_site_url(low)
     if not site:
+        # Round 45: a nav/account ask NAMING a hard-blocked target
+        # claims a url-less start so _do_start's refusal fires
+        # (Rounds 27-44 fell silently through to plain chat).
+        if _BLOCKED_TARGET_RE.search(low) and (
+                _NAV_START_RE.search(low)
+                or _ACCOUNT_RE.search(low)):
+            return True
         return False
     token = _extract_url(message)
     if token and str(message).strip().rstrip(".,!?)\"'") == token:
@@ -1814,7 +1835,10 @@ def _is_start_request(message: str, low: str) -> bool:
         return True
     if not _NAV_START_RE.search(low):
         return False
-    if _CONTENT_MARKER_RE.search(low) and not has_browser:
+    # Round 45: an explicit site/website word exempts the veto —
+    # naming the SITE itself is a visit ask, not a content ask.
+    if _CONTENT_MARKER_RE.search(low) and not has_browser \
+            and not re.search(r"\b(?:site|website)\b", low):
         return False
     return True
 
