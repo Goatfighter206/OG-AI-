@@ -795,6 +795,12 @@ _STORY_VIDEO = re.compile(
 _MAKE_VIDEO = re.compile(
     r"\b(make|create|render|generate|produce)\b[^.?!]{0,30}"
     r"\bvideo\b", re.I)
+# Round 40: "I want a video about …" — the want-form carries an
+# article (or none), never "that/this" (those point at an existing
+# video, not a new one).
+_WANT_VIDEO = re.compile(
+    r"\bi want\s+(?:a\s+|an\s+|the\s+|some\s+)?(?:story\s+)?video\b",
+    re.I)
 
 
 def _norm(message: str) -> str:
@@ -856,7 +862,8 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
         return None     # "video game" belongs to Unity / chat
     if _THREAD_BIND.search(low):
         return {"kind": "from_thread"}
-    if _STORY_VIDEO.search(low) or _MAKE_VIDEO.search(low):
+    if _STORY_VIDEO.search(low) or _MAKE_VIDEO.search(low) \
+            or _WANT_VIDEO.search(low):
         topic = ""
         m = _ABOUT.search(raw.strip())
         if m:
