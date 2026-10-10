@@ -1190,6 +1190,20 @@ def _run_job(job_id: str, uid: str) -> None:
                            f"sung track, ready to play.",
                     file=final, size=len(data), duration=dur,
                     charged=True)
+            # Notifications (optional layer): the finished
+            # song also lands in the visitor's notification
+            # center (+ opt-in channels). Fail-safe.
+            try:
+                import og_notify as _notify
+                _notify.record(
+                    uid, "song_done",
+                    f"Your song is ready: "
+                    f"\"{rec.get('title', '')}\"",
+                    f"\"{rec.get('title', '')}\" — "
+                    f"{rec.get('style', '')}; a real sung "
+                    f"track, ready to play.")
+            except Exception:
+                pass
     except _ProviderError as e:
         logger.warning(f"Song job {job_id} failed ({e.kind}): {e}")
         detail = _FAIL_DETAILS.get(e.kind, _FAIL_DETAILS["http"])
