@@ -148,6 +148,41 @@ def _put_blob(uid: str, kind: str, value):
         _save_file_store(store)
 
 
+def _del_blob(uid: str, kind: str):
+    if not uid:
+        return
+    if MEMORY_DB_URL and psycopg is not None:
+        try:
+            with _db_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM og_monitor_data "
+                        "WHERE uid=%s AND kind=%s", (uid, kind))
+                conn.commit()
+            return
+        except Exception as e:
+            logger.warning(f"Monitor DB delete failed, using file: {e}")
+    with _monitor_lock:
+        store = _load_file_store()
+        mine = store.get(uid)
+        if isinstance(mine, dict) and kind in mine:
+            del mine[kind]
+            if mine:
+                store[uid] = mine
+            else:
+                store.pop(uid, None)
+            _save_file_store(store)
+
+
+def purge_uid(uid: str):
+    """Account deletion (Round 36, og_store_ready): calorie
+    logs, price watches and pending alerts this uid owns."""
+    if not uid:
+        return
+    for kind in ("calories", "watches", "alerts"):
+        _del_blob(uid, kind)
+
+
 def _all_uids() -> list:
     """Every visitor with any monitor data (poll loop driver)."""
     if MEMORY_DB_URL and psycopg is not None:
