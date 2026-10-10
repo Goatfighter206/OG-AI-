@@ -31,7 +31,7 @@ daily meter), order (Round 19 approved order handoffs per day),
 trade (Round 20 approved trades per day — an execution on the
 visitor's connected Coinbase or a trade-sheet handoff; drafts and
 previews are free), browser_min (Round 23 OG-browser minutes per
-day: Blue 60, Blackout 600, every other tier 0 — plus the module's
+day: Blue 60, Blackout 300, every other tier 0 — plus the module's
 own once-ever 10-minute free taste). Round 20 also caps the SIZE
 of one trade:
 TRADE_CEILINGS below (env OG_TRADE_CEIL_<TIER> overrides).
@@ -94,7 +94,7 @@ _DEFAULT_CAPS = {
     "watch":   {"free": 3,    "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
     "order":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "trade":   {"free": 1,    "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
-    "browser_min": {"free": 0, "standard": 0,  "pro": 0,   "blue": 60,   "blackout": 600},
+    "browser_min": {"free": 0, "standard": 0,  "pro": 0,   "blue": 60,   "blackout": 300},
     # Round 29 (OG Watch): marketplace watch slots per visitor, and
     # the separate daily BACKGROUND-minute budget those scheduled
     # checks draw from (never the interactive browser_min above).
@@ -226,21 +226,25 @@ def cap(tier: str, kind: str) -> int:
 # outside this grid. The weekly fences exist because the old
 # daily ladder's worst case was unprofitable at the top (a
 # maxed Blackout burned ~$3,435/mo in generators against
-# $100/mo in). Brent's invariant (2026-10-10, hard 40% profit
-# floor, after Stripe's 2.9% + 30c): total worst-case cost
+# $100/mo in). Brent's invariant (2026-10-10, profit floor
+# after Stripe's 2.9% + 30c): total worst-case cost
 # (generators + chat) per user per month <= standard $5.41,
-# pro $13.97, blue $28.25, blackout $56.80. Unit costs: image
-# $0.04, video $0.375, song ~$0.38, tts ~$0.009/call. Weekly
-# generator spend by tier: free $3.14, standard $1.085,
-# pro $2.58, blue $5.16, blackout $11.305. No weekly row
-# exceeds its old daily cap x7 (pinned in r55tests). Env
-# OG_WCAP_<TIER>_<KIND> overrides a row, mirroring cap().
+# pro $13.97, blue $28.25, blackout $56.80 — set at a hard
+# 40% floor in Round 55, then Round 57 (same day, owner
+# ruling 15:04) moved STANDARD and PRO to a 20% floor:
+# standard <= $7.41, pro <= $18.98; blue/blackout stay 40%.
+# Unit costs: image $0.04, video $0.375, song ~$0.38,
+# tts ~$0.009/call. Weekly generator spend by tier:
+# free $3.14, standard $1.554, pro $3.625, blue $5.16,
+# blackout $11.305. No weekly row exceeds its old daily
+# cap x7 (pinned in r55tests). Env OG_WCAP_<TIER>_<KIND>
+# overrides a row, mirroring cap().
 _WEEKLY_CAPS = {
     # kind:      free  standard  pro   blue  blackout
-    "images":  {"free": 7,    "standard": 6,   "pro": 20,  "blue": 40,  "blackout": 100},
-    "video":   {"free": 2,    "standard": 1,   "pro": 2,   "blue": 4,   "blackout": 5},
-    "song":    {"free": 2,    "standard": 1,   "pro": 2,   "blue": 4,   "blackout": 6},
-    "tts":     {"free": 150,  "standard": 10,  "pro": 30,  "blue": 60,  "blackout": 350},
+    "images":  {"free": 7,    "standard": 7,   "pro": 25,  "blue": 40,  "blackout": 100},
+    "video":   {"free": 2,    "standard": 2,   "pro": 3,   "blue": 4,   "blackout": 5},
+    "song":    {"free": 2,    "standard": 1,   "pro": 3,   "blue": 4,   "blackout": 6},
+    "tts":     {"free": 150,  "standard": 16,  "pro": 40,  "blue": 60,  "blackout": 350},
 }
 
 # Weekly chat-token pools. Free's pool is the old 25,000/day
@@ -249,15 +253,16 @@ _WEEKLY_CAPS = {
 # gpt-4o-mini; OpenAI's list price for it is $0.15/1M input +
 # $0.60/1M output, so the paid pools are sized billing EVERY
 # token at the $0.60 output rate (the worst case — no token can
-# cost more). Chat spend/week: standard $0.15, pro $0.60,
+# cost more). Chat spend/week: standard $0.15, pro $0.75,
 # blue $1.20, blackout $1.80. TOTAL worst case (generators +
-# chat, per month): standard $5.35 <= $5.41, pro $13.78 <=
-# $13.97, blue $27.56 <= $28.25, blackout $56.79 <= $56.80.
+# chat, per month): standard $7.38 <= $7.41 (20% floor,
+# Round 57), pro $18.96 <= $18.98 (20% floor, Round 57),
+# blue $27.56 <= $28.25, blackout $56.79 <= $56.80.
 # The invariant rules (r55tests pins these sums); if a row
 # ever has to move, the totals must still fit — trim
 # generators before the chat pool.
 _WEEKLY_CHAT_TOKENS = {
-    "free": 175000, "standard": 250000, "pro": 1000000,
+    "free": 175000, "standard": 250000, "pro": 1250000,
     "blue": 2000000, "blackout": 3000000,
 }
 
@@ -500,21 +505,21 @@ _FEATURES = {
     "standard": [
         "Chat on a weekly pool — 250K tokens a week",
         "Web lookup + live data: news, weather, scores, stocks, crypto",
-        "6 images a week, drawn by OG",
+        "7 images a week, drawn by OG",
         "25 file uploads a day (PDFs & photos OG can read)",
         "5 GB file storage",
         "Voice replies + Talk mode",
         "Voice notes — talk instead of typing (15 a day)",
-        "Weekly fences: 1 story video · 1 song · 10 voice replies a week",
+        "Weekly fences: 2 story videos · 1 song · 16 voice replies a week",
     ],
     "pro": [
-        "Chat pool grows — 1M tokens a week",
-        "20 images a week",
+        "Chat pool grows — 1.25M tokens a week",
+        "25 images a week",
         "30 uploads a day — files up to 25 MB",
         "25 GB file storage",
         "250 lookups a day",
         "Higher voice limits (5× the voice)",
-        "Weekly fences: 2 story videos · 2 songs · 30 voice replies a week",
+        "Weekly fences: 3 story videos · 3 songs · 40 voice replies a week",
         "Early access — new tools land here first",
     ],
     "blue": [
@@ -533,7 +538,7 @@ _FEATURES = {
         "300 uploads a day",
         "100 GB file storage",
         "1,000 lookups a day",
-        "OG's own web browser — 600 minutes a day, ten full hours",
+        "OG's own web browser — 300 minutes a day, five full hours",
         "Weekly fences: 5 story videos · 6 songs · 350 voice replies a week",
         "Online ordering + trading-on-approval included when they ship",
         "Every future tool — day one, no upsells ever",
