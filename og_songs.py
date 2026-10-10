@@ -1301,6 +1301,25 @@ def _run_job(job_id: str, uid: str) -> None:
                 pass
     except _ProviderError as e:
         logger.warning(f"Song job {job_id} failed ({e.kind}): {e}")
+        try:
+            import og_fixqueue as _fq
+            _fq.record_problem(
+                uid, "song", f"song:{job_id}", "song-take",
+                "A song take failed",
+                f"The take of \"{rec.get('title', '')}\" failed "
+                f"at the studio ({e.kind}): {str(e)[:200]}",
+                fix={"kind": "owner_steps",
+                     "summary": "The song take didn't finish. "
+                                "Nothing was charged.",
+                     "steps": [
+                         "Nothing was charged — the take died "
+                         "before it finished.",
+                         "Ask OG to track the song again; a "
+                         "one-off studio failure usually clears "
+                         "on a fresh try.",
+                     ]})
+        except Exception:
+            pass
         detail = _FAIL_DETAILS.get(e.kind, _FAIL_DETAILS["http"])
         if e.suggestion:
             detail += (" The studio suggested this angle "
@@ -1312,6 +1331,25 @@ def _run_job(job_id: str, uid: str) -> None:
             pass
     except Exception as e:
         logger.warning(f"Song job {job_id} failed: {e}")
+        try:
+            import og_fixqueue as _fq
+            _fq.record_problem(
+                uid, "song", f"song:{job_id}", "song-take",
+                "A song take failed",
+                f"The take of \"{rec.get('title', '')}\" failed: "
+                f"{type(e).__name__}: {str(e)[:200]}",
+                fix={"kind": "owner_steps",
+                     "summary": "The song take didn't finish. "
+                                "Nothing was charged.",
+                     "steps": [
+                         "Nothing was charged — the take died "
+                         "before it finished.",
+                         "Ask OG to track the song again; a "
+                         "one-off failure usually clears on a "
+                         "fresh try.",
+                     ]})
+        except Exception:
+            pass
         try:
             _update(rec, state="failed", error=str(e)[:300],
                     detail=_FAIL_DETAILS["http"])
