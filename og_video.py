@@ -285,6 +285,49 @@ def _charge_video(uid: str) -> None:
         _deps["save_usage"](store)
 
 
+# --- Round 56: token-pack funding past the weekly wall --------
+
+def _token_balance(uid: str) -> int:
+    try:
+        import og_tokenpacks as _tp
+        return _tp.balance(uid)
+    except Exception:
+        return 0
+
+
+def _token_rate() -> int:
+    try:
+        import og_tokenpacks as _tp
+        return int(_tp.RATES["video"])
+    except Exception:
+        return 0
+
+
+def _video_blocked(uid: str, tier: str) -> bool:
+    """True only when the weekly pool is dry AND the token
+    balance can't cover a render — every other state proceeds
+    (pool first, tokens second; Brent's burn order)."""
+    if _video_week_left(uid, tier) > 0:
+        return False
+    rate = _token_rate()
+    return rate <= 0 or _token_balance(uid) < rate
+
+
+def _settle_video(uid: str, rec: Dict) -> None:
+    """Charge a completed, verified render exactly once: the
+    weekly pool for a pool-funded job; a token-funded job
+    burns its posted rate instead. Called at the same point
+    _charge_video always was — failures never reach here."""
+    if rec.get("fund") == "tokens":
+        try:
+            import og_tokenpacks as _tp
+            _tp.debit(uid, int(_tp.RATES["video"]), "video")
+        except Exception:
+            pass
+        return
+    _charge_video(uid)
+
+
 def _tier_now(uid: str) -> str:
     fn = _deps.get("get_tier")
     try:
@@ -769,7 +812,12 @@ def _cap_body(tier: str, uid: str, note: str = "") -> List[Dict]:
     body = (f"The visitor is at THIS WEEK's story-video cap for "
             f"their plan ({cap_w} per week) — there is no daily "
             f"reset. The weekly pool has no fixed reset day: "
-            f"{refill}. {note} Tell them plainly, in persona: "
+            f"{refill}. Their token balance "
+            f"({_token_balance(uid):,} tokens) can't cover a "
+            f"render either — one story video burns "
+            f"{_token_rate():,} tokens past the weekly wall, "
+            f"and token packs live in the menu (subscribers "
+            f"only). {note} Tell them plainly, in persona: "
             f"the story itself they can still read right here in "
             f"chat any time; the VIDEO is what's capped. Higher "
             f"plans make more videos a week: {_pro_url()}")
@@ -941,13 +989,18 @@ def _approve(uid: str, tier: str):
         _clear_pending(uid)
         return False, "A video is already cooking for you — " \
             "let that one finish first.", None
-    if _video_week_left(uid, tier) <= 0:
+    if _video_blocked(uid, tier):
         _clear_pending(uid)
         return False, "You're at this week's story-video cap " \
-            "for your plan, so this one can't render. The weekly " \
+            "for your plan, and your token balance can't cover " \
+            "a render either, so this one can't cook. The weekly " \
             "pool refills as your old days roll off it — the " \
             "story itself stays right here in chat.", None
     rec = _new_job(uid, pending)
+    if _video_week_left(uid, tier) <= 0:
+        # Pool is dry but the balance covers it: the render is
+        # token-funded and burns its rate when it finishes.
+        rec["fund"] = "tokens"
     _clear_pending(uid)
     _store_put(rec)
     thread = threading.Thread(target=_run_job,
@@ -976,7 +1029,7 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "visitor. Tell them, in persona: one at a time — "
                 "the cooking one lands right here in the thread "
                 "when it's done, then they can line up the next.")
-        if _video_week_left(uid, tier) <= 0:
+        if _video_blocked(uid, tier):
             return _cap_body(tier, uid)
         topic = job.get("topic", "")
         if not topic:
@@ -994,7 +1047,7 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
     if kind == "topic":
         topic = job.get("topic", "")
         _clear_pending(uid)
-        if _video_week_left(uid, tier) <= 0:
+        if _video_blocked(uid, tier):
             return _cap_body(tier, uid)
         return _start_story(uid, topic)
     if kind == "replace":
@@ -1005,7 +1058,7 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A story video is ALREADY rendering for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the cooking one to land in the thread.")
-        if _video_week_left(uid, tier) <= 0:
+        if _video_blocked(uid, tier):
             return _cap_body(tier, uid)
         return _start_story(uid, job.get("topic", ""))
     if kind == "from_thread":
@@ -1015,7 +1068,7 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "A story video is ALREADY rendering for this "
                 "visitor. Tell them, in persona: one at a time — "
                 "wait for the cooking one to land in the thread.")
-        if _video_week_left(uid, tier) <= 0:
+        if _video_blocked(uid, tier):
             return _cap_body(tier, uid)
         pending = {"stage": "await_approval", "hist_len": 0,
                    "topic": ""}
@@ -1035,6 +1088,14 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
                 "video after your YES. Whatever topic they answer "
                 "with becomes the story.")
         scenes = captured["scenes"]
+        _fund_line = ""
+        if _video_week_left(uid, tier) <= 0:
+            _fund_line = (
+                f" Their weekly videos are used up, so this one "
+                f"burns {_token_rate():,} tokens from their "
+                f"balance ({_token_balance(uid):,} on hand) "
+                f"when it finishes instead — YES still just "
+                f"cooks it.")
         body = (
             f"The visitor wants THAT story turned into a video. "
             f"Present this approval ask, in persona, with these "
@@ -1047,7 +1108,7 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"{int(_tiers.weekly_cap(tier, 'video') or 0)} "
             f"weekly story videos); NO scraps it. Nothing "
             f"renders before their YES. Videos left this "
-            f"week: {_video_week_left(uid, tier)}.")
+            f"week: {_video_week_left(uid, tier)}.{_fund_line}")
         return _result("STORY-VIDEO: APPROVE?",
                        "🎬 Story video — approval", body)
     if kind == "approve":
@@ -1069,6 +1130,15 @@ def video_results(job: Dict, message: str, uid: str) -> List[Dict]:
             f"do anything — and it only counts against their "
             f"weekly videos when it FINISHES, so a failed render "
             f"costs them nothing.")
+        if rec.get("fund") == "tokens":
+            body = body.replace(
+                "and it only counts against their weekly videos "
+                "when it FINISHES, so a failed render costs them "
+                "nothing.",
+                f"and it burns {_token_rate():,} tokens from "
+                f"their balance when it FINISHES (their weekly "
+                f"videos are used up) — so a failed render "
+                f"burns nothing.")
         return _result("STORY-VIDEO: COOKING",
                        "🎬 Story video — cooking", body)
     if kind == "decline":
@@ -1442,7 +1512,7 @@ def _run_job(job_id: str, uid: str) -> None:
                          "-metadata", f"title={title}",
                          final], timeout=900)
             total = _verify_final(final, sum(durations))
-            _charge_video(uid)
+            _settle_video(uid, rec)
             detail = (f"\"{title}\" — {len(scenes)} scenes, "
                       f"narrated by OG.")
             if reused:
@@ -1644,6 +1714,7 @@ def register_video_routes(app):
                 "cap": int(_tiers.weekly_cap(tier, "video") or 0),
                 "used": _videos_used_week(uid),
                 "left": _video_week_left(uid, tier),
+                "token_balance": _token_balance(uid),
                 "locker_ok": locker_ok,
                 "pending": pending_view,
                 "job": _job_view(
