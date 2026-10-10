@@ -49,7 +49,7 @@ SAFETY RULES THIS MODULE IS BUILT AROUND (plan section 6.2):
    refused outright, allowlist or not. A redirect that lands on a
    blocked host is backed out immediately.
 5. HARD MINUTE CAPS, ENFORCED SERVER-SIDE. New og_tiers kind
-   "browser_min": Blue 60 min/day, Blackout 600 min/day, every
+   "browser_min": Blue 60 min/day, Blackout 300 min/day, every
    other tier 0 (env OG_CAP_<TIER>_BROWSER_MIN overrides). PLUS
    Brent's taste rule: exactly ONE free 10-minute taste per visitor
    (any tier), hard-capped — at the budget the session ends.
@@ -1836,7 +1836,7 @@ def _do_start(uid: str, job: Dict) -> List[Dict]:
             + (f" and all {plan['used']} are used" if plan["cap"] else "")
             + ", and your one free 10-minute taste is already spent. "
             "Browser time rides on Blue (60 minutes/day) and "
-            f"Blackout (600 minutes/day): {_pro_url()}")
+            f"Blackout (300 minutes/day): {_pro_url()}")
     pend = {"url": url, "goal": job.get("goal", ""),
             "post": post or None}
     out = _start_session(uid, pend)
