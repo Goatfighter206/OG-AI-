@@ -21,8 +21,16 @@ HONEST LIMITS (stated, never oversold):
   later), /auth/forgot answers with its usual generic
   success and sends NOTHING. Nobody claims delivery while
   the sender is dark.
-- The gate covers POST /chat (classic + streaming — the
-  same endpoint) in v1. Other endpoints are unchanged.
+- The gate covered POST /chat only in v1. ROUND 44 (Brent,
+  2026-10-10: "You should not be able to use OG without
+  signing in") extends it to the whole feature surface:
+  every non-public route requires a live session. The
+  public set is only what a guest strictly needs (the wall
+  + its assets, the /auth/* machinery itself, the legal
+  pages, /health, the signature-checked Stripe webhook,
+  OG's own avatar media) plus the special-handling routes
+  documented at PUBLIC_PATHS below (buyer flow, OAuth
+  callbacks, owner-key pages, shortlinks).
 
 PASSWORDS. hashlib.pbkdf2_hmac('sha256', ...) with a
 per-user 16-byte random salt and 260,000 iterations. Only
@@ -431,7 +439,33 @@ def _clean_email(raw) -> str:
     return raw.strip().lower() if isinstance(raw, str) else ""
 
 
-# --- The /chat gate -------------------------------------------------------------------
+# --- Attach hooks ---------------------------------------------------------------------
+# A successful login swaps the visitor's identity from the pre-login
+# ogai_uid cookie to the account's uid. Anything keyed by the guest
+# uid that should follow the person (today: a Stripe entitlement a
+# guest buyer earned in this browser) registers a hook here;
+# app.py binds them. Hooks run fail-quiet after the login succeeds:
+# fn(guest_uid, account_uid, email). Signup needs no hook — it
+# attaches the caller's current uid as-is.
+
+_ATTACH_HOOKS = []
+
+
+def register_attach_hook(fn):
+    _ATTACH_HOOKS.append(fn)
+
+
+def _fire_attach_hooks(guest_uid, account_uid, email):
+    if not guest_uid or not account_uid or guest_uid == account_uid:
+        return
+    for fn in list(_ATTACH_HOOKS):
+        try:
+            fn(guest_uid, account_uid, email)
+        except Exception as e:
+            logger.warning(f"Attach hook failed: {e}")
+
+
+# --- The sign-in gate -------------------------------------------------------------------
 
 
 def gate_enabled() -> bool:
@@ -445,20 +479,66 @@ def gate_enabled() -> bool:
     return bool(os.getenv("RENDER"))
 
 
+# Round 44: the public surface. Everything NOT matched here needs
+# a live session when the gate is on. Kept as data so the round's
+# suite asserts the census against these exact tables.
+#
+# PUBLIC-BY-NECESSITY: the wall page + its static assets, the
+# /auth/* machinery a guest must reach, the legal pages, the
+# Render health check (static text only), the Stripe webhook
+# (its signature is its auth), and OG's own avatar media (no
+# user data; public cache headers by design).
+# SPECIAL-HANDLING: /pro + /pro/success (buyer flow — the guest
+# landing is handled in og_tiers), the OAuth callbacks (they
+# authenticate by signed state naming the uid and must survive
+# the cross-site return hop), /stats + /reports (owner-key auth
+# in their handlers), and /s/<code> shortlinks (a bearer link is
+# its audience by design).
+PUBLIC_PATHS = frozenset({
+    "/", "/static",
+    "/auth/signup", "/auth/login", "/auth/logout", "/auth/me",
+    "/auth/forgot", "/auth/reset",
+    "/privacy", "/terms", "/health",
+    "/stripe/webhook",
+    "/avatar/poster.webp",
+    "/pro", "/pro/success",
+    "/stats", "/reports",
+    "/auth/google/callback", "/auth/discord/callback",
+    "/auth/github/callback", "/auth/reddit/callback",
+    "/auth/spotify/callback", "/auth/twitch/callback",
+    "/auth/youtube/callback", "/auth/coinbase/callback",
+    "/auth/cb/callback",
+})
+
+_PUBLIC_PREFIXES = ("/static/", "/s/")
+
+
+def _is_public_path(path: str) -> bool:
+    if path in PUBLIC_PATHS:
+        return True
+    if path.startswith(_PUBLIC_PREFIXES):
+        return True
+    # OG's own avatar clips (/avatar/<state>.mp4) are public media;
+    # /avatar/status is an API probe and stays gated.
+    return path.startswith("/avatar/") and path.endswith(".mp4")
+
+
 class SignInGateMiddleware:
-    """Pure ASGI gate: POST /chat without a live session gets
-    a 401 sign_in_required and never reaches the app. Every
-    other request passes through untouched (streaming-safe:
-    a valid session's response is never wrapped or read)."""
+    """Pure ASGI gate (Round 44: the whole feature surface):
+    any non-public route without a live session gets a 401
+    sign_in_required and never reaches the app — no handler
+    runs, so no usage accrues, no uid is minted, nothing
+    starts. Public routes (PUBLIC_PATHS) pass through, and a
+    valid session's response is never wrapped or read
+    (streaming-safe)."""
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
         if (scope.get("type") == "http"
-                and scope.get("method") == "POST"
-                and scope.get("path") == "/chat"
-                and gate_enabled()):
+                and gate_enabled()
+                and not _is_public_path(scope.get("path") or "")):
             token = ""
             for name, value in scope.get("headers") or []:
                 if name.lower() == b"cookie":
@@ -537,6 +617,10 @@ def register_account_routes(app):
             _record_failure(email, ip)
             return _err(ERR_GENERIC, status=401)
         _del(_fail_key(email, ip))
+        # Round 44: uid-keyed guest state (a buyer entitlement)
+        # follows the person onto their account's uid.
+        _fire_attach_hooks(
+            request.cookies.get(UID_COOKIE), acct["uid"], email)
         resp = JSONResponse({"ok": True, "email": email})
         _start_session(resp, email, acct["uid"], remember)
         return resp
