@@ -2694,7 +2694,7 @@ async def get_history(raw_request: Request):
         elif uid:
             tokens_left = _free_tokens_remaining(uid)
         else:
-            tokens_left = _og_tiers.weekly_chat_tokens("free") or 175000
+            tokens_left = _og_tiers.weekly_chat_tokens("free") or 25000
         return {
             "conversation": history,
             "history": history,  # Backward compatibility with Flask API
