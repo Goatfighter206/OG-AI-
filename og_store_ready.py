@@ -403,6 +403,12 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
         _un2._clear_pending(uid)
 
     _step(results, "pendings", pendings)
+
+    def token_balance():
+        import og_tokenpacks as _tp
+        _tp.purge_uid(uid)
+
+    _step(results, "token_balance", token_balance)
     logger.info(
         "Account deleted; purge steps: "
         + ", ".join(f"{k}={v}" for k, v in sorted(results.items())))
