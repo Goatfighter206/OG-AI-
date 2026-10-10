@@ -1971,7 +1971,7 @@ var top = $('ogTopName'), mine = $('menuName');
 function syncName() { if (top && mine) mine.textContent = top.textContent; }
 if (top && window.MutationObserver) new MutationObserver(syncName).observe(top, { childList: true, characterData: true, subtree: true });
 syncName();
-var ts = $('tokenStatus'), fill = $('planBarFill'), FREE_TOTAL = 175000;
+var ts = $('tokenStatus'), fill = $('planBarFill'), FREE_TOTAL = 25000;
 function syncBar() {
 if (!ts || !fill) return;
 var t = ts.textContent || '';
