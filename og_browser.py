@@ -110,6 +110,28 @@ re-alerts) and one per session+site sign-in episode (the
 session record's wall list is the episode marker). Both
 producers are fail-safe and gated on the caller's `alerts`
 pref (default ON).
+
+ROUND 43 (Brent's live phone test, 2026-10-10): TAKE CONTROL
+YOU CAN ACTUALLY USE. On his phone the live player fell back to
+the still view, which was a dead picture: the screenshot route
+refused (409) while the visitor drove, the panel forced live
+mode on takeover, and nothing in OG's own chrome could click or
+type — the Round 27/29 "log in yourself" flow was impossible.
+Now: POST /browser/input takes the OWNER's own clicks (in the
+still's natural pixels), typing, Enter/Backspace/Tab, and
+scrolls, ONLY while that visitor holds control, over the same
+_Cdp transport OG's driver uses — the visitor's own hand, never
+approval-parked, never read back. Typing checks the page's
+focused element first and refuses honestly when nothing is
+focused. The screenshot gate is scoped open while the visitor
+drives: the frame is served only to the owner's own browser
+(their own view of their own session — the live player shows
+them the same page), and OG's driver + narration snapshots
+stay fully suspended for the whole takeover, so nothing the
+visitor types ever enters OG's chat or memory. The panel also
+takes the WHOLE screen while the visitor drives (static asset
+og_browser_input.js: reparented + pinned 100dvw x 100dvh, slim
+bar with End task / keyboard / tap / Hand back on top).
 """
 
 import asyncio
@@ -992,6 +1014,151 @@ def _drive(rec: Dict, action: Dict) -> Dict:
         cdp.close()
 
 
+# --- Round 43: the visitor's own hands (panel input) -------------------------
+
+_FOCUS_JS = ("(function(){var a=document.activeElement;"
+             " if(!a) return '';"
+             " var t=(a.tagName||'').toLowerCase();"
+             " if(t==='input'||t==='textarea'||t==='select'"
+             " ||a.isContentEditable) return 'ok'; return '';})()")
+_VIEW_JS = ("(function(){return {w: window.innerWidth || 0,"
+            " h: window.innerHeight || 0};})()")
+_INPUT_KEYS = {"enter": ("Enter", "Enter", 13),
+               "backspace": ("Backspace", "Backspace", 8),
+               "tab": ("Tab", "Tab", 9)}
+
+
+def _page_view(cdp: _Cdp) -> Dict:
+    view = _eval(cdp, _VIEW_JS)
+    if not isinstance(view, dict) or not view.get("w") \
+            or not view.get("h"):
+        raise _DriveError("could not read the page size")
+    return view
+
+
+def _visitor_input(rec: Dict, payload: Dict) -> Dict:
+    """Run ONE input from the session's owner while THEY drive:
+    a click, typed text, a special key, a scroll, or a
+    press-and-hold drag — over the session's own CDP connection,
+    the same transport OG's driver
+    uses. This is the visitor's own hand: never gated, never
+    parked as a pending action, and nothing about it is read
+    back or snapshotted (typed values stay values the visitor
+    typed into THEIR session). Click coordinates arrive in the
+    still frame's natural pixels and are scaled to page CSS
+    pixels against the page's live inner size, per axis, so any
+    devicePixelRatio maps truthfully. Raises _DriveError on
+    transport failure."""
+    kind = str(payload.get("kind") or "")
+    if kind not in ("click", "type", "key", "scroll", "drag"):
+        return {"ok": False, "error": "unknown input kind"}
+    cdp = _cdp_connect(rec)
+    try:
+        _attach_page(cdp)
+        cdp.call("Page.enable")
+        cdp.call("Runtime.enable")
+        if kind == "click":
+            try:
+                x = float(payload["x"])
+                y = float(payload["y"])
+                nw = float(payload["nw"])
+                nh = float(payload["nh"])
+            except Exception:
+                return {"ok": False, "error": "bad click coordinates"}
+            if nw <= 0 or nh <= 0:
+                return {"ok": False, "error": "bad frame size"}
+            view = _page_view(cdp)
+            cx = x * float(view["w"]) / nw
+            cy = y * float(view["h"]) / nh
+            for t in ("mousePressed", "mouseReleased"):
+                cdp.call("Input.dispatchMouseEvent", {
+                    "type": t, "x": cx, "y": cy, "button": "left",
+                    "clickCount": 1})
+            return {"ok": True}
+        if kind == "type":
+            text = payload.get("text")
+            if not isinstance(text, str) or not text:
+                return {"ok": False, "error": "nothing to type"}
+            if len(text) > 2000:
+                return {"ok": False, "error": "that text is too long"}
+            if _eval(cdp, _FOCUS_JS) != "ok":
+                return {"ok": False,
+                        "error": "Tap a field on the page first, "
+                                 "then type."}
+            cdp.call("Input.insertText", {"text": text})
+            return {"ok": True}
+        if kind == "key":
+            spec = _INPUT_KEYS.get(str(payload.get("key") or ""))
+            if not spec:
+                return {"ok": False, "error": "unknown key"}
+            key, code, vk = spec
+            for t in ("keyDown", "keyUp"):
+                cdp.call("Input.dispatchKeyEvent", {
+                    "type": t, "key": key, "code": code,
+                    "windowsVirtualKeyCode": vk,
+                    "nativeVirtualKeyCode": vk})
+            return {"ok": True}
+        if kind == "drag":
+            # press-and-hold drag (Brent's refinement): the
+            # finger's recorded path, replayed as a real mouse
+            # drag — pressed, moved with the button held,
+            # released — paced like the finger moved (capped).
+            path = payload.get("path")
+            if not isinstance(path, list) or len(path) < 2 \
+                    or len(path) > 200:
+                return {"ok": False, "error": "bad drag path"}
+            try:
+                nw = float(payload["nw"])
+                nh = float(payload["nh"])
+                pts = [(float(p["x"]), float(p["y"])) for p in path]
+            except Exception:
+                return {"ok": False, "error": "bad drag path"}
+            if nw <= 0 or nh <= 0:
+                return {"ok": False, "error": "bad frame size"}
+            view = _page_view(cdp)
+            sx = float(view["w"]) / nw
+            sy = float(view["h"]) / nh
+            pts = [(x * sx, y * sy) for x, y in pts]
+            try:
+                dur = float(payload.get("dur") or 0)
+            except Exception:
+                dur = 0.0
+            step = max(0.0, min(dur, 4000.0)) / 1000.0 \
+                / max(1, len(pts) - 1)
+            cdp.call("Input.dispatchMouseEvent", {
+                "type": "mousePressed", "x": pts[0][0],
+                "y": pts[0][1], "button": "left", "buttons": 1,
+                "clickCount": 1})
+            for px, py in pts[1:]:
+                if step:
+                    time.sleep(step)
+                cdp.call("Input.dispatchMouseEvent", {
+                    "type": "mouseMoved", "x": px, "y": py,
+                    "buttons": 1})
+            cdp.call("Input.dispatchMouseEvent", {
+                "type": "mouseReleased", "x": pts[-1][0],
+                "y": pts[-1][1], "button": "left", "buttons": 0,
+                "clickCount": 1})
+            return {"ok": True}
+        # scroll: wheel deltas in CSS pixels
+        try:
+            dx = max(-4000.0, min(4000.0,
+                                   float(payload.get("dx") or 0)))
+            dy = max(-4000.0, min(4000.0,
+                                   float(payload.get("dy") or 0)))
+        except Exception:
+            return {"ok": False, "error": "bad scroll"}
+        view = _page_view(cdp)
+        cdp.call("Input.dispatchMouseEvent", {
+            "type": "mouseWheel",
+            "x": float(view["w"]) / 2.0,
+            "y": float(view["h"]) / 2.0,
+            "deltaX": dx, "deltaY": dy})
+        return {"ok": True}
+    finally:
+        cdp.close()
+
+
 # --- The approval gate --------------------------------------------------------
 
 # A click on anything whose label reads like a consequential verb is
@@ -1261,11 +1428,34 @@ def _narrate_snapshot(uid: str, snap: Dict, lead: str) -> List[Dict]:
                    "\n".join(lines), url)
 
 
+def _loading_host(rec: Dict) -> str:
+    """Round 43: the host OG's browser is heading to RIGHT NOW,
+    while a known-destination navigation is in flight (session
+    start / an explicit open). The page's task bubble reads this
+    off /browser/status and shows "Opening <host>…" until the
+    arrival snapshot settles it back to "Browsing <host>". A
+    stamp older than 45 s reads as settled — a wedged flag can
+    never stick the bubble on "Opening" forever."""
+    target = rec.get("nav_target") or ""
+    if not target:
+        return ""
+    try:
+        if time.time() - float(rec.get("nav_ts") or 0) > 45:
+            return ""
+        return urllib.parse.urlparse(target).hostname or ""
+    except Exception:
+        return ""
+
+
 def _update_rec_from_snap(uid: str, rec: Dict, snap: Dict) -> None:
     rec = dict(rec)
     rec["last_action"] = time.time()
     rec["last_url"] = snap.get("url", "")
     rec["last_title"] = snap.get("title", "")
+    # Round 43: a snapshot means a navigation settled — clear
+    # the in-flight destination the task bubble was showing.
+    rec["nav_target"] = ""
+    rec["nav_ts"] = 0
     # Round 29: track log-in walls per host; when a wall that was
     # up for a host is gone on a later read, the visitor got in —
     # the vault records the kept log-in (og_watch's hook), which is
@@ -1328,9 +1518,24 @@ def _run_action(uid: str, rec: Dict, action: Dict,
         if action.get("do") == "navigate":
             ok, reason = _url_gate(action["url"])
             if not ok:
+                if rec.get("nav_target"):
+                    # A refused open never loads — settle the
+                    # bubble now, not at the freshness cap.
+                    rec = dict(rec)
+                    rec["nav_target"] = ""
+                    rec["nav_ts"] = 0
+                    _set_session(uid, rec)
                 return _result("OG BROWSER", "OG browser — refused",
                                f"I did NOT open that: {reason}."
                                + _session_footer(uid))
+            # Round 43: stamp the destination BEFORE the drive so
+            # /browser/status polls during the load can show the
+            # task bubble where the browser is going; the arrival
+            # snapshot (_update_rec_from_snap) clears it.
+            rec = dict(rec)
+            rec["nav_target"] = action["url"]
+            rec["nav_ts"] = time.time()
+            _set_session(uid, rec)
         snap = _drive(rec, action)
         if action.get("do") in ("navigate", "click", "enter", "back"):
             landed = snap.get("url") or ""
@@ -1884,6 +2089,13 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
     # that starts but never lands on a page — Brent's 2026-10-09 live
     # test, where the panel showed Steel's sign-in page — must not
     # burn the visitor's one free taste.
+    # Round 43: the record is already persisted before the first
+    # navigation runs (below) — stamp the destination on it so
+    # the task bubble can show where the browser is going while
+    # it loads.
+    if pend.get("url"):
+        rec["nav_target"] = pend["url"]
+        rec["nav_ts"] = time.time()
     _set_session(uid, rec)
     url = pend.get("url") or ""
     if url:
@@ -2471,7 +2683,8 @@ def register_browser_routes(app):
                "daily_used": used, "daily_left": max(0, cap - used),
                "taste_available": bool(uid) and not _taste_used(uid),
                "active": False, "viewer_url": "", "control": "og",
-               "minutes_left": 0, "page_title": "", "page_url": ""}
+               "minutes_left": 0, "page_title": "", "page_url": "",
+               "loading_host": ""}
         rec = _get_session(uid) if uid else None
         if rec:
             if _session_minutes_left(rec) <= 0:
@@ -2487,6 +2700,11 @@ def register_browser_routes(app):
             out["minutes_left"] = _session_minutes_left(rec)
             out["page_title"] = rec.get("last_title", "")
             out["page_url"] = rec.get("last_url", "")
+            # Round 43 (additive): where the browser is GOING
+            # while a navigation is in flight — "" when settled.
+            # The page's one task bubble turns this into
+            # "Opening <host>…" and settles back to "Browsing".
+            out["loading_host"] = _loading_host(rec)
             # Fresh from Steel on every poll — never stored anywhere.
             out["viewer_url"] = _viewer_url(rec.get("steel_id", ""))
         # Round 27: the approval CARD's data. Only the owner's own
@@ -2521,9 +2739,13 @@ def register_browser_routes(app):
     @app.get("/browser/screenshot")
     async def browser_screenshot(request: Request):
         """The panel's still view: one frame of the visitor's own
-        live session. Owner-only by uid cookie; refused while the
-        visitor drives (OG runs zero actions then, reads included)
-        and when dark / sessionless."""
+        live session. Owner-only by uid cookie; 404 when dark /
+        sessionless. Round 43: frames also flow while the visitor
+        drives — the still IS the visitor's own view of their own
+        session (the live player shows them the same page), and a
+        takeover they cannot see is blind. OG's driver actions
+        and narration snapshots stay suspended for the whole
+        takeover; only this owner-scoped frame route opens."""
         if not enabled():
             return JSONResponse({"error": "not found"},
                                 status_code=404)
@@ -2532,10 +2754,6 @@ def register_browser_routes(app):
         if not rec:
             return JSONResponse({"error": "no session"},
                                 status_code=404)
-        if rec.get("control") == "visitor":
-            return JSONResponse(
-                {"error": "you are driving — still view is off"},
-                status_code=409)
         if _session_minutes_left(rec) <= 0:
             _end_session(uid, "budget spent")
             return JSONResponse({"error": "session ended"},
@@ -2608,6 +2826,54 @@ def register_browser_routes(app):
         rec["last_action"] = time.time()
         _set_session(uid, rec)
         return {"ok": True, "control": mode}
+
+    @app.post("/browser/input")
+    async def browser_input(request: Request):
+        """Round 43: the visitor's own hands while THEY drive —
+        clicks, typing, Enter/Backspace/Tab, and scrolls sent by
+        the panel. Owner-only (uid cookie scopes it to the
+        session owner), accepted ONLY while the visitor holds
+        control (while OG drives, the panel input stays off),
+        and never approval-parked: it is the visitor's own
+        action on their own session, not an OG action. Each
+        accepted input counts as activity, so a visitor slowly
+        typing a password never trips the idle kill."""
+        if not enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _route_uid(request)
+        rec = _get_session(uid) if uid else None
+        if not rec:
+            return JSONResponse({"ok": False, "error": "no session"},
+                                status_code=400)
+        if rec.get("control") != "visitor":
+            return JSONResponse(
+                {"ok": False,
+                 "error": "Tap Take control first — OG is driving "
+                          "right now."},
+                status_code=409)
+        if _session_minutes_left(rec) <= 0:
+            _end_session(uid, "budget spent")
+            return JSONResponse({"ok": False,
+                                 "error": "session ended"},
+                                status_code=404)
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        try:
+            out = await asyncio.to_thread(_visitor_input, rec,
+                                          payload)
+        except _DriveError as e:
+            return JSONResponse(
+                {"ok": False, "error": f"input failed: {e}"},
+                status_code=502)
+        rec = dict(rec)
+        rec["last_action"] = time.time()
+        _set_session(uid, rec)
+        return out
 
     @app.post("/browser/end")
     async def browser_end(request: Request):
