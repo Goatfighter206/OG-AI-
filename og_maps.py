@@ -457,7 +457,7 @@ _CATEGORIES = {
     "gas": _cat("gas stations",
         [['["amenity"="fuel"]']],
         r"\bgas stations?\b|\bfuel stations?\b|\bpetrol stations?\b"
-        r"|\bwhere can i get gas\b"),
+        r"|\bwhere can i get gas\b|\bgas\b"),
     "pharmacy": _cat("pharmacies",
         [['["amenity"="pharmacy"]']],
         r"\bpharmacy\b|\bpharmacies\b|\bdrug ?stores?\b"),
@@ -546,8 +546,9 @@ _FILLER_TAIL = re.compile(
 _LOC_PREP = re.compile(
     r"\b(near|around|close to|in|at|by)\s+(.+)$", re.IGNORECASE)
 _PLACE_VERBS = re.compile(
-    r"\b(where('s| is| are)|find|show me|search|look(ing)? for|locate"
-    r"|get me|give me|any|some|nearest|closest|nearby)\b", re.IGNORECASE)
+    r"\b(where('s| is| are| can i)|find|show me|search|look(ing)? for"
+    r"|locate|get me|give me|any|some|nearest|closest|nearby)\b",
+    re.IGNORECASE)
 
 _ROUTE_FROM_TO = re.compile(
     r"\bfrom\s+(.+?)\s+to\s+(.+)$", re.IGNORECASE)
@@ -634,7 +635,7 @@ def _parse_places(low, original):
     "location"}; location None means 'ask where'. None when the
     message names a category without any place-seeking shape, or no
     category at all (normal chat / other tools' turf)."""
-    if "how much" in low:
+    if "how much" in low or "price" in low:
         return None  # a price question — Round 3/4 turf, not places
     if _CREATIVE_ASK.search(low):
         return None  # "tell me a story about a bar…" is a story ask
@@ -661,6 +662,49 @@ def _parse_places(low, original):
             "location": location}
 
 
+# Round 40: bare-place / landmark lookup. A bare famous-place name
+# ("Pike Place") or "where is <place>?" has no category and no route
+# keyword, so it used to parse to nothing at all. A small table of
+# well-known landmarks canonicalizes the name (bare "Pike Place"
+# means Pike Place Market, Seattle); the answer is grounded in the
+# geocoder's own display name, nothing invented.
+_LANDMARKS = {
+    "pike place": "Pike Place Market, Seattle",
+    "pike place market": "Pike Place Market, Seattle",
+    "space needle": "Space Needle, Seattle",
+    "eiffel tower": "Eiffel Tower, Paris",
+    "statue of liberty": "Statue of Liberty, New York",
+    "golden gate bridge": "Golden Gate Bridge, San Francisco",
+    "times square": "Times Square, New York",
+    "grand canyon": "Grand Canyon",
+    "yellowstone": "Yellowstone National Park",
+    "mount rainier": "Mount Rainier",
+    "central park": "Central Park, New York",
+    "hollywood sign": "Hollywood Sign, Los Angeles",
+    "las vegas strip": "Las Vegas Strip, Las Vegas",
+    "niagara falls": "Niagara Falls",
+    "white house": "White House, Washington DC",
+}
+_LANDMARK_ASK = re.compile(
+    r"^(?:where(?:'s| is)|find|locate|show me)?\s*(.+?)\s*\??$",
+    re.IGNORECASE)
+
+
+def _parse_landmark(low, original):
+    """Bare landmark name / 'where is X?' -> {"kind": "landmark",
+    "name": canonical}. Only table entries resolve — an arbitrary
+    place name stays normal chat."""
+    m = _LANDMARK_ASK.match(low.strip())
+    if not m:
+        return None
+    name = " ".join(m.group(1).split()).strip(" .?!,;:")
+    name = re.sub(r"^(the)\s+", "", name)
+    canonical = _LANDMARKS.get(name)
+    if not canonical:
+        return None
+    return {"kind": "landmark", "name": canonical}
+
+
 def parse_maps_intent(message):
     """Parse a maps job out of a chat message, or None. Route shapes
     win over category shapes ('how far is the coffee shop from…' is a
@@ -668,7 +712,8 @@ def parse_maps_intent(message):
     if not message:
         return None
     low = " ".join(str(message).lower().split())
-    return _parse_route(low, message) or _parse_places(low, message)
+    return _parse_route(low, message) or _parse_places(low, message) \
+        or _parse_landmark(low, message)
 
 
 def message_needs_maps(message):
@@ -859,6 +904,26 @@ def _route_results(parsed, coords=None):
     ]
 
 
+def _landmark_results(parsed):
+    """Ground a landmark answer in the geocoder's own record:
+    its display name (which carries the city/area) + a map link.
+    Nothing beyond that record is stated."""
+    name = parsed["name"]
+    ref = geocode(name)
+    if ref is None:
+        return None  # couldn't pin it — fall through
+    display = ref.get("display") or name
+    link = (f"https://www.openstreetmap.org/#map=15/"
+            f"{ref['lat']:.5f}/{ref['lon']:.5f}")
+    body = (
+        f"The visitor asked about {name}. OpenStreetMap places it "
+        f"here: {display}. Map: {link}. State where it is plainly, "
+        f"in your own voice, from that record only — do NOT invent "
+        f"history, hours, ticket prices or reviews.")
+    return [{"title": f"{name} (OpenStreetMap, live)",
+             "body": body[:1800], "href": link}]
+
+
 def maps_search_results(parsed, uid, consume_lookup, coords=None):
     """Run one parsed maps job. Returns web_search-shaped results on
     a hit (or the clarifying-question note when a detail is missing),
@@ -884,7 +949,9 @@ def maps_search_results(parsed, uid, consume_lookup, coords=None):
         coords = _valid_coords(coords) if coords else None
     else:
         coords = None
-    if parsed["kind"] == "places":
+    if parsed["kind"] == "landmark":
+        results = _landmark_results(parsed)
+    elif parsed["kind"] == "places":
         if parsed.get("location"):
             results = _places_results(parsed)   # named place wins
         elif coords:
