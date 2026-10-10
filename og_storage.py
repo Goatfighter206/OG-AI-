@@ -521,13 +521,29 @@ def _warning_block(uid: str, tier: str) -> str:
     cands = cleanup_candidates(uid)
     names = ", ".join(
         f"'{r['name']}' ({fmt_size(r['size'])})" for r in cands[:4])
-    return (
+    block = (
         f"\n⚠️ LOCKER NEAR FULL: {fmt_size(usage_bytes(uid))} of "
         f"{fmt_size(quota_bytes(tier))} used (90%+). The oldest/"
         f"biggest stuff OG would point at first: {names}. Tell the "
         f"visitor plainly their locker is almost full and that "
         f"saying \"clean up my storage\" lines those up for deletion "
         f"— NOTHING is deleted without their YES, ever.")
+    # Notifications (optional layer): the near-full warning
+    # also lands in the visitor's notification center
+    # (+ opt-in channels); og_notify dedupes unread
+    # storage warnings within 24h. Fail-safe.
+    try:
+        import og_notify as _notify
+        _notify.record(
+            uid, "storage_warning", "Your locker is almost full",
+            f"Your locker is {fmt_size(usage_bytes(uid))} of "
+            f"{fmt_size(quota_bytes(tier))} used (90%+). The "
+            f"oldest/biggest stuff: {names}. Say \"clean up "
+            f"my storage\" and OG lines them up for your OK — "
+            f"nothing is deleted without your YES.")
+    except Exception:
+        pass
+    return block
 
 
 _pending_cleanup: Dict[str, Dict] = {}
