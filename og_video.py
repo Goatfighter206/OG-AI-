@@ -1454,6 +1454,28 @@ def _run_job(job_id: str, uid: str) -> None:
     except Exception as e:
         logger.warning(f"Story video job {job_id} failed: {e}")
         try:
+            import og_fixqueue as _fq
+            _fq.record_problem(
+                uid, "video", f"video:{job_id}", "video-render",
+                "A video render failed",
+                f"The render of \"{title}\" failed: "
+                f"{type(e).__name__}: {str(e)[:200]}",
+                fix={"kind": "owner_steps",
+                     "summary": f"The video \"{title}\" didn't "
+                                f"render. Nothing was charged.",
+                     "steps": [
+                         "Nothing was charged — the job died "
+                         "before it finished.",
+                         "Ask OG to make the video again; a "
+                         "one-off failure usually clears on a "
+                         "fresh try.",
+                         "If the same failure repeats, the "
+                         "diagnosis above is the detail to "
+                         "work from.",
+                     ]})
+        except Exception:
+            pass
+        try:
             if isinstance(e, _SceneStall):
                 detail = (f"Scene {stall_scene + 1} stalled — "
                           f"its {e.what} call hung twice, so I "
