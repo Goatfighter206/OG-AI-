@@ -74,8 +74,19 @@
 <button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
 <p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
 </nav>
-<h3 class="og-menu-sec">Connect accounts</h3>
+<h3 class="og-menu-sec">Connections</h3>
 <nav class="og-menu-card">
+<button class="og-menu-item" id="menuConnectionsBtn" type="button"><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connections</button>
+</nav>
+</div>
+<div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
+</aside>
+<div id="connectionsScrim" class="og-connections-scrim" hidden></div>
+<section id="ogConnections" class="og-connections" hidden role="dialog" aria-modal="true" aria-label="Connections">
+<div class="og-connections-top"><button id="connectionsCloseBtn" class="og-circle-btn" type="button" aria-label="Close connections"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><h2>Connections</h2></div>
+<div class="og-connections-scroll">
+<h3 class="og-connections-sec">Built-in connections</h3>
+<div class="og-connections-card">
 <a class="og-menu-item" id="menuGoogleBtn" href="/auth/google" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Google</a>
 <div class="og-menu-item" id="menuGoogleInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuGoogleEmail"></span></div>
 <button class="og-menu-item" id="menuGoogleDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Google</button>
@@ -103,10 +114,26 @@
 <a class="og-menu-item" id="menuCoinbaseBtn" href="/auth/coinbase" hidden><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connect Coinbase (trading)</a>
 <div class="og-menu-item" id="menuCoinbaseInfo" hidden><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuCoinbaseName"></span></div>
 <button class="og-menu-item" id="menuCoinbaseDisconnect" type="button" hidden><span class="og-mi"><svg><use href="#i-power"/></svg></span> Disconnect Coinbase</button>
-</nav>
 </div>
-<div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
-</aside>
+<h3 class="og-connections-sec">Connect another account</h3>
+<div class="og-connections-card og-connections-formcard">
+<p class="og-connections-copy">For a site OG does not have a built-in connection for, OG's browser can open it and keep you logged in there.</p>
+<label class="og-connections-label" for="browserConnectSite">Site name or web address</label>
+<input id="browserConnectSite" class="og-connections-input" type="text" inputmode="url" autocomplete="off" placeholder="example.com">
+<button id="browserConnectBtn" class="og-connections-primary" type="button">Connect with browser</button>
+<p class="og-connections-note">Tap Connect, then take control in OG's browser and log in yourself. OG never sees or stores your password.</p>
+<p class="og-connections-note">A browser connection lets OG work on that site through the browser — it is not a data feed like the built-in connections.</p>
+</div>
+<h3 class="og-connections-sec">Browser logins</h3>
+<div class="og-connections-card og-connections-formcard">
+<div id="browserLoginsList" class="og-connections-logins"></div>
+<p id="browserLoginsEmpty" class="og-connections-copy">No saved browser logins yet.</p>
+<button id="forgetAllLoginsBtn" class="og-connections-danger" type="button" hidden>Forget all my logins</button>
+<p id="browserLoginsMessage" class="og-connections-note" aria-live="polite"></p>
+</div>
+</div>
+</section>
+
 
 <div id="ageGate" class="age-gate" hidden>
 <div class="age-gate-card og-auth-card">
@@ -1110,162 +1137,13 @@ sendMessage = function () { var r = _ogSend.apply(this, arguments); syncSendBtn(
 syncSendBtn();
 }
 })();</script>
-<script>(function () {
-function $(id) { return document.getElementById(id); }
-var btn = $('menuGoogleBtn'), info = $('menuGoogleInfo'),
-emailEl = $('menuGoogleEmail'), disc = $('menuGoogleDisconnect');
-if (!btn) return;
-function refresh() {
-fetch('/auth/google/status').then(function (r) { return r.json(); }).then(function (s) {
-if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-if (s.connected) {
-btn.hidden = true; info.hidden = false; disc.hidden = false;
-emailEl.textContent = s.email ? ('Google: ' + s.email) : 'Google connected';
-} else {
-btn.hidden = false; info.hidden = true; disc.hidden = true;
-}
-}).catch(function () {  });
-}
-if (disc) disc.addEventListener('click', function () {
-fetch('/auth/google/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-});
-refresh();
-})();</script>
-<script>(function () {
-function $(id) { return document.getElementById(id); }
-var btn = $('menuSpotifyBtn'), info = $('menuSpotifyInfo'),
-nameEl = $('menuSpotifyName'), disc = $('menuSpotifyDisconnect');
-if (!btn) return;
-function refresh() {
-fetch('/auth/spotify/status').then(function (r) { return r.json(); }).then(function (s) {
-if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-if (s.connected) {
-btn.hidden = true; info.hidden = false; disc.hidden = false;
-var who = s.name || s.email;
-nameEl.textContent = who ? ('Spotify: ' + who) : 'Spotify connected';
-} else {
-btn.hidden = false; info.hidden = true; disc.hidden = true;
-}
-}).catch(function () {  });
-}
-if (disc) disc.addEventListener('click', function () {
-fetch('/auth/spotify/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-});
-refresh();
-})();</script>
-<script>(function () {
-function $(id) { return document.getElementById(id); }
-var btn = $('menuCoinbaseBtn'), info = $('menuCoinbaseInfo'),
-nameEl = $('menuCoinbaseName'), disc = $('menuCoinbaseDisconnect');
-if (!btn) return;
-function refresh() {
-fetch('/auth/coinbase/status').then(function (r) { return r.json(); }).then(function (s) {
-if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-if (s.connected) {
-btn.hidden = true; info.hidden = false; disc.hidden = false;
-var who = s.name || s.email;
-nameEl.textContent = who ? ('Coinbase: ' + who) : 'Coinbase connected';
-} else {
-btn.hidden = false; info.hidden = true; disc.hidden = true;
-}
-}).catch(function () {  });
-}
-if (disc) disc.addEventListener('click', function () {
-fetch('/auth/coinbase/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-});
-refresh();
-})();</script>
-<script>(function () {
-function $(id) { return document.getElementById(id); }
-var btn = $('menuGithubBtn'), info = $('menuGithubInfo'),
-nameEl = $('menuGithubName'), disc = $('menuGithubDisconnect');
-if (!btn) return;
-function refresh() {
-fetch('/auth/github/status').then(function (r) { return r.json(); }).then(function (s) {
-if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-if (s.connected) {
-btn.hidden = true; info.hidden = false; disc.hidden = false;
-var who = s.login || s.name || s.email;
-nameEl.textContent = who ? ('GitHub: ' + who) : 'GitHub connected';
-} else {
-btn.hidden = false; info.hidden = true; disc.hidden = true;
-}
-}).catch(function () {  });
-}
-if (disc) disc.addEventListener('click', function () {
-fetch('/auth/github/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-});
-refresh();
-})();</script>
-<script>[['Youtube', 'youtube', function (s) { return s.name || s.email; }, 'YouTube'],
-['Discord', 'discord', function (s) { return s.username || s.name; }, 'Discord'],
-['Twitch', 'twitch', function (s) { return s.login || s.name || s.email; }, 'Twitch'],
-['Reddit', 'reddit', function (s) { return s.username || s.name; }, 'Reddit']
-].forEach(function (cfg) {
-var key = cfg[0], path = cfg[1], pick = cfg[2], label = cfg[3];
-(function () {
-function $(id) { return document.getElementById(id); }
-var btn = $('menu' + key + 'Btn'), info = $('menu' + key + 'Info'),
-nameEl = $('menu' + key + 'Name'), disc = $('menu' + key + 'Disconnect');
-if (!btn) return;
-function refresh() {
-fetch('/auth/' + path + '/status').then(function (r) { return r.json(); }).then(function (s) {
-if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-if (s.connected) {
-btn.hidden = true; info.hidden = false; disc.hidden = false;
-var who = pick(s);
-nameEl.textContent = who ? (label + ': ' + who) : (label + ' connected');
-} else {
-btn.hidden = false; info.hidden = true; disc.hidden = true;
-}
-}).catch(function () {  });
-}
-if (disc) disc.addEventListener('click', function () {
-fetch('/auth/' + path + '/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-});
-refresh();
-})();
-});</script>
+
+
+
+
+
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
-<script>(function () {
-function $(id) { return document.getElementById(id); }
-var btn = $('menuPlaidBtn'), info = $('menuPlaidInfo'),
-nameEl = $('menuPlaidName'), disc = $('menuPlaidDisconnect');
-if (!btn) return;
-function refresh() {
-fetch('/plaid/status').then(function (r) { return r.json(); }).then(function (s) {
-if (!s.enabled) { btn.hidden = true; info.hidden = true; disc.hidden = true; return; }
-if (s.connected) {
-btn.hidden = true; info.hidden = false; disc.hidden = false;
-nameEl.textContent = s.institution ? ('Bank: ' + s.institution) : 'Bank connected';
-} else {
-btn.hidden = false; info.hidden = true; disc.hidden = true;
-}
-}).catch(function () {  });
-}
-btn.addEventListener('click', function () {
-if (typeof Plaid === 'undefined') return;
-fetch('/plaid/link-token', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
-if (!d.link_token) return;
-var handler = Plaid.create({
-token: d.link_token,
-onSuccess: function (publicToken) {
-fetch('/plaid/exchange', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ public_token: publicToken })
-}).then(refresh).catch(refresh);
-},
-onExit: function () {  }
-});
-handler.open();
-}).catch(function () {  });
-});
-if (disc) disc.addEventListener('click', function () {
-fetch('/plaid/disconnect', { method: 'POST' }).then(refresh).catch(refresh);
-});
-refresh();
-})();</script>
+
 <style id="og-image-css">.og-gen-image{display:block;width:100%;max-width:420px;height:auto;border-radius:14px;margin:10px 0 6px;border:1px solid rgba(255,193,7,.35)}.og-img-download{display:inline-block;margin:2px 0 4px;color:#ffc107;font-weight:600;text-decoration:none}.og-img-download:hover{text-decoration:underline}.og-drawing-pulse{animation:ogDrawingPulse 1.1s ease-in-out infinite}@keyframes ogDrawingPulse{0%,100%{opacity:.4}50%{opacity:1}}</style>
 <script id="og-image-js">(function () {
 var DENY = /\b(draw\s+(an?\s+)?(conclusion|attention|breath|blood)|draw\s+(near|closer)|draw\s+the\s+(curtains?|blinds?))\b/i;
@@ -2176,6 +2054,8 @@ paint();
 </div>
 
 <link rel="stylesheet" href="/static/og_notify.css">
+<link rel="stylesheet" href="/static/og_connections.css">
 <script src="/static/og_notify.js"></script>
+<script src="/static/og_connections.js"></script>
 </body>
 </html>
