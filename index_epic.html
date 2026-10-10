@@ -584,15 +584,15 @@ function updateTokenStatus(left) {
 const el = document.getElementById('tokenStatus');
 if (!el) return;
 if (left === null || left === undefined) {
-el.textContent = '💎 Pro — unlimited';
+el.textContent = '💎 Pro — weekly pool';
 } else {
-el.textContent = '🪙 ' + Number(left).toLocaleString() + ' free tokens left today';
+el.textContent = '🪙 ' + Number(left).toLocaleString() + ' free tokens left this week';
 }
 }
 function showUpgradeCta() {
 const cta = document.createElement('div');
 cta.style.cssText = 'text-align: center; padding: 8px 0 2px;';
-cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — unlimited messages</a>';
+cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px; border: 2px solid #ffc107; border-radius: 999px; color: #ffc107; text-decoration: none; font-weight: bold; background: rgba(255,193,7,0.08);">🔥 Go Pro — bigger weekly pool</a>';
 document.getElementById('messagesArea').appendChild(cta);
 ogFollowBottom(false);
 }
@@ -1358,7 +1358,7 @@ return;
 }
 if (planText) planText.textContent = 'Change plan';
 if (ts && (ts.textContent || '').indexOf('free tokens left') === -1) {
-var want = BADGE[tier] + ' — unlimited';
+var want = BADGE[tier] + ' — weekly pool';
 if (ts.textContent !== want) ts.textContent = want;
 }
 }
@@ -1367,7 +1367,7 @@ if (d && d.tier) { tier = d.tier; applyTier(); }
 }).catch(function () {});
 if (ts && window.MutationObserver) {
 new MutationObserver(function () {
-if (tier && tier !== 'free' && ts.textContent === '💎 Pro — unlimited' && tier !== 'pro') applyTier();
+if (tier && tier !== 'free' && ts.textContent === '💎 Pro — weekly pool' && tier !== 'pro') applyTier();
 }).observe(ts, { childList: true, characterData: true, subtree: true });
 }
 })();</script>
@@ -1971,13 +1971,13 @@ var top = $('ogTopName'), mine = $('menuName');
 function syncName() { if (top && mine) mine.textContent = top.textContent; }
 if (top && window.MutationObserver) new MutationObserver(syncName).observe(top, { childList: true, characterData: true, subtree: true });
 syncName();
-var ts = $('tokenStatus'), fill = $('planBarFill'), FREE_TOTAL = 25000;
+var ts = $('tokenStatus'), fill = $('planBarFill'), FREE_TOTAL = 175000;
 function syncBar() {
 if (!ts || !fill) return;
 var t = ts.textContent || '';
 var m = t.replace(/,/g, '').match(/(\d+)\s+free tokens left/);
 if (m) { var left = Math.max(0, Math.min(FREE_TOTAL, parseInt(m[1], 10))); fill.style.width = ((FREE_TOTAL - left) / FREE_TOTAL * 100) + '%'; }
-else if (t.indexOf('unlimited') !== -1) fill.style.width = '100%';
+else if (t.indexOf('weekly pool') !== -1) fill.style.width = '100%';
 }
 if (ts && window.MutationObserver) new MutationObserver(syncBar).observe(ts, { childList: true, characterData: true, subtree: true });
 syncBar();
