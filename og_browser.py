@@ -436,9 +436,73 @@ def _end_session(uid: str, why: str = "") -> Optional[Dict]:
 # non-empty human description (its desc, or the text it will
 # post) — _set_pending is the single choke point and refuses a
 # description-less park, so the card can never show a blank one.
+#
+# Round 48: pendings are DURABLE. They used to live only in a
+# process-memory dict while sessions were store-backed, so every
+# redeploy buried parked approvals the visitor's card still
+# showed (the owner's Approve tap after the R47 deploy got
+# "no pending action"). _pending_by_uid is now a dict-shaped
+# view over the SAME usage store the session records use — one
+# "browser_pend:<uid>" record per visitor, via the same
+# load_usage / save_usage / usage_lock deps. The map holds no
+# state of its own: a restart loses nothing, TTL expiry and the
+# orphan sweep still run on every read, and the consume in
+# _execute_gated deletes the durable record, so a replayed
+# approve finds nothing — exactly once, everywhere.
 
 _pending_lock = threading.Lock()
-_pending_by_uid: Dict[str, Dict] = {}
+
+_PEND_KEY_PREFIX = "browser_pend:"
+
+
+class _PendingMap:
+    """The parked approvals, as a mapping uid -> state dict,
+    backed by the durable usage store (the session records'
+    mechanism). Reads/writes go through _usage_get/_usage_set;
+    __getitem__ returns the store's live entry (diagnostics and
+    suites poke `created` through it) — production reads use
+    _get_pending, which copies and applies TTL + the sweep."""
+
+    def _key(self, uid: str) -> str:
+        return f"{_PEND_KEY_PREFIX}{uid}"
+
+    def get(self, uid: str) -> Optional[Dict]:
+        return _usage_get(self._key(uid))
+
+    def __getitem__(self, uid: str) -> Dict:
+        with _deps["usage_lock"]:
+            store = _deps["load_usage"]()
+        entry = store.get(self._key(uid))
+        if not isinstance(entry, dict):
+            raise KeyError(uid)
+        return entry
+
+    def __setitem__(self, uid: str, state: Dict) -> None:
+        _usage_set(self._key(uid), state)
+
+    def __delitem__(self, uid: str) -> None:
+        _usage_set(self._key(uid), None)
+
+    def __contains__(self, uid: str) -> bool:
+        return _usage_get(self._key(uid)) is not None
+
+    def pop(self, uid: str, default=None):
+        state = _usage_get(self._key(uid))
+        if state is None:
+            return default
+        _usage_set(self._key(uid), None)
+        return state
+
+    def clear(self) -> None:
+        with _deps["usage_lock"]:
+            store = _deps["load_usage"]()
+            for key in [k for k in store
+                        if k.startswith(_PEND_KEY_PREFIX)]:
+                store.pop(key, None)
+            _deps["save_usage"](store)
+
+
+_pending_by_uid = _PendingMap()
 
 
 def _pending_identity(state: Dict) -> tuple:
