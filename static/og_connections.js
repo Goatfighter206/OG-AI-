@@ -238,3 +238,56 @@ if (typeof sendMessage === 'function') sendMessage(true);
 });
 window.ogOpenConnections = openConnections;
 })();
+/* Round 49: the always-allowed sites in the Browser connect
+   folder — OG skips the approval card on these; Remove puts
+   the site back behind the card. Same row shapes as logins. */
+(function () {
+function $(id) { return document.getElementById(id); }
+var list = $('browserAllowedList'), empty = $('browserAllowedEmpty'),
+msg = $('browserAllowedMessage'), openBtn = $('menuConnectionsBtn');
+if (!list) return;
+function paintAllowed(allowed) {
+list.innerHTML = '';
+empty.hidden = allowed.length !== 0;
+allowed.forEach(function (item) {
+var row = document.createElement('div');
+row.className = 'og-connections-login-row';
+var label = document.createElement('span');
+var since = item.since ? String(item.since).slice(0, 10) : '';
+label.textContent = since ? (item.site + ' — always allowed since ' + since) : item.site;
+var btn = document.createElement('button');
+btn.type = 'button';
+btn.className = 'og-connections-forget-one';
+btn.textContent = 'Remove';
+btn.setAttribute('data-site', item.site);
+btn.addEventListener('click', function () { removeOne(item.site); });
+row.appendChild(label);
+row.appendChild(btn);
+list.appendChild(row);
+});
+}
+function refreshAllowed() {
+fetch('/browser/allowed').then(function (r) { return r.json(); }).then(function (d) {
+if (!d.enabled) {
+list.innerHTML = '';
+if (empty) { empty.hidden = false; empty.textContent = 'Browser is not switched on yet.'; }
+return;
+}
+if (empty) empty.textContent = 'No always-allowed sites yet.';
+paintAllowed(d.allowed || []);
+}).catch(function () {  });
+}
+function removeOne(site) {
+if (!window.confirm('Stop always allowing ' + site + '? OG will ask again before acting there.')) return;
+fetch('/browser/disallow', {
+method: 'POST', headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ site: site })
+}).then(function (r) { return r.json(); }).then(function (d) {
+if (msg) msg.textContent = d.body || d.title || '';
+refreshAllowed();
+}).catch(function () {  });
+}
+if (openBtn) openBtn.addEventListener('click', refreshAllowed);
+refreshAllowed();
+window.ogRefreshAllowed = refreshAllowed;
+})();
