@@ -8,7 +8,7 @@ if (!bell) return;
 buildPrefs();
 var emailBox = $('notifyPrefEmail'), pushBox = $('notifyPrefPush'),
 pushMsg = $('notifyPushMsg');
-var ICONS = { watch_match: '👀', price_alert: '📈', video_done: '🎬', song_done: '🎵', storage_warning: '⚠️', notice: '🔔', approval_needed: '✋', signin_needed: '🔑' };
+var ICONS = { watch_match: '👀', price_alert: '📈', video_done: '🎬', song_done: '🎵', storage_warning: '⚠️', notice: '🔔', approval_needed: '✋', signin_needed: '🔑', system_check: '🩺', fix_needed: '🔧' };
 var lastItems = [];
 function buildPrefs() {
 // The preferences section is built here (not in the page
@@ -90,7 +90,17 @@ when.textContent = relTime(it.ts);
 main.appendChild(when);
 row.appendChild(ico);
 row.appendChild(main);
-row.addEventListener('click', function () { if (!it.read) markRead(it.id); });
+row.addEventListener('click', function () {
+/* Round 59: a tap takes the user to the thing the notification is
+   about. The shell (og_shell.js, loaded after this file) exposes
+   window.ogRouteTarget — looked up lazily HERE, at click time,
+   never at load. No target = the tap just marks read, as before. */
+if (!it.read) markRead(it.id);
+if (it.target && typeof window.ogRouteTarget === 'function') {
+closePanel();
+window.ogRouteTarget(it.target);
+}
+});
 listEl.appendChild(row);
 });
 }
