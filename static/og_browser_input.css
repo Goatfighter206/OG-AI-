@@ -1,0 +1,51 @@
+/* OG — Round 43: takeover input chrome (still-view keyboard +
+   pointer) and the true full-screen driving state. Loaded by
+   index_epic.html next to the other round assets; the panel's
+   own styles live inline in the page — this file only ADDS the
+   Round 43 pieces, in the panel's black-and-gold language. */
+
+/* Driving = the panel owns the whole viewport. The JS also pins
+   these as inline styles and reparents the panel to <body>, so
+   no page chrome or transformed ancestor can shrink it. */
+#browserPanel.og-r43-full{border:none;border-radius:0}
+body.og-r43-lock{overflow:hidden}
+
+/* The two toggle icons: small, icon-only. Dim = off; gold = on. */
+#browserActions .og-icon-btn{font-size:19px;line-height:1;
+  min-width:42px;padding:7px 0;text-align:center}
+#browserActions .og-icon-btn.og-on{background:#ffc107;
+  border-color:#ffc107;color:#111}
+
+/* Keyboard strip — shows only while the ⌨️ toggle is on. The
+   input is a REAL field on our page, so the phone keyboard
+   opens; font-size 16px keeps iOS from auto-zooming on focus. */
+#ogKbStrip{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;
+  padding:8px;background:#111;border-top:1px solid #2a2a2a}
+#ogKbStrip[hidden]{display:none}
+#ogKbText{flex:1 1 150px;min-width:0;font-size:16px;padding:9px 10px;
+  border-radius:10px;border:1px solid #3a3a3a;background:#0a0a0a;
+  color:#f5f5f5}
+#ogKbText:focus{outline:none;border-color:#ffc107}
+#ogKbStrip button{flex:0 0 auto;font:inherit;font-size:13px;
+  padding:8px 11px;border-radius:999px;border:1px solid #444;
+  background:#1b1b1b;color:#eee;cursor:pointer}
+#ogKbStrip button:active{border-color:#ffc107;color:#ffc107}
+#ogKbSend{background:#ffc107;border-color:#ffc107;color:#111;
+  font-weight:700}
+
+/* Input feedback line (errors/hints), under the strip. */
+#ogInputMsg{margin:0;padding:6px 12px;font-size:12px;color:#ffc107;
+  background:#111}
+#ogInputMsg[hidden]{display:none}
+
+/* Pointer mode on the still: own the gesture (no scroll/zoom
+   stealing) and show it's live. */
+#browserShot.og-ptr-on{touch-action:none;cursor:pointer}
+
+/* The task bubble while it rides inside the full-screen panel:
+   top center, just under the slim control bar. Same element the
+   page's own updater paints in every state — this only places
+   it while the takeover owns the screen. */
+#ogTaskPillTop.og-r43-pill{position:absolute;top:56px;left:50%;
+  transform:translateX(-50%);z-index:6;margin:0;pointer-events:none;
+  box-shadow:0 4px 18px rgba(0,0,0,.55)}
