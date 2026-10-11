@@ -358,6 +358,8 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     _step(results, "podcast", lambda: _podcast.purge_owner(uid))
     import og_designer as _designer
     _step(results, "designer", lambda: _designer.purge_owner(uid))
+    import og_books as _books
+    _step(results, "books", lambda: _books.purge_owner(uid))
 
     def storage():
         import og_storage as _st
