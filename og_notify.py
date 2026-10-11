@@ -77,6 +77,31 @@ already no-ops without one). Every other kind keeps the
 global email/push behavior exactly as before. The web
 switches live on the "Notification settings" page
 (/static/og_notification_settings.js).
+
+ROUND 41 PHASE A (native push, SERVER SIDE ONLY, DARK).
+The missing channel the plan names: Web Push does not exist
+inside the app surfaces (Capacitor shell / Unity), so a
+device registry + an FCM HTTP v1 send path land here,
+behind the OG_PUSH_NATIVE_ENABLED gate (default OFF --
+record() still calls the fanout, it no-ops instantly).
+Devices register via POST /notifications/devices
+(records keyed devices:<uid>, cap 5, the token is the
+unique key; a token presented under a different uid MOVES
+to that uid), and unregister via
+POST /notifications/devices/remove. Tokens are never
+logged and never returned by any route. The prefs rule is
+the EXISTING one, unchanged: _native_fanout is
+transport-only exactly like _push_fanout, and record()
+calls it inside the same prefs-gated branches -- regular
+kinds obey the global push pref, alert kinds obey
+alerts_push overriding it. purge_uid wipes devices: too.
+The send uses the service-account OAuth2 flow (an RS256
+JWT signed with the `cryptography` library, exchanged for
+an access token cached until near expiry) and one FCM
+HTTP v1 message per device; UNREGISTERED /
+registration-token-not-registered prunes that token,
+every other failure keeps it. No producer can be broken
+by this channel -- same fail-safe swallow as record().
 """
 
 import base64
@@ -99,11 +124,15 @@ STORE_FILE = os.getenv("OG_NOTIFY_STORE", "notify_store.json")
 MAX_ITEMS = 100
 LIST_CAP = 50
 MAX_SUBS = 10
+MAX_DEVICES = 5
+DEVICE_PLATFORMS = ("ios", "android")
+DEVICE_SURFACES = ("shell", "unity")
 STORAGE_DEDUPE_SECONDS = 24 * 60 * 60
 TITLE_CAP = 160
 BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
-         "song_done", "podcast_done", "book_done",
+         "song_done", "podcast_done", "book_done", "motion_done",
+         "model_done", "sfx_done", "voice_done",
          "storage_warning", "notice",
          "approval_needed", "signin_needed", "system_check",
          "fix_needed",
@@ -252,7 +281,9 @@ def purge_uid(uid: str):
     uid owns. Other uids' keys are never touched."""
     if not uid:
         return
-    for prefix in ("items:", "prefs:", "subs:"):
+    for token_uid in [d.get("token") for d in _devices(uid)]:
+        _device_index_del(token_uid, uid)
+    for prefix in ("items:", "prefs:", "subs:", "devices:"):
         _del(prefix + uid)
 
 
@@ -292,6 +323,91 @@ def alerts_enabled(uid) -> bool:
 def _subs(uid: str) -> list:
     subs = _get("subs:" + uid)
     return subs if isinstance(subs, list) else []
+
+
+# --- Native device registry (Round 41 Phase A) ---------------------------------
+# Records keyed devices:<uid> in the same store, the subs:
+# pattern with MAX_DEVICES in place of MAX_SUBS. The token
+# is the unique key. A second tiny key, device_index
+# (token -> uid), exists only so a token presented under a
+# DIFFERENT uid can be moved off the old uid's list (the
+# per-uid store has no scan); register / remove / prune /
+# purge keep it in sync, and _devices() is the only read
+# the fanout ever uses.
+
+
+def _devices(uid: str) -> list:
+    devices = _get("devices:" + uid)
+    return devices if isinstance(devices, list) else []
+
+
+def _device_index() -> dict:
+    index = _get("device_index")
+    return index if isinstance(index, dict) else {}
+
+
+def _device_owner(token: str):
+    owner = _device_index().get(token)
+    return owner if isinstance(owner, str) and owner else None
+
+
+def _device_index_set(token: str, uid: str):
+    index = _device_index()
+    index[token] = uid
+    _put("device_index", index)
+
+
+def _device_index_del(token, uid=None):
+    if not isinstance(token, str) or not token:
+        return
+    index = _device_index()
+    if token in index and (uid is None or index[token] == uid):
+        del index[token]
+        _put("device_index", index)
+
+
+def _register_device(uid: str, token: str, platform: str,
+                     surface: str, app_version: str = "") -> dict:
+    """Upsert one device record for uid. Re-registering the
+    same token refreshes it; a token owned by a DIFFERENT
+    uid moves (removed from the old uid first, so a phone
+    that changed accounts stops buzzing for the old one);
+    the list is capped at MAX_DEVICES, newest wins (the
+    MAX_SUBS tail-keep pattern) and an evicted token's
+    index entry goes with it."""
+    now = time.time()
+    old_uid = _device_owner(token)
+    if old_uid and old_uid != uid:
+        _put("devices:" + old_uid,
+             [d for d in _devices(old_uid)
+              if d.get("token") != token])
+    devices = _devices(uid)
+    existing = next((d for d in devices
+                     if d.get("token") == token), None)
+    rec = {"token": token, "platform": platform,
+           "surface": surface,
+           "app_version": app_version or "",
+           "created": (existing.get("created")
+                       if existing else None) or now,
+           "updated": now}
+    devices = [d for d in devices if d.get("token") != token]
+    devices.append(rec)
+    for evicted in devices[:-MAX_DEVICES]:
+        _device_index_del(evicted.get("token"), uid)
+    _put("devices:" + uid, devices[-MAX_DEVICES:])
+    _device_index_set(token, uid)
+    return rec
+
+
+def _remove_device(uid: str, token: str) -> bool:
+    devices = _devices(uid)
+    kept = [d for d in devices if d.get("token") != token]
+    if len(kept) == len(devices):
+        return False
+    _put("devices:" + uid, kept)
+    _device_index_del(token, uid)
+    return True
+
 
 
 def _site_url() -> str:
@@ -349,11 +465,13 @@ def record(uid, kind, title, body, target=None) -> None:
             if prefs.get("alerts_email", True):
                 _email_fanout(uid, title, body)
             if prefs.get("alerts_push", True):
+                _native_fanout(uid, kind, title, body)
                 _push_fanout(uid, kind, title, body)
         else:
             if prefs.get("email"):
                 _email_fanout(uid, title, body)
             if prefs.get("push"):
+                _native_fanout(uid, kind, title, body)
                 _push_fanout(uid, kind, title, body)
     except Exception as e:
         logger.warning(f"Notify record failed (swallowed): {e}")
@@ -513,6 +631,215 @@ def _push_fanout(uid: str, kind: str, title: str,
             kept.append(sub)
     if changed:
         _put("subs:" + uid, kept)
+
+
+# --- Native Push channel (Round 41 Phase A, DARK) --------------------------------
+# ONE transport: FCM HTTP v1 for both platforms (Firebase
+# relays to APNs on iOS). Creds come from the environment
+# ONLY: OG_FCM_PROJECT_ID + OG_FCM_SERVICE_ACCOUNT (the
+# whole service-account JSON as the value), and the dark
+# gate OG_PUSH_NATIVE_ENABLED. All three are read at CALL
+# time. OG_FCM_TOKEN_URL / OG_FCM_BASE_URL override the
+# Google endpoints only so the test suite can point the
+# send path at a local stub; they default to the real ones.
+# Tokens are never logged -- log lines carry counts and
+# status codes only.
+
+
+class _DeviceGone(Exception):
+    """FCM says this registration token is dead
+    (UNREGISTERED) -- prune it, the 404/410 pattern."""
+
+
+_FCM_TOKEN_URL_DEFAULT = "https://oauth2.googleapis.com/token"
+_FCM_BASE_URL_DEFAULT = "https://fcm.googleapis.com"
+_FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
+_FCM_CACHE = {"token": None, "exp": 0.0}
+
+
+def _native_enabled() -> bool:
+    return os.getenv("OG_PUSH_NATIVE_ENABLED", "").strip().lower() \
+        in ("1", "true", "yes", "on")
+
+
+def _fcm_settings() -> dict:
+    project = os.getenv("OG_FCM_PROJECT_ID", "").strip()
+    raw = os.getenv("OG_FCM_SERVICE_ACCOUNT", "").strip()
+    sa = {}
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                sa = parsed
+        except Exception:
+            sa = {}
+    if not project:
+        project = str(sa.get("project_id") or "").strip()
+    return {"project_id": project, "service_account": sa}
+
+
+def _fcm_token_url() -> str:
+    return (os.getenv("OG_FCM_TOKEN_URL", "").strip()
+            or _FCM_TOKEN_URL_DEFAULT)
+
+
+def _fcm_base_url() -> str:
+    return (os.getenv("OG_FCM_BASE_URL", "").strip()
+            or _FCM_BASE_URL_DEFAULT).rstrip("/")
+
+
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _fcm_jwt(sa: dict, token_url: str) -> str:
+    """A short-lived service-account JWT, RS256-signed with
+    the `cryptography` library (already deployed via
+    pywebpush -- no new dependency, no firebase-admin)."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    email = sa.get("client_email")
+    key_pem = sa.get("private_key")
+    if not email or not key_pem:
+        raise ValueError("service account lacks client_email/private_key")
+    now = int(time.time())
+    header = {"alg": "RS256", "typ": "JWT"}
+    claims = {"iss": email, "sub": email, "aud": token_url,
+              "scope": _FCM_SCOPE, "iat": now, "exp": now + 3600}
+    signing = (_b64url(json.dumps(header, separators=(",", ":")).encode())
+               + "." + _b64url(json.dumps(
+                   claims, separators=(",", ":")).encode()))
+    key = serialization.load_pem_private_key(
+        key_pem.encode("utf-8"), password=None)
+    sig = key.sign(signing.encode("ascii"), padding.PKCS1v15(),
+                   hashes.SHA256())
+    return signing + "." + _b64url(sig)
+
+
+def _http_post(url: str, body: bytes, headers: dict):
+    """The ONE native-push HTTP seam (stdlib urllib, the
+    og_wallet posture). Returns (status, body_bytes) for
+    every HTTP response INCLUDING error statuses; a network
+    failure raises and the caller treats it as keep-token /
+    no-token, never as a producer failure."""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(url, data=body, headers=headers,
+                                 method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def _fcm_access_token(sa: dict):
+    """Exchange the service-account JWT for an access token;
+    the result is cached until near expiry (60s early)."""
+    now = time.time()
+    if _FCM_CACHE["token"] and _FCM_CACHE["exp"] - now > 60:
+        return _FCM_CACHE["token"]
+    token_url = _fcm_token_url()
+    import urllib.parse
+    body = urllib.parse.urlencode({
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": _fcm_jwt(sa, token_url)}).encode("utf-8")
+    status, raw = _http_post(
+        token_url, body,
+        {"Content-Type": "application/x-www-form-urlencoded"})
+    if status != 200:
+        logger.warning(f"FCM token exchange failed ({status})")
+        return None
+    data = json.loads(raw.decode("utf-8"))
+    token = data.get("access_token")
+    if not isinstance(token, str) or not token:
+        return None
+    try:
+        expires_in = float(data.get("expires_in") or 3600)
+    except Exception:
+        expires_in = 3600.0
+    _FCM_CACHE["token"] = token
+    _FCM_CACHE["exp"] = now + expires_in
+    return token
+
+
+def _fcm_send(project_id: str, access_token: str, device_token: str,
+              kind: str, title: str, body: str) -> bool:
+    """ONE FCM HTTP v1 message to ONE device token -- the
+    same title/body/kind/url payload the Web Push fanout
+    sends. Raises _DeviceGone on UNREGISTERED /
+    registration-token-not-registered; False on quota /
+    5xx / other errors (token kept); True when accepted."""
+    payload = {"message": {
+        "token": device_token,
+        "notification": {"title": title or "OG", "body": body},
+        "data": {"kind": kind, "url": _site_url()}}}
+    url = (_fcm_base_url() + "/v1/projects/" + project_id
+           + "/messages:send")
+    status, raw = _http_post(
+        url, json.dumps(payload).encode("utf-8"),
+        {"Authorization": "Bearer " + access_token,
+         "Content-Type": "application/json"})
+    if 200 <= status < 300:
+        return True
+    text = raw.decode("utf-8", "replace") \
+        if isinstance(raw, (bytes, bytearray)) else str(raw)
+    if "UNREGISTERED" in text \
+            or "registration-token-not-registered" in text:
+        raise _DeviceGone()
+    logger.warning(f"FCM send failed ({status})")
+    return False
+
+
+def _native_fanout(uid: str, kind: str, title: str,
+                   body: str) -> None:
+    """Transport-only, exactly like _push_fanout: the prefs
+    decision was already made by record() (regular kinds --
+    the global push pref; alert kinds -- alerts_push
+    overriding it). Instant no-op when the dark gate is
+    off, no FCM creds are configured, or the uid has no
+    devices. FAIL-SAFE: never raises."""
+    try:
+        if not _native_enabled():
+            return
+        cfg = _fcm_settings()
+        sa = cfg["service_account"]
+        if not cfg["project_id"] or not sa.get("client_email") \
+                or not sa.get("private_key"):
+            return  # no FCM creds -- dark by construction
+        devices = _devices(uid)
+        if not devices:
+            return
+        try:
+            access = _fcm_access_token(sa)
+        except Exception as e:
+            logger.warning(f"FCM token exchange failed: {e}")
+            return
+        if not access:
+            return
+        title = str(title or "OG")[:TITLE_CAP]
+        body = str(body or "")[:BODY_CAP]
+        kept = []
+        changed = False
+        for dev in devices:
+            token = dev.get("token")
+            if not isinstance(token, str) or not token:
+                kept.append(dev)
+                continue
+            try:
+                _fcm_send(cfg["project_id"], access, token,
+                          kind, title, body)
+                kept.append(dev)
+            except _DeviceGone:
+                changed = True  # dead token -- pruned
+                _device_index_del(token, uid)
+            except Exception as e:
+                logger.warning(f"Native push fanout failed: {e}")
+                kept.append(dev)
+        if changed:
+            _put("devices:" + uid, kept)
+    except Exception as e:
+        logger.warning(f"Native push fanout failed (swallowed): {e}")
 
 
 # --- Service worker -------------------------------------------------------------------
@@ -680,6 +1007,37 @@ def register_notify_routes(app):
             _put("subs:" + uid,
                  [s for s in _subs(uid)
                   if s.get("endpoint") != endpoint])
+        return {"ok": True}
+
+    @app.post("/notifications/devices")
+    async def notifications_devices(request: Request):
+        uid = _uid_of(request)
+        body = await _json_body(request)
+        token = body.get("token")
+        platform = body.get("platform")
+        surface = body.get("surface")
+        app_version = body.get("app_version")
+        if (not uid or not isinstance(token, str)
+                or not token.strip()
+                or platform not in DEVICE_PLATFORMS
+                or surface not in DEVICE_SURFACES):
+            return JSONResponse(
+                {"ok": False, "detail": "bad device"},
+                status_code=400)
+        # The token is never echoed back -- the response is
+        # the same bare {"ok": true} as subscribe.
+        _register_device(
+            uid, token.strip(), platform, surface,
+            app_version if isinstance(app_version, str) else "")
+        return {"ok": True}
+
+    @app.post("/notifications/devices/remove")
+    async def notifications_devices_remove(request: Request):
+        uid = _uid_of(request)
+        body = await _json_body(request)
+        token = body.get("token")
+        if uid and isinstance(token, str) and token:
+            _remove_device(uid, token)
         return {"ok": True}
 
     @app.get("/sw.js")
