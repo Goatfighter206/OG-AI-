@@ -1510,6 +1510,35 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogbooks.install_books_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Book install skipped: {e}")
+    # Generator 7d: the motion claim seam rides the same last
+    # install, AFTER 7c (so motion wraps land outermost; its
+    # claims require explicit motion language, and its bare
+    # YES/NO defers to any newer generator pending). Fail-safe.
+    try:
+        import og_motion as _ogmotion
+        _ogmotion.install_motion_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Motion install skipped: {e}")
+    # Generator 7e: the 3D-model claim seam rides the same last
+    # install, AFTER 7d (so models3d wraps land outermost; its
+    # claims require an explicit 3D-model marker, and its bare
+    # YES/NO defers to any newer generator pending). Fail-safe.
+    try:
+        import og_models3d as _ogmodels
+        _ogmodels.install_models3d_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Model3D install skipped: {e}")
+    # Generator 7f: the voice-lab claim seam rides the same
+    # last install, AFTER 7e (so voice-lab wraps land
+    # outermost; its claims require an explicit clone/sfx
+    # marker, its bare YES/NO defers to any newer generator
+    # pending, and a clone YES additionally requires the
+    # rights attestation). Fail-safe.
+    try:
+        import og_voice_lab as _ogvoice
+        _ogvoice.install_voice_lab_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Voice lab install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
