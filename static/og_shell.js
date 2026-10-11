@@ -56,6 +56,7 @@ shellRoot.innerHTML =
 '<button class="og-feed-tab" id="ogFeedTabVideo" type="button">Videos</button>' +
 '<button class="og-feed-tab" id="ogFeedTabSong" type="button">Songs</button>' +
 '<button class="og-feed-tab" id="ogFeedTabPodcast" type="button">Podcasts</button>' +
+'<button class="og-feed-tab" id="ogFeedTabBook" type="button">Books</button>' +
 '<button class="og-feed-tab" id="ogFeedTabImage" type="button">Images</button>' +
 '<button class="og-feed-tab" id="ogFeedTabFile" type="button">Files</button>' +
 '<button class="og-feed-tab" id="ogFeedTabProject" type="button">Projects</button>' +
@@ -618,13 +619,13 @@ function refreshOffers() {
    rows keep their action (Play/Open/Download); notification rows
    route per Item A. Kind tabs filter the library portion;
    notifications ride the All tab. */
-var FEED_KINDS = ['all', 'video', 'song', 'podcast', 'image', 'file', 'project'];
+var FEED_KINDS = ['all', 'video', 'song', 'podcast', 'book', 'image', 'file', 'project'];
 var feedTab = 'all', feedRows = [], feedLibIds = {};
-var LIB_ICONS = { video: '🎬', song: '🎵', image: '🖼', file: '📄', project: '🧩', podcast: '🎙️' };
-var KIND_LABELS = { video: 'Video', song: 'Song', image: 'Image', file: 'File', project: 'Project', podcast: 'Podcast' };
+var LIB_ICONS = { video: '🎬', song: '🎵', image: '🖼', file: '📄', project: '🧩', podcast: '🎙️', book: '📖' };
+var KIND_LABELS = { video: 'Video', song: 'Song', image: 'Image', file: 'File', project: 'Project', podcast: 'Podcast', book: 'Book' };
 var NOTIF_ICONS = {
   watch_match: '👀', price_alert: '💲', video_done: '🎬', song_done: '🎵',
-  podcast_done: '🎙️',
+  podcast_done: '🎙️', book_done: '📖',
   storage_warning: '🗄', notice: '🔔', approval_needed: '✋',
   signin_needed: '🔑', system_check: '🩺', fix_needed: '🔧'
 };
