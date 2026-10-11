@@ -106,6 +106,10 @@ _DEFAULT_CAPS = {
     "calorie": {"free": 10,   "red": 25,  "standard": 50,  "pro": 100, "blue": 200,  "blackout": 500},
     "watch":   {"free": 3,    "red": 5,   "standard": 10,  "pro": 25,  "blue": 50,   "blackout": 200},
     "order":   {"free": 1,    "red": 2,   "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
+    # Wallet Phase A: approved wallet charges per day, charged
+    # only on a completed charge — deliberately the "order"
+    # ladder (plan §4d).
+    "wallet":  {"free": 1,    "red": 2,   "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "trade":   {"free": 1,    "red": 2,   "standard": 3,   "pro": 10,  "blue": 25,   "blackout": 100},
     "browser_min": {"free": 0, "red": 0,  "standard": 0,  "pro": 0,   "blue": 60,   "blackout": 300},
     # Round 29 (OG Watch): marketplace watch slots per visitor, and
@@ -144,6 +148,49 @@ def storage_bytes(tier: str) -> int:
         except ValueError:
             pass
     return int(STORAGE_BYTES.get(tier, 0))
+
+
+# Wallet Phase A: the largest single wallet charge (USD) a tier
+# may approve, and the largest total per UTC day. Modeled on the
+# trade ceilings but smaller (plan §4d's proposed ladder). The
+# plan names free/standard/pro/blue/blackout; red slots at half
+# of standard (double free), the same between-free-and-standard
+# slot red holds in the trade ladder above. Env
+# OG_WALLET_CEIL_<TIER> / OG_WALLET_DAILY_CEIL_<TIER> override.
+_DEFAULT_WALLET_CEILINGS = {
+    "free": 25, "red": 50, "standard": 100, "pro": 250,
+    "blue": 1000, "blackout": 5000,
+}
+
+_DEFAULT_WALLET_DAILY_CEILINGS = {
+    "free": 50, "red": 100, "standard": 200, "pro": 500,
+    "blue": 2500, "blackout": 10000,
+}
+
+
+def wallet_ceiling(tier: str) -> float:
+    """Per-charge dollar ceiling for the OG Wallet; env
+    OG_WALLET_CEIL_<TIER> wins. Unknown tiers get the free ceiling."""
+    env = os.getenv(f"OG_WALLET_CEIL_{str(tier).upper()}")
+    if env is not None:
+        try:
+            return max(0.0, float(env))
+        except ValueError:
+            pass
+    return float(_DEFAULT_WALLET_CEILINGS.get(tier, 25))
+
+
+def wallet_daily_ceiling(tier: str) -> float:
+    """Per-day dollar ceiling for the OG Wallet; env
+    OG_WALLET_DAILY_CEIL_<TIER> wins. Unknown tiers get the
+    free ceiling."""
+    env = os.getenv(f"OG_WALLET_DAILY_CEIL_{str(tier).upper()}")
+    if env is not None:
+        try:
+            return max(0.0, float(env))
+        except ValueError:
+            pass
+    return float(_DEFAULT_WALLET_DAILY_CEILINGS.get(tier, 50))
 
 
 def trade_ceiling(tier: str) -> float:
