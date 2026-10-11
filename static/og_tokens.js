@@ -199,3 +199,13 @@
   s.src = '/static/og_designer.js';
   document.head.appendChild(s);
 })();
+
+/* Generator 7c: the book card (outline approval + chapter
+   progress + reader overlay) lives in its own asset
+   (static/og_books.js); same ride-along loader — the page
+   is at its push ceiling. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_books.js';
+  document.head.appendChild(s);
+})();
