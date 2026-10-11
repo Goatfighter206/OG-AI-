@@ -202,6 +202,23 @@ def collect_library(uid: str, request: Request):
 
 def register_library_routes(app):
 
+    # Round 62: message reactions + OG respond ride this
+    # registration (app.py already calls register_library_routes;
+    # app.py is at its push ceiling, so the sibling modules
+    # register from here — the Round 60 conventions precedent).
+    # Fail-safe: an import problem in either can never take the
+    # library route down with it.
+    try:
+        import og_reactions as _ogr
+        _ogr.register_reaction_routes(app)
+    except Exception as e:
+        logger.warning(f"Reaction routes skipped: {e}")
+    try:
+        import og_respond as _ogresp
+        _ogresp.register_respond_routes(app)
+    except Exception as e:
+        logger.warning(f"Respond routes skipped: {e}")
+
     @app.get("/library")
     async def library_list(request: Request):
         uid = request.cookies.get(UID_COOKIE) or ""
