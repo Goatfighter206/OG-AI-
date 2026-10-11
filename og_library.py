@@ -328,6 +328,107 @@ def collect_library(uid: str, request: Request):
     return items[:ITEM_CAP], storage_line, counts
 
 
+# ===========================================================================
+# Round 70 (addition): the Feed ordering — ONE function.
+#
+# Brent (2026-10-11): the Feed is ordered by a per-user
+# algorithm instead of plain newest-first, and the filter
+# chips are gone. This function is the whole algorithm:
+# it scores ONLY the caller's own records (their library
+# items + their notifications) and returns the rows in
+# final order — the client renders payload order verbatim.
+# No learned model, no cross-user data, no fake
+# intelligence: the score is recency plus named,
+# time-equivalent boosts —
+#   unread notification ......... +3 days
+#   alert kinds (watch hits, price alerts, storage
+#     warnings, approvals, sign-in needs) ......... +2 days
+#   a creation still being made ... +1 day
+#   any of the user's own creations ............... +6 hours
+# Sort: score desc, then ts desc. Every row carries its
+# score so the order is auditable.
+# ===========================================================================
+
+FEED_BOOST_UNREAD = 3 * 86400.0
+FEED_BOOST_ALERT = 2 * 86400.0
+FEED_BOOST_WORKING = 1 * 86400.0
+FEED_BOOST_CREATION = 6 * 3600.0
+FEED_ALERT_KINDS = {"watch_match", "mp_match", "price_alert",
+                    "storage_warning", "approval_needed",
+                    "signin_needed"}
+FEED_KIND_LABELS = {"video": "Video", "song": "Song",
+                    "image": "Image", "file": "File",
+                    "project": "Project", "podcast": "Podcast",
+                    "book": "Book", "motion": "Motion",
+                    "sfx": "Sound FX", "model3d": "3D Model"}
+
+
+def feed_score(src: str, kind: str, ts: float, read: bool,
+               status: str) -> float:
+    score = float(ts or 0)
+    if src == "ntf":
+        if not read:
+            score += FEED_BOOST_UNREAD
+        if kind in FEED_ALERT_KINDS:
+            score += FEED_BOOST_ALERT
+    else:
+        score += FEED_BOOST_CREATION
+        if status == "working":
+            score += FEED_BOOST_WORKING
+    return score
+
+
+def feed_rows(uid: str, request: Request):
+    """(rows in feed order, storage_line_text, unread).
+    Rows mirror the shape the shell has always rendered:
+    {src, id, kind, title, sub, ts, read, target, action,
+    action_url, status, score}."""
+    import og_notify
+    items, storage_line, _counts = collect_library(uid, request)
+    rows: list = []
+    for it in items:
+        ts = float(it.get("created_at", 0) or 0)
+        status = it.get("status", "")
+        rows.append({
+            "src": "lib", "id": it.get("id", ""),
+            "kind": it.get("kind", ""),
+            "title": it.get("title", ""),
+            "sub": (FEED_KIND_LABELS.get(it.get("kind", ""), "Item")
+                    + (" · making…" if status == "working" else "")),
+            "ts": ts, "read": True, "target": None,
+            "action": it.get("action", ""),
+            "action_url": it.get("action_url", ""),
+            "status": status,
+            "score": feed_score("lib", it.get("kind", ""), ts,
+                                True, status),
+        })
+    unread = 0
+    for it in og_notify._items(uid):
+        if not isinstance(it, dict):
+            continue
+        ts = float(it.get("ts", 0) or 0)
+        read = bool(it.get("read"))
+        if not read:
+            unread += 1
+        rows.append({
+            "src": "ntf", "id": it.get("id", ""),
+            "kind": it.get("kind", ""),
+            "title": it.get("title", ""),
+            "sub": it.get("body", ""),
+            "ts": ts, "read": read,
+            "target": it.get("target"),
+            "action": "", "action_url": "", "status": "",
+            "score": feed_score("ntf", it.get("kind", ""), ts,
+                                read, ""),
+        })
+    rows.sort(key=lambda r: (-(r["score"]), -(r["ts"])))
+    line = None
+    if isinstance(storage_line, dict):
+        line = (f"Locker: {storage_line.get('used_human', '0 B')} "
+                f"of {storage_line.get('quota_human', '0 B')} used")
+    return rows[:ITEM_CAP], line, unread
+
+
 def register_library_routes(app):
 
     # Round 62: message reactions + OG respond ride this
@@ -452,3 +553,32 @@ def register_library_routes(app):
             uid, request)
         return {"items": items, "storage": storage_line,
                 "counts": counts}
+
+    @app.get("/feed")
+    async def feed_list(request: Request):
+        """Round 70 (addition): the Feed seat's one payload —
+        the caller's rows in feed_rows() order (the ordering
+        lives server-side; the client renders it verbatim).
+        Behind the same sign-in gate as /library."""
+        uid = request.cookies.get(UID_COOKIE) or ""
+        if not uid:
+            return {"rows": [], "storage_line": None,
+                    "unread": 0}
+        rows, line, unread = feed_rows(uid, request)
+        return {"rows": rows, "storage_line": line,
+                "unread": unread}
+
+    # Round 70 (addition): OG-generated ideas (og_ideas.py)
+    # ride the same registration.
+    try:
+        import og_ideas as _ogideas
+        _ogideas.register_idea_routes(app)
+    except Exception as e:
+        logger.warning(f"Idea routes skipped: {e}")
+    # Round 70 (addition): the Progress aggregate
+    # (og_progress.py) rides the same registration.
+    try:
+        import og_progress as _ogprog
+        _ogprog.register_progress_routes(app)
+    except Exception as e:
+        logger.warning(f"Progress routes skipped: {e}")
