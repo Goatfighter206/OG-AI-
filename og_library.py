@@ -239,6 +239,13 @@ def register_library_routes(app):
         _oglang.register_language_routes(app)
     except Exception as e:
         logger.warning(f"Language routes skipped: {e}")
+    # Round 66: GPS routes (points / convert / between /
+    # stakeout / route) ride the same registration.
+    try:
+        import og_gps as _oggps
+        _oggps.register_gps_routes(app)
+    except Exception as e:
+        logger.warning(f"GPS routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
