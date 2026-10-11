@@ -619,13 +619,14 @@ function refreshOffers() {
    rows keep their action (Play/Open/Download); notification rows
    route per Item A. Kind tabs filter the library portion;
    notifications ride the All tab. */
-var FEED_KINDS = ['all', 'video', 'song', 'podcast', 'book', 'image', 'file', 'project'];
+var FEED_KINDS = ['all', 'video', 'song', 'podcast', 'book', 'motion', 'sfx', 'image', 'file', 'project'];
 var feedTab = 'all', feedRows = [], feedLibIds = {};
-var LIB_ICONS = { video: '🎬', song: '🎵', image: '🖼', file: '📄', project: '🧩', podcast: '🎙️', book: '📖' };
-var KIND_LABELS = { video: 'Video', song: 'Song', image: 'Image', file: 'File', project: 'Project', podcast: 'Podcast', book: 'Book' };
+var LIB_ICONS = { video: '🎬', song: '🎵', image: '🖼', file: '📄', project: '🧩', podcast: '🎙️', book: '📖', motion: '🎞️', sfx: '🔊' };
+var KIND_LABELS = { video: 'Video', song: 'Song', image: 'Image', file: 'File', project: 'Project', podcast: 'Podcast', book: 'Book', motion: 'Motion', sfx: 'Sound FX' };
 var NOTIF_ICONS = {
   watch_match: '👀', price_alert: '💲', video_done: '🎬', song_done: '🎵',
-  podcast_done: '🎙️', book_done: '📖',
+  podcast_done: '🎙️', book_done: '📖', motion_done: '🎞️',
+  sfx_done: '🔊', voice_done: '🎙️',
   storage_warning: '🗄', notice: '🔔', approval_needed: '✋',
   signin_needed: '🔑', system_check: '🩺', fix_needed: '🔧'
 };
