@@ -278,6 +278,15 @@ def register_library_routes(app):
         _ogpod.register_podcast_routes(app)
     except Exception as e:
         logger.warning(f"Podcast routes skipped: {e}")
+    # Generator 7b: designer routes (/designer/status, generate,
+    # download, save) ride the same registration. Designs reach
+    # the Images tab through the locker (og_storage records),
+    # so no new aggregation section is needed here.
+    try:
+        import og_designer as _ogdes
+        _ogdes.register_designer_routes(app)
+    except Exception as e:
+        logger.warning(f"Designer routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
