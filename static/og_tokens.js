@@ -167,3 +167,12 @@
   s.src = '/static/og_r65.js';
   document.head.appendChild(s);
 })();
+
+/* Round 66: the GPS menu section (driving + job sites) lives in
+   its own asset (static/og_r66.js); same ride-along loader as
+   Rounds 62/63/65 — the page is at its push ceiling. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_r66.js';
+  document.head.appendChild(s);
+})();
