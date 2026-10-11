@@ -1604,7 +1604,7 @@ if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = f
 menuBtn.hidden = false;
 active = !!st.active;
 renderPending(st.pending_action || null);
-if (!active) { panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
+if (!active) { if (st.phase === 'starting') { panel.hidden = false; viewLive(false); return; } panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
 driving = st.control === 'visitor';
 if (driving) fsConfirmed = true;
 else if (fullScreen && fsConfirmed) { fullScreen = false; fsConfirmed = false; }
