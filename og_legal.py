@@ -131,6 +131,18 @@ pauses itself and tells you; OG never answers identity checks for
 you.</li>
 </ul>
 
+<h2>Phone push notifications</h2>
+<p>If you use OG&rsquo;s app and switch notifications on, OG stores a
+<strong>push token</strong> &mdash; a random device address issued by
+Apple&rsquo;s and Google&rsquo;s push services &mdash; tied to your
+account, only so OG can deliver the notifications you switched on.
+The token is removed when you sign out on that device, when you turn
+push off, and when your account is deleted. Push tokens are never
+sold and never shared for advertising. An alert&rsquo;s text can name
+the site that needs a sign-in, and it can show on your phone&rsquo;s
+lock screen &mdash; the notification settings switches in OG and your
+phone&rsquo;s own settings are the controls.</p>
+
 <h2>How answers are made (AI processing)</h2>
 <p>To answer you, your messages &mdash; and data you ask OG to fetch,
 such as an email you ask OG to read &mdash; are sent to AI model
@@ -145,7 +157,9 @@ subscription is active so your plan can be switched on.</p>
 <h2>Who else receives data</h2>
 <p>Only the service providers needed to run OG &mdash; hosting
 (Render), the database and file-storage providers, Stripe (payments),
-OpenAI (AI answers), and Steel (the cloud browser and its saved
+OpenAI (AI answers), Firebase/Google (push notification delivery,
+through Firebase Cloud Messaging, with Apple&rsquo;s APNs delivering
+on iPhone), and Steel (the cloud browser and its saved
 log-in profiles) &mdash; and anyone we must share with to
 comply with the law. We never sell personal data. Ever.</p>
 
@@ -186,6 +200,38 @@ always be up, fast, or error-free.</p>
 <p>Paid plans are billed through Stripe. You can cancel at any time;
 cancellation stops future billing, and your paid access runs until
 the end of the period you already paid for.</p>
+
+<h2>The OG Wallet (paying through OG)</h2>
+<p>You can connect a payment method to OG through Stripe&rsquo;s
+hosted setup page. OG never sees or stores your card number &mdash;
+Stripe holds it, and OG keeps only the card&rsquo;s brand, last
+four digits, and expiry so it can show you which card is
+connected.</p>
+<p>By connecting a payment method, you agree that OG may initiate
+charges on your behalf <strong>only</strong> under these rules:</p>
+<ul>
+<li><strong>Every charge is approved by you first.</strong> Before
+any charge, OG shows you a preview &mdash; what it is for and the
+exact total &mdash; and the charge runs only after your explicit
+approval of that preview. A connected card is never a standing
+permission to charge it.</li>
+<li><strong>Amounts come from the approved preview.</strong> The
+amount charged is the amount in the preview you approved, for the
+item or service in that preview. If the amount would be different,
+OG must show you a new preview and get a new approval.</li>
+<li><strong>Limits apply.</strong> Each plan has a per-charge limit
+and a per-day limit for wallet charges. OG refuses a charge above
+your plan&rsquo;s limits and tells you the limit.</li>
+<li><strong>You can cancel at any time.</strong> Removing your
+payment method in Connections &rarr; Wallet takes effect
+immediately: the card is detached at Stripe, OG deletes its
+record of it, and no further wallet charge can be made. Removing
+the method is the cancellation &mdash; there is nothing else you
+need to do.</li>
+<li><strong>Records.</strong> OG keeps a record of each wallet
+setup, approval, charge, refund, and removal, which you can see
+in the wallet&rsquo;s History view.</li>
+</ul>
 
 <h2>Acceptable use</h2>
 <p>Do not use OG for anything illegal. Do not abuse, attack,
