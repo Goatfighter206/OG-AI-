@@ -323,6 +323,20 @@ def _lesson_fix_failed(problem: dict, prop: dict, why: str):
             f"diagnose differently next time.",
             fingerprint=problem.get("fingerprint"),
             approach_key=key)
+        # Round 60: the failed approach is also noted in the
+        # repo's conventions notebook, so future drafts for
+        # that file steer away from it.
+        try:
+            payload = prop.get("payload") or {}
+            if prop.get("fix_kind") == "code" \
+                    and payload.get("repo") \
+                    and payload.get("path"):
+                import og_conventions as _conv
+                _conv.note_failed_approach(
+                    str(payload["repo"]), str(payload["path"]),
+                    key)
+        except Exception:
+            pass
     except Exception as e:
         logger.warning(f"Fix-failed lesson failed: {e}")
 
@@ -391,6 +405,13 @@ def _try_draft_fix(problem: dict, fix: dict) -> Optional[dict]:
         summary = (f"OG drafted a fix for {draft['path']} "
                    f"himself and verified it in his sandbox "
                    f"before proposing it. Checks: {checks}")
+        draft_files = [f for f in (draft.get("files") or [])
+                       if isinstance(f, dict) and f.get("path")]
+        if len(draft_files) > 1:
+            summary += (f" The fix spans {len(draft_files)} "
+                        f"files: "
+                        + ", ".join(f["path"]
+                                    for f in draft_files) + ".")
         if len(draft.get("attempts") or []) > 1:
             summary += (f" It took "
                         f"{draft['attempts'][-1].get('n')} "
@@ -398,6 +419,8 @@ def _try_draft_fix(problem: dict, fix: dict) -> Optional[dict]:
                         f"his checks and he revised them himself.")
         for title_ in draft.get("lessons_cited") or []:
             summary += f" Lesson applied: {title_}."
+        for conv in draft.get("conventions_cited") or []:
+            summary += f" Convention applied: {conv}."
         payload = {
             "path": draft["path"],
             "base_text": draft["base_text"],
@@ -407,8 +430,12 @@ def _try_draft_fix(problem: dict, fix: dict) -> Optional[dict]:
             "attempts": draft["attempts"],
             "approach_key": draft["approach_key"],
             "lessons_cited": draft["lessons_cited"],
+            "conventions_cited":
+                draft.get("conventions_cited") or [],
             "repo": os.getenv("OG_SELF_REPO", "").strip(),
         }
+        if len(draft_files) > 1:
+            payload["files"] = draft_files
         return {"mode": "code", "payload": payload,
                 "summary": summary}
     except Exception as e:
@@ -961,7 +988,33 @@ def _decide_code(owner, problems, problem, prop):
             "this fix, so the prepared diff no longer matches "
             "the live file. Nothing was shipped — OG will "
             "draft a fresh fix if the problem is still there.")
-    test = _gh.run_local_checks(path, content)
+    # Round 60: a multi-file payload re-verifies EVERY file's
+    # base the same way, and the re-check runs on the combined
+    # tree with all drafts applied.
+    multi_files = [f for f in (payload.get("files") or [])
+                   if isinstance(f, dict) and f.get("path")]
+    is_multi = len(multi_files) > 1
+    multi_infos: Dict = {}
+    if is_multi:
+        for f in multi_files:
+            fst, finfo = _gh._fetch_file(
+                token, owner_login, repo_name, str(f["path"]),
+                default_branch)
+            if finfo is None \
+                    or finfo.get("text") != f.get("base_text"):
+                return supersede(
+                    "The file moved since the draft",
+                    f"{f['path']} changed on {repo_full} after "
+                    "OG drafted this fix, so the prepared diff "
+                    "no longer matches the live file. Nothing "
+                    "was shipped — OG will draft a fresh fix "
+                    "if the problem is still there.")
+            multi_infos[str(f["path"])] = finfo
+        test = _gh.run_local_checks_multi(
+            {str(f["path"]): str(f.get("content") or "")
+             for f in multi_files})
+    else:
+        test = _gh.run_local_checks(path, content)
     if not _gh.checks_green(test):
         return supersede(
             "The drafted fix no longer passes checks",
@@ -989,9 +1042,36 @@ def _decide_code(owner, problems, problem, prop):
                 "attempts": payload.get("attempts") or [],
                 "lessons": payload.get("lessons_cited") or []},
         "py_paths": [], "tree_paths": [],
+        # Round 60 item 5: the checks watch for this PR carries
+        # the link back to this problem, so the post-merge
+        # verification can record its verdict on the proposal.
+        "fix_link": {
+            "owner": owner,
+            "fingerprint": problem.get("fingerprint"),
+            "verify": problem.get("verify") or {},
+            "repo_full": repo_full},
     }
-    results = _gh._create_pr(
-        entry, pending, {"path": path, "content": content}, owner)
+    extracted = {"path": path, "content": content}
+    if is_multi:
+        pending["files"] = [{
+            "path": str(f["path"]),
+            "base_text": str(f.get("base_text") or ""),
+            "base_sha": str((multi_infos.get(str(f["path"]))
+                             or {}).get("sha") or ""),
+        } for f in multi_files]
+        pending["pkg"]["files"] = [{
+            "path": str(f["path"]),
+            "content": str(f.get("content") or ""),
+            "diff": f.get("diff"),
+        } for f in multi_files]
+        if payload.get("conventions_cited"):
+            pending["pkg"]["conventions"] = \
+                payload["conventions_cited"]
+        extracted["files"] = [{
+            "path": str(f["path"]),
+            "content": str(f.get("content") or ""),
+        } for f in multi_files]
+    results = _gh._create_pr(entry, pending, extracted, owner)
     pr_url = ""
     for r in results or []:
         if "PR opened" in str(r.get("title", "")):
@@ -1144,6 +1224,85 @@ def decide(uid: str, ident: str, decision: str) -> Tuple[bool, str, str]:
             f"you.")
 
 
+def record_fix_verdict(owner, fingerprint, verdict,
+                       pr_url: str = "") -> bool:
+    """Round 60 item 5: record the ONE post-merge verification
+    verdict on an executed fix's proposal. Called by og_github's
+    merge watch after the deploy window. verified_fixed closes
+    the loop quietly; still_present reopens the problem, writes
+    a recurrence LESSON (the Round 51 source) with the failed
+    approach, and sends ONE fix_needed notification that the
+    fix didn't take. Exactly one verdict is ever recorded —
+    a second call is a no-op. NEVER raises; a verdict failure
+    changes nothing else."""
+    try:
+        if verdict not in ("verified_fixed", "still_present"):
+            return False
+        owner_key = str(owner or "").strip() or SENTINEL_OWNER
+        fp = str(fingerprint or "").strip()
+        if not fp:
+            return False
+        problems = _problems(owner_key)
+        problem = problems.get(fp)
+        if problem is None:
+            return False
+        prop = problem.get("proposal")
+        if not isinstance(prop, dict):
+            return False
+        if prop.get("verification"):
+            return False  # exactly one verdict per executed fix
+        prop["verification"] = verdict
+        prop["verified_at"] = time.time()
+        if pr_url:
+            prop["verification_pr"] = pr_url
+        if verdict == "verified_fixed":
+            _note(problem, "post_merge_verified", pr_url or "")
+            _save_problems(owner_key, problems)
+            return True
+        # still_present: the fix didn't take.
+        problem["status"] = "open"
+        _note(problem, "post_merge_still_present", pr_url or "")
+        _save_problems(owner_key, problems)
+        try:
+            import og_lessons as _lessons
+            _lessons.record_lesson(
+                "recurrence",
+                f"Fix didn't take: {problem.get('title')}",
+                f"OG's approved fix for "
+                f"'{problem.get('title')}' shipped as a pull "
+                f"request ({pr_url or 'PR'}) and MERGED, but "
+                f"the post-merge verification still shows the "
+                f"problem. The fix did not hold — the next "
+                f"approach must address the root cause, not "
+                f"just the symptom that was verified.",
+                fingerprint=fp,
+                approach_key=_approach_key(prop))
+        except Exception as e:
+            logger.warning(f"Verdict lesson failed: {e}")
+        if owner_key != SENTINEL_OWNER:
+            try:
+                import og_notify as _notify
+                _tgt = {"view": "approvals"}
+                if problem.get("id"):
+                    _tgt["id"] = problem["id"]
+                _notify.record(
+                    owner_key, "fix_needed",
+                    f"Fix didn't take: {problem['title']}",
+                    f"Your approved fix for "
+                    f"'{problem['title']}' merged ({pr_url}), "
+                    f"but OG re-checked after the deploy and "
+                    f"the problem is still there. It's back on "
+                    f"the list — a fresh fix needs a fresh "
+                    f"approval from you.",
+                    target=_tgt)
+            except Exception as e:
+                logger.warning(f"Verdict notify failed: {e}")
+        return True
+    except Exception as e:
+        logger.warning(f"Fix verdict record failed: {e}")
+        return False
+
+
 # --- Panel feed ---------------------------------------------------------------------------
 
 
@@ -1173,6 +1332,21 @@ def _proposal_view(problem: dict, prop: dict) -> dict:
         view["attempts"] = payload.get("attempts") or []
         view["lessons"] = payload.get("lessons_cited") or []
         view["pr_url"] = prop.get("pr_url")
+        # Round 60: the post-merge verification verdict + the
+        # conventions that shaped the draft + every file's diff
+        # for a multi-file fix.
+        view["verification"] = prop.get("verification")
+        view["conventions"] = \
+            payload.get("conventions_cited") or []
+        files = payload.get("files") or []
+        if len(files) > 1:
+            view["files"] = [{
+                "path": f.get("path"),
+                "diff": str(f.get("diff") or "")[:4000] + (
+                    "\n… (diff truncated in this view)"
+                    if len(str(f.get("diff") or "")) > 4000
+                    else ""),
+            } for f in files if isinstance(f, dict)]
     return view
 
 
