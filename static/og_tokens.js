@@ -209,3 +209,47 @@
   s.src = '/static/og_books.js';
   document.head.appendChild(s);
 })();
+
+/* Generator 7d: the motion-video card (plan + cost approval
+   + in-chat <video> player) lives in its own asset
+   (static/og_motion.js); same ride-along loader — the page
+   is at its push ceiling. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_motion.js';
+  document.head.appendChild(s);
+})();
+
+/* Generator 7f: the voice-lab card (clone upload +
+   attestation approval + sfx approval/player) lives in its
+   own asset (static/og_voice_lab.js); same ride-along loader
+   — the page is at its push ceiling. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_voice_lab.js';
+  document.head.appendChild(s);
+})();
+
+/* Wallet Phase A: the Connections Wallet row (connect /
+   status / history / remove) lives in its own asset
+   (static/og_wallet.js); same ride-along loader — the page
+   is at its push ceiling. The asset itself stays invisible
+   while the wallet gate is off. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_wallet.js';
+  document.head.appendChild(s);
+})();
+
+/* Stop-listening on leave: the Talk kill-switch (mic off
+   the moment the user leaves the page, partial dictation
+   discarded, no auto-restart on return) lives in its own
+   asset (static/og_stoplisten.js); same ride-along loader
+   — the page is at its push ceiling. Loaded LAST so its
+   recognition onresult/onend wrap lands outside every
+   earlier wrap (e.g. og_r62's voice approvals). */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_stoplisten.js';
+  document.head.appendChild(s);
+})();
