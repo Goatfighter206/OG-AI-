@@ -1481,6 +1481,15 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _oglang.install_language_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"R65 language/comeback install skipped: {e}")
+    # Generator 7a: the podcast claim seam rides the same last
+    # install, AFTER R65 (so podcast wraps land outermost).
+    # Fail-safe — a problem here never takes the fixqueue seam
+    # (or chat) down.
+    try:
+        import og_podcast as _ogpod
+        _ogpod.install_podcast_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Podcast install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
