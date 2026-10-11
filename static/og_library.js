@@ -11,13 +11,14 @@ list = $('libraryList'), empty = $('libraryEmpty'),
 storageLine = $('libraryStorageLine');
 if (!panel || !list) return;
 var ICONS = { video: '🎬', song: '🎵', image: '🖼️',
-              file: '📄', project: '🎮' };
+              file: '📄', project: '🎮', podcast: '🎙️' };
 var STATE_LABEL = { queued: 'In line', drawing: 'Drawing',
   voicing: 'Voicing', stitching: 'Stitching',
   generating: 'Generating', failed: "Didn't finish",
   done: 'Done', ready: '' };
 var TAB_LABEL = { video: 'Videos', song: 'Songs', image: 'Images',
-                  file: 'Files', project: 'Projects' };
+                  file: 'Files', project: 'Projects',
+                  podcast: 'Podcasts' };
 var items = [], filter = 'all';
 function closeLibrary() {
 if (scrim) scrim.hidden = true;
@@ -125,6 +126,23 @@ storageLine.hidden = true;
 paint();
 }).catch(function () {  });
 }
+/* Generator 7a: the Podcasts tab is injected here — the tab
+   buttons live in the page's static HTML, and the page is at
+   its push ceiling, so the shelf grows its own tab. Items of
+   kind "podcast" already ride GET /library and show under
+   All; this tab is their filter. */
+(function () {
+var songsTab = panel.querySelector('.og-library-tab[data-kind="song"]');
+if (songsTab && !panel.querySelector('.og-library-tab[data-kind="podcast"]')) {
+var pt = document.createElement('button');
+pt.className = 'og-library-tab';
+pt.id = 'libraryTabPodcasts';
+pt.type = 'button';
+pt.setAttribute('data-kind', 'podcast');
+pt.textContent = 'Podcasts';
+songsTab.parentNode.insertBefore(pt, songsTab.nextSibling);
+}
+})();
 var tabs = panel.querySelectorAll('.og-library-tab');
 tabs.forEach(function (tab) {
 tab.addEventListener('click', function () {
