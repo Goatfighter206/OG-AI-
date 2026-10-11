@@ -63,18 +63,24 @@ def _model_chain():
     return chain
 
 
-async def openai_generate_image(api_key: str, prompt: str):
+async def openai_generate_image(api_key: str, prompt: str,
+                                size: str = None):
     """Generate one image; returns (image_src, model_used).
 
     image_src is a data URI when the API hands back base64 (the normal
     case for both models), else the temporary hosted URL converted to a
     data URI when it can be downloaded. Raises on total failure so the
     endpoint can answer with the graceful down line instead.
+
+    `size` (Generator 7b): an explicit API size such as "1536x1024"
+    (landscape) or "1024x1536" (portrait); None keeps the historical
+    IMAGE_SIZE default, so every existing caller is unchanged.
     """
     import httpx
     last_error = None
     for model in _model_chain():
-        body = {"model": model, "prompt": prompt, "size": IMAGE_SIZE, "n": 1}
+        body = {"model": model, "prompt": prompt,
+                "size": size or IMAGE_SIZE, "n": 1}
         if model == IMAGE_MODEL_FALLBACK:
             body["response_format"] = "b64_json"
         try:
