@@ -58,6 +58,12 @@
   var kbText = $('ogKbText');
 
   var driving = false, kbOn = false, ptrOn = false;
+  /* Round 61: a takeover the visitor has ASKED for (Take
+     control tapped) whose server confirmation has not landed
+     yet. The full-screen bar must stay whole on the intent
+     alone — see reconcile. takeMisses bounds the fast
+     re-poll; takeWarned keeps the honest line to once. */
+  var takeAsked = false, takeMisses = 0, takeWarned = false;
   var fullApplied = false, placeholder = null, savedStyle = null;
   var pillHome = null;
 
@@ -192,7 +198,19 @@
     if (!nw || !nh) return null;
     var r = shot.getBoundingClientRect();
     if (!r.width || !r.height) return null;
-    var scale = Math.min(r.width / nw, r.height / nh);
+    /* Round 61: the full state paints the still with
+       object-fit:cover (see the CSS) — map through the
+       fit the browser actually used: cover scales to the
+       LARGER ratio and crops, contain to the smaller and
+       letterboxes. The centering offsets below already
+       handle both (cover's go negative). */
+    var fit = 'contain';
+    try {
+      fit = window.getComputedStyle(shot).objectFit || 'contain';
+    } catch (e) {}
+    var scale = fit === 'cover'
+      ? Math.max(r.width / nw, r.height / nh)
+      : Math.min(r.width / nw, r.height / nh);
     return { nw: nw, nh: nh, scale: scale,
              ox: r.left + (r.width - nw * scale) / 2,
              oy: r.top + (r.height - nh * scale) / 2,
@@ -267,13 +285,39 @@
     var d = !!(st && st.enabled && st.active &&
                st.control === 'visitor');
     driving = d;
-    kbBtn.hidden = !d;
-    ptrBtn.hidden = !d;
-    if (d) applyFull();
-    else {
-      if (kbOn) setKb(false);
-      if (ptrOn) setPtr(false);
-      say('');
+    if (!st || !st.enabled || !st.active) takeAsked = false;
+    /* Round 61: the toggles follow the takeover INTENT too.
+       They used to be fail-closed on the confirmed flip
+       alone, so an unconfirmed take left the full-screen
+       bar carrying only End task (Brent's 2026-10-10
+       photo). While a take the visitor asked for is still
+       unconfirmed, the buttons stay up; an input the
+       server refuses is answered in words by sendInput,
+       never silently — and Hand back (guaranteed by the
+       CSS in the full state) always steps back out. */
+    var full = panel.classList.contains('og-panel-full');
+    var showToggles = d || (takeAsked && full);
+    kbBtn.hidden = !showToggles;
+    ptrBtn.hidden = !showToggles;
+    if (d) {
+      takeAsked = false;
+      applyFull();
+    } else {
+      if (!(takeAsked && full)) {
+        if (kbOn) setKb(false);
+        if (ptrOn) setPtr(false);
+        say('');
+      } else if (takeMisses < 12) {
+        /* Confirmation still owed: poll again soon instead
+           of waiting out the 2.5 s interval. */
+        takeMisses++;
+        window.setTimeout(poll, 400);
+      } else if (!takeWarned) {
+        takeWarned = true;
+        say("Take control didn't go through — OG is still " +
+            'driving. The buttons stay here; tap Hand back ' +
+            'to step out, or try Take control again.');
+      }
       removeFull();
     }
   }
@@ -284,11 +328,16 @@
   }
   if (takeBtn) {
     takeBtn.addEventListener('click', function () {
-      window.setTimeout(poll, 500);
+      /* Round 61: record the intent BEFORE the first poll —
+         it is what keeps the bar whole (see reconcile)
+         while the server confirmation is in flight. */
+      takeAsked = true; takeMisses = 0; takeWarned = false;
+      window.setTimeout(poll, 350);
     });
   }
   if (handBtn) {
     handBtn.addEventListener('click', function () {
+      takeAsked = false;
       removeFull(); /* optimistic; the poll confirms the truth */
       window.setTimeout(poll, 400);
     });
