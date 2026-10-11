@@ -567,8 +567,17 @@ def _word_count(text: str) -> int:
 
 
 def _valid_voice(name) -> str:
-    name = str(name or "").strip().lower()
-    return name if name in TTS_VOICES else ""
+    raw = str(name or "").strip()
+    low = raw.lower()
+    if low in TTS_VOICES:
+        return low
+    # Generator 7f: a cloned voice rides as `voice:<voice_id>`
+    # (case preserved — provider ids are case-sensitive).
+    # Ownership is checked in the job runner, where uid lives;
+    # synthesis delegates to og_voice_lab's ElevenLabs seam.
+    if re.fullmatch(r"voice:[A-Za-z0-9_\-]{4,80}", raw):
+        return raw
+    return ""
 
 
 def _voices_from_text(text: str) -> List[str]:
@@ -759,6 +768,30 @@ def _synth_line(text: str, voice: str) -> bytes:
     MP3 bytes. Raises _TTSError on any failure. No retries —
     a retry is a second billed call, and a failed episode
     charges nothing beyond the calls already recorded."""
+    _vv = _valid_voice(voice)
+    if _vv.startswith("voice:"):
+        # Generator 7f: cloned voices synthesize on the
+        # ElevenLabs rails (og_voice_lab), never via OpenAI.
+        try:
+            import og_voice_lab as _vl
+        except Exception:
+            raise _TTSError("auth", "the voice lab is unavailable")
+        if not _vl.enabled():
+            raise _TTSError(
+                "auth", "the voice lab is not switched on")
+        try:
+            data = _vl._run_cloned_tts(
+                _vv[len("voice:"):], str(text)[:_TTS_MAX_CHARS])
+        except Exception as e:
+            kind = getattr(e, "kind", "http")
+            raise _TTSError(
+                kind if kind in _FAIL_DETAILS else "http",
+                f"cloned voice service failed: {e}")
+        if len(data) < 100:
+            raise _TTSError(
+                "bad_audio",
+                f"cloned voice service sent {len(data)} bytes")
+        return data
     import httpx
     key = _api_key()
     if not key:
@@ -1281,6 +1314,17 @@ def _run_job(job_id: str, uid: str) -> None:
                  f"anullsrc=r=44100:cl=stereo",
                  "-t", f"{_GAP_S}", "-c:a", "libmp3lame",
                  "-q:a", "3", silence], timeout=120)
+            # Generator 7f: a `voice:<id>` host voice must be
+            # a clone THIS visitor owns — checked once, here,
+            # where the uid is known, before any synth call.
+            for _v in {str(ln.get("voice") or "") for ln in lines}:
+                if _v.startswith("voice:"):
+                    import og_voice_lab as _vl
+                    if _vl.get_voice(uid, _v[len("voice:"):]) \
+                            is None:
+                        raise _TTSError(
+                            "auth", "a host voice is a clone "
+                            "this visitor does not own")
             parts: List[str] = []
             for li, line in enumerate(lines):
                 chunks = split_line(line["text"])
