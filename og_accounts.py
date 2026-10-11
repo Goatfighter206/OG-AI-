@@ -289,6 +289,32 @@ def _session_for(token):
     return sess
 
 
+def session_account_uid(token):
+    """Account uid behind a live session token, or None.
+
+    The session record is the one place the server itself ties a
+    request to an ACCOUNT (as opposed to the ogai_uid cookie,
+    which is just a visitor id a client happens to present)."""
+    sess = _session_for(token)
+    if not sess:
+        return None
+    return sess.get("uid") or None
+
+
+def session_uid_or(cookies, uid):
+    """The uid a request should resolve under: the live session's
+    account uid when signed in, else the presented uid. (Round
+    tierfix: the account's entitlement follows the ACCOUNT, not
+    whichever visitor id a client happens to present — a client
+    that never picked up the post-login ogai_uid cookie otherwise
+    presents a stale anonymous uid while fully signed in.)"""
+    try:
+        auid = session_account_uid((cookies or {}).get("ogai_session"))
+    except Exception:
+        auid = None
+    return auid or uid
+
+
 def _client_ip(request: Request) -> str:
     fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
     if fwd:
