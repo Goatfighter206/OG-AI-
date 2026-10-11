@@ -11,14 +11,15 @@ list = $('libraryList'), empty = $('libraryEmpty'),
 storageLine = $('libraryStorageLine');
 if (!panel || !list) return;
 var ICONS = { video: '🎬', song: '🎵', image: '🖼️',
-              file: '📄', project: '🎮', podcast: '🎙️' };
+              file: '📄', project: '🎮', podcast: '🎙️', book: '📖' };
 var STATE_LABEL = { queued: 'In line', drawing: 'Drawing',
   voicing: 'Voicing', stitching: 'Stitching',
-  generating: 'Generating', failed: "Didn't finish",
+  generating: 'Writing', paused_caps: 'Paused — weekly cap',
+  failed: "Didn't finish",
   done: 'Done', ready: '' };
 var TAB_LABEL = { video: 'Videos', song: 'Songs', image: 'Images',
                   file: 'Files', project: 'Projects',
-                  podcast: 'Podcasts' };
+                  podcast: 'Podcasts', book: 'Books' };
 var items = [], filter = 'all';
 function closeLibrary() {
 if (scrim) scrim.hidden = true;
@@ -59,6 +60,11 @@ parts.push(fmtSize(meta.size));
 }
 if (it.kind === 'project' && meta.files) {
 parts.push(meta.files + (meta.files === 1 ? ' file' : ' files'));
+}
+if (it.kind === 'book' && meta.chapters_total) {
+parts.push(meta.chapters_done + ' of ' + meta.chapters_total
+  + ' chapters');
+if (meta.words) parts.push(meta.words + ' words');
 }
 if (it.status === 'failed' && meta.detail) parts.push(meta.detail);
 return parts.join(' · ');
@@ -141,6 +147,24 @@ pt.type = 'button';
 pt.setAttribute('data-kind', 'podcast');
 pt.textContent = 'Podcasts';
 songsTab.parentNode.insertBefore(pt, songsTab.nextSibling);
+}
+})();
+/* Generator 7c: the Books tab is injected the same way —
+   items of kind "book" already ride GET /library and show
+   under All; this tab is their filter. Opening a book
+   (action_url /books/<id>/read) is intercepted by
+   static/og_books.js into the reader overlay. */
+(function () {
+var podTab = panel.querySelector('.og-library-tab[data-kind="podcast"]');
+var anchor = podTab || panel.querySelector('.og-library-tab[data-kind="song"]');
+if (anchor && !panel.querySelector('.og-library-tab[data-kind="book"]')) {
+var bt = document.createElement('button');
+bt.className = 'og-library-tab';
+bt.id = 'libraryTabBooks';
+bt.type = 'button';
+bt.setAttribute('data-kind', 'book');
+bt.textContent = 'Books';
+anchor.parentNode.insertBefore(bt, anchor.nextSibling);
 }
 })();
 var tabs = panel.querySelectorAll('.og-library-tab');
