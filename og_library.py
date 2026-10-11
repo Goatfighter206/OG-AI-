@@ -164,6 +164,76 @@ def _book_items(uid: str) -> list:
     return out
 
 
+def _motion_items(uid: str) -> list:
+    import og_motion
+    out = []
+    for rec in og_motion.list_jobs_for_owner(uid):
+        view = og_motion._job_view(rec)
+        if not view:
+            continue
+        done = view.get("state") == "done"
+        out.append({
+            "kind": "motion", "id": view.get("id", ""),
+            "title": view.get("title") or "OG's Motion Clip",
+            "created_at": float(rec.get("created", 0) or 0),
+            "status": view.get("state", ""),
+            "action": "Play" if done else "",
+            "action_url": view.get("motion_url", "") if done else "",
+            "meta": {"detail": view.get("detail", ""),
+                     "size": int(view.get("size", 0) or 0),
+                     "duration": float(view.get("duration", 0) or 0),
+                     "prompt": view.get("prompt", ""),
+                     "provider": "runway"},
+        })
+    return out
+
+
+def _model3d_items(uid: str) -> list:
+    import og_models3d
+    out = []
+    for rec in og_models3d.list_jobs_for_owner(uid):
+        view = og_models3d._job_view(rec)
+        if not view:
+            continue
+        done = view.get("state") == "done"
+        out.append({
+            "kind": "model3d", "id": view.get("id", ""),
+            "title": view.get("title") or "OG's 3D Model",
+            "created_at": float(rec.get("created", 0) or 0),
+            "status": view.get("state", ""),
+            "action": "Download" if done else "",
+            "action_url": view.get("model_url", "") if done else "",
+            "meta": {"detail": view.get("detail", ""),
+                     "size": int(view.get("size", 0) or 0),
+                     "prompt": view.get("prompt", ""),
+                     "provider": "tripo"},
+        })
+    return out
+
+
+def _sfx_items(uid: str) -> list:
+    import og_voice_lab
+    out = []
+    for rec in og_voice_lab.list_jobs_for_owner(uid):
+        view = og_voice_lab._job_view(rec)
+        if not view:
+            continue
+        done = view.get("state") == "done"
+        out.append({
+            "kind": "sfx", "id": view.get("id", ""),
+            "title": view.get("title") or "OG's Sound Effect",
+            "created_at": float(rec.get("created", 0) or 0),
+            "status": view.get("state", ""),
+            "action": "Play" if done else "",
+            "action_url": view.get("sfx_url", "") if done else "",
+            "meta": {"detail": view.get("detail", ""),
+                     "size": int(view.get("size", 0) or 0),
+                     "duration": float(view.get("duration", 0) or 0),
+                     "description": view.get("description", "")},
+        })
+    return out
+
+
 def _project_items(uid: str) -> list:
     import og_unity
     out = []
@@ -226,11 +296,14 @@ def collect_library(uid: str, request: Request):
     items: list = []
     counts = {"videos": 0, "songs": 0, "images": 0,
               "files": 0, "projects": 0, "podcasts": 0,
-              "books": 0}
+              "books": 0, "motions": 0, "models3d": 0, "sfx": 0}
     for key, fn in (("videos", _video_items),
                     ("songs", _song_items),
                     ("podcasts", _podcast_items),
                     ("books", _book_items),
+                    ("motions", _motion_items),
+                    ("models3d", _model3d_items),
+                    ("sfx", _sfx_items),
                     ("projects", _project_items)):
         try:
             got = fn(uid)
@@ -325,6 +398,37 @@ def register_library_routes(app):
         _ogbooks.register_book_routes(app)
     except Exception as e:
         logger.warning(f"Book routes skipped: {e}")
+    # Generator 7d: motion routes (/motion/status, approve,
+    # decline, download, save) ride the same registration.
+    try:
+        import og_motion as _ogmotion
+        _ogmotion.register_motion_routes(app)
+    except Exception as e:
+        logger.warning(f"Motion routes skipped: {e}")
+    # Generator 7e: 3D-model routes (/models3d/status, approve,
+    # decline, download, save) ride the same registration.
+    try:
+        import og_models3d as _ogmodels
+        _ogmodels.register_models3d_routes(app)
+    except Exception as e:
+        logger.warning(f"Model3D routes skipped: {e}")
+    # Generator 7f: voice-lab routes (/voice-lab/status,
+    # voices, samples, approve, decline, delete, tts,
+    # download, save) ride the same registration.
+    try:
+        import og_voice_lab as _ogvoice
+        _ogvoice.register_voice_lab_routes(app)
+    except Exception as e:
+        logger.warning(f"Voice lab routes skipped: {e}")
+    # Wallet Phase A: wallet routes (/wallet/status, setup,
+    # complete, history, remove) ride the same registration.
+    # Phase A is tokenize-only — no Library section is added
+    # (a wallet is a payment method, not an artifact).
+    try:
+        import og_wallet as _ogwallet
+        _ogwallet.register_wallet_routes(app)
+    except Exception as e:
+        logger.warning(f"Wallet routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
@@ -334,7 +438,8 @@ def register_library_routes(app):
                     "counts": {"videos": 0, "songs": 0,
                                "images": 0, "files": 0,
                                "projects": 0, "podcasts": 0,
-                               "books": 0}}
+                               "books": 0, "motions": 0,
+                               "models3d": 0, "sfx": 0}}
         items, storage_line, counts = collect_library(
             uid, request)
         return {"items": items, "storage": storage_line,
