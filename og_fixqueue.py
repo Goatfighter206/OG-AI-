@@ -1490,6 +1490,16 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogpod.install_podcast_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Podcast install skipped: {e}")
+    # Generator 7b: the designer claim seam rides the same last
+    # install, AFTER 7a (so designer wraps land outermost; its
+    # claims require an explicit thumbnail/poster/meme noun, so
+    # bare YES/NO and other generators' asks are never eaten).
+    # Fail-safe — a problem here never takes the seam down.
+    try:
+        import og_designer as _ogdes
+        _ogdes.install_designer_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Designer install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
