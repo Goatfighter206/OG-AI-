@@ -186,3 +186,16 @@
   s.src = '/static/og_podcast.js';
   document.head.appendChild(s);
 })();
+
+/* Generator 7b: the designer (thumbnail / poster / meme
+   interception + in-chat design card) lives in its own asset
+   (static/og_designer.js); same ride-along loader — the page
+   is at its push ceiling. Loaded after 7a so its sendMessage
+   wrap lands OUTSIDE the page's generic /image wrapper:
+   designer phrasing is claimed before a poster/meme ask can
+   fall through to a plain picture. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_designer.js';
+  document.head.appendChild(s);
+})();
