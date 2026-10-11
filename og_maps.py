@@ -904,6 +904,74 @@ def _route_results(parsed, coords=None):
     ]
 
 
+def _place_not_found_results(destination):
+    """Round 68: the honest 'couldn't find that place' answer
+    for a directions ask — a grounded note for OG in the
+    clarifying results' shape (an early answer, no route, no
+    distance, nothing invented)."""
+    return [{
+        "title": "Maps — place not found",
+        "body": (
+            f"(Maps note for OG: the visitor asked for "
+            f"directions to {destination}, but that place "
+            f"could NOT be found on the map — no match came "
+            f"back at all. Tell them straight, in your own "
+            f"voice, that you couldn't find that place, and "
+            f"ask them to check the spelling or add the "
+            f"city. Do NOT invent the place, a route, a "
+            f"distance or directions, and do NOT claim "
+            f"anything was loaded into their GPS.)"),
+        "href": "",
+    }]
+
+
+def _store_chat_route(parsed, uid, coords, results):
+    """Round 68: a directions answer ALSO loads the route
+    into the visitor's GPS — og_gps' active route, the one
+    the app's Driving map opens on. The step route is
+    computed from the same ends the text answer used: the
+    exchange's shared coordinates when the message named
+    no start (the coordinates themselves are never quoted
+    into the answer — only the stored route's distance /
+    duration / step count joins it), else the named origin
+    place. ANY failure here leaves the plain answer
+    standing: storing is a side-effect of a good answer,
+    never a reason to break one."""
+    try:
+        import og_gps
+        if coords:
+            from_raw = {"lat": coords[0], "lon": coords[1]}
+            from_label = "your location"
+        else:
+            from_raw = {"place": parsed.get("origin")}
+            from_label = ""
+        to_raw = {"place": parsed.get("destination")}
+        route = og_gps.route_driving(from_raw, to_raw)
+        if not route:
+            return results
+        stored = og_gps.store_route(
+            uid, route, from_raw, to_raw,
+            from_label=from_label,
+            to_label=parsed.get("destination") or "")
+        if not stored:
+            return results
+        line = (
+            "\n(Maps note for OG: that route — "
+            + _fmt_dist(stored["distance_m"]) + ", "
+            + _fmt_duration(stored["duration_s"]) + ", "
+            + f"{len(stored['steps'])} steps — is loaded "
+            "in the visitor's GPS map now. Tell them it's "
+            "on their map: the Driving map in the app shows "
+            "it, and Start navigation on the map will guide "
+            "it.)")
+        first = dict(results[0])
+        first["body"] = ((first.get("body") or "") + line)[:1800]
+        return [first] + list(results[1:])
+    except Exception as e:
+        logger.warning(f"Chat route store failed: {e}")
+        return results
+
+
 def _landmark_results(parsed):
     """Ground a landmark answer in the geocoder's own record:
     its display name (which carries the city/area) + a map link.
@@ -963,7 +1031,24 @@ def maps_search_results(parsed, uid, consume_lookup, coords=None):
             return _route_results(parsed)   # clarifying ask, no spend
         if not parsed.get("origin") and not coords:
             return _route_results(parsed)   # clarifying ask, no spend
+        if geocode(parsed["destination"]) is None:
+            # Round 68: a complete directions ask (a named
+            # start or a shared location) whose destination
+            # cannot be found gets the honest answer HERE —
+            # not a fall-through to web results OG would
+            # have to dress up as directions. Nothing is
+            # stored and no lookup is spent (the clarifying
+            # shape above).
+            return _place_not_found_results(parsed["destination"])
         results = _route_results(parsed, coords)
+        if results and uid:
+            # Round 68: the answered route is also loaded
+            # into the visitor's GPS map (og_gps' active
+            # route). A store failure never breaks the
+            # answer — the helper degrades to the plain
+            # results on its own.
+            results = _store_chat_route(parsed, uid, coords,
+                                        results)
     else:
         return None
     if not results:
