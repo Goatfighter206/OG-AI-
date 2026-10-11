@@ -183,6 +183,15 @@ def _record_report(email: str, uid: str, text: str, reason: str):
     _put("items", items[-MAX_REPORTS_KEPT:])
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     _put("count:" + uid + ":" + day, _report_count_today(uid) + 1)
+    # Round 51 Part 3, source (b): a reported reply also becomes
+    # a lesson, so OG's drafters consult what users flagged. The
+    # report flow never rides on the lessons book — any failure
+    # there is swallowed here.
+    try:
+        import og_lessons as _og_lessons
+        _og_lessons.record_from_report(rec)
+    except Exception as e:
+        logger.warning(f"Report lesson hook failed: {e}")
     return rec
 
 
