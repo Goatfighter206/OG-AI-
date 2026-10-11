@@ -523,6 +523,11 @@ function refreshGoals() {
         var bits = [];
         if (w.place) bits.push(w.place);
         if (w.max_price) bits.push('up to $' + w.max_price);
+        if (w.matches && w.matches.length) {
+          var best = w.matches[0];
+          bits.push(w.matches.length + (w.matches.length === 1 ? ' match' : ' matches') +
+            (best && best.price != null ? ', best $' + best.price : ''));
+        }
         bits.push(WATCH_STATUS[w.status] || w.status || 'watching');
         if (w.last_check) bits.push('last checked ' + relTime(w.last_check));
         wl.appendChild(seatRow('👀', w.item || 'Watch', bits.join(' · ')));
