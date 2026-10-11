@@ -1,37 +1,52 @@
-/* Round 66: GPS (web) — driving navigation + job-site GPS.
+/* Round 66: GPS (web). Round 70 reshape (Brent's folder
+ * rule): GPS leaves the side menu's cramped tabs and gets
+ * the app's shape — two menu rows, "Driving" and
+ * "Construction", each opening its own full view.
  *
  * One asset, zero page edits beyond the loader stub in
- * static/og_tokens.js (the R62/R63/R65 pattern; the page sits
- * at its push ceiling). A "GPS" section is injected into the
- * side menu right after the Account card, with two tabs:
+ * static/og_tokens.js (the R62/R63/R65 pattern; the page
+ * sits at its push ceiling). The rows are injected into
+ * the side menu right after the Account card, under a
+ * "GPS" section header, and show only while signed in
+ * (the R63/R65 visibility sync).
  *
- *   Driving  — from/to fields (a place name, or "lat, lon"),
- *              "Use my location", POST /gps/route, steps list
- *              with per-step distances + totals, and a live
- *              "you are here" line from a geolocation watch.
- *   Job sites — the caller's saved points (GET /gps/points),
- *              add by manual lat/lon or "drop at my location",
- *              per point: Convert readout (UTM + WA state
- *              plane via GET /gps/convert), Stakeout view (big
- *              distance + bearing arrow, updated live from a
- *              geolocation watch through POST /gps/stakeout —
- *              the server is the single math source), a
- *              "distance to…" picker (POST /gps/between),
- *              delete, and an Export CSV button.
+ *   Driving — its own full view with the map (OG70's
+ *             hand-rolled OpenStreetMap tiles): the
+ *             account's ACTIVE route (GET /gps/route/
+ *             active — the same route chat and the app
+ *             use), saved points as markers, the visitor's
+ *             own position dot from browser geolocation
+ *             (honest "Location: Off" when denied), steps
+ *             + totals under the map, and the from/to form
+ *             (POST /gps/route) for a fresh route. The web
+ *             shows map + route only — live turn-by-turn
+ *             while driving is the app's job, and the view
+ *             says so.
+ *   Construction — the job-site folder: the caller's
+ *             saved points (GET /gps/points) with add
+ *             (manual or "Drop at my location"), Convert
+ *             (UTM + WA state plane), Stakeout (live
+ *             geolocation watch through POST /gps/
+ *             stakeout), distance-to (POST /gps/between),
+ *             Edit (POST /gps/points/update) and Delete;
+ *             a CSV panel — Export (GET /gps/points/
+ *             export) and Import (POST /gps/points/
+ *             import, R67) showing the server's own
+ *             added/skipped counts; a blueprint reader
+ *             (image sheets with pan/zoom; a PDF gets the
+ *             app's honest "export as PNG/JPG" line); and
+ *             Procore / Bluebeam rows that open those
+ *             sites in OG's browser via the seeded chat
+ *             ask — the same machinery as typing it.
  *
- * All math comes from the server (og_gps) so the web and the
- * app agree digit for digit. The section shows only while the
- * Account section is shown (signed in), matching R63/R65.
+ * All math comes from the server (og_gps) so the web and
+ * the app agree digit for digit.
  */
 (function () {
   'use strict';
 
   var css = ''
-    + '.og66-tabs{display:flex;gap:8px;padding:10px 12px}'
-    + '.og66-tab{flex:1;padding:9px;border:1px solid #333;border-radius:10px;'
-    + 'background:#161616;color:#ececec;font-family:inherit;cursor:pointer}'
-    + '.og66-tab.on{border-color:#ffc107;color:#ffc107;font-weight:700}'
-    + '.og66-body{padding:4px 14px 14px;color:#ececec}'
+    + '.og66-body{padding:4px 2px 14px;color:#ececec}'
     + '.og66-body input,.og66-body select{width:100%;box-sizing:border-box;'
     + 'padding:10px;margin:5px 0;background:#111;border:1px solid #333;'
     + 'border-radius:8px;color:#ececec;font-family:inherit}'
@@ -46,7 +61,26 @@
     + '.og66-small{color:#999;font-size:.86em}'
     + '.og66-big{font-size:1.9em;font-weight:800;text-align:center;padding:8px 0}'
     + '.og66-arrow{display:inline-block;color:#ffc107}'
-    + '.og66-note{color:#999;font-size:.88em;padding:6px 0;margin:0}';
+    + '.og66-note{color:#999;font-size:.88em;padding:6px 0;margin:0}'
+    + '.og66-sec{margin:22px 4px 8px;font-size:.74rem;font-weight:700;'
+    + 'letter-spacing:1.6px;text-transform:uppercase;color:#8f8f8f}'
+    + '.og66-sec:first-child{margin-top:2px}'
+    + '.og66-map{height:46vh;min-height:300px;margin:6px 0 4px}'
+    + '.og66-chip{display:inline-block;padding:5px 12px;border-radius:999px;'
+    + 'border:1px solid #3a3a3a;color:#d8d8d8;font-size:.85em;margin:4px 0}'
+    + '.og66-chip.on{border-color:rgba(255,193,7,.65);color:#ffc107}'
+    + '.og66-bp{position:relative;height:52vh;min-height:300px;'
+    + 'overflow:hidden;border:1px solid #2c2c2c;border-radius:16px;'
+    + 'background:#101010;touch-action:none;margin:6px 0}'
+    + '.og66-bp img{position:absolute;left:0;top:0;max-width:none;'
+    + 'transform-origin:0 0;user-select:none;-webkit-user-drag:none}'
+    + '.og66-site{display:block;width:100%;box-sizing:border-box;'
+    + 'padding:15px 16px;margin:6px 0;background:#171717;'
+    + 'border:1px solid #262626;border-radius:16px;color:#ececec;'
+    + 'font-family:inherit;font-size:1rem;text-align:left;cursor:pointer}'
+    + '.og66-site:hover{background:#1f1f1f}'
+    + '.og66-site .og66-small{display:block;margin-top:2px}'
+    + 'label.og66-btn{display:inline-block}';
   var st = document.createElement('style');
   st.textContent = css;
   document.head.appendChild(st);
@@ -87,15 +121,52 @@
     return { place: (text || '').trim() };
   }
 
-  var sec = null, head = null, tab = 'drive';
-  var myPos = null;              // {lat, lon} from the watch
-  var driveWatch = null, stakeWatch = null;
-  var stakeTarget = null;        // point id being staked out
+  /* OG70 loads through the same stub chain; resolve it at
+   * tap time so dynamic-script order can never break us. */
+  function openView(opts) {
+    if (window.OG70 && window.OG70.openView) {
+      window.OG70.openView(opts);
+      return;
+    }
+    var n = 0;
+    var iv = setInterval(function () {
+      n += 1;
+      if (window.OG70 && window.OG70.openView) {
+        clearInterval(iv);
+        window.OG70.openView(opts);
+      } else if (n > 30) {
+        clearInterval(iv);
+      }
+    }, 100);
+  }
+
+  var sec = null, head = null;
   var points = [];
+  var stakeWatch = null;
+  var stakeTarget = null;
 
   /* ---------------- Driving ---------------- */
-  function buildDrive(body) {
-    body.innerHTML = '';
+  function renderSteps(stepsEl, d) {
+    stepsEl.innerHTML = '';
+    (d.steps || []).forEach(function (s) {
+      var row = el('div', 'og66-step', s.instruction);
+      row.appendChild(el('b', '', fmtDist(s.distance_m)));
+      stepsEl.appendChild(row);
+    });
+  }
+
+  function buildDriving(body, view) {
+    var wrap = el('div', 'og66-body');
+    body.appendChild(wrap);
+    var chip = el('span', 'og66-chip', 'Location: …');
+    chip.id = 'og66LocChip';
+    wrap.appendChild(chip);
+    var here = el('p', 'og66-note', 'You are here: (location not shared yet)');
+    here.id = 'og66Here';
+    var mapBox = el('div', 'og70-map og66-map');
+    var ends = el('p', 'og66-note', ''); ends.id = 'og66Ends';
+    var totals = el('p', 'og66-note', ''); totals.id = 'og66Totals';
+    var stepsBox = el('div'); stepsBox.id = 'og66Steps';
     var from = el('input'); from.id = 'og66From'; from.placeholder = 'From — place, or lat, lon';
     var to = el('input'); to.id = 'og66To'; to.placeholder = 'To — place, or lat, lon';
     var useMine = el('button', 'og66-btn dim', 'Use my location');
@@ -108,56 +179,111 @@
     });
     var go = el('button', 'og66-btn', 'Get route');
     go.type = 'button';
-    var here = el('p', 'og66-note', 'You are here: (location not shared yet)');
-    here.id = 'og66Here';
-    var out = el('div'); out.id = 'og66RouteOut';
+    wrap.appendChild(mapBox);
+    wrap.appendChild(here);
+    wrap.appendChild(ends);
+    wrap.appendChild(totals);
+    wrap.appendChild(stepsBox);
+    wrap.appendChild(from); wrap.appendChild(to);
+    wrap.appendChild(useMine); wrap.appendChild(go);
+    wrap.appendChild(el('p', 'og66-note',
+      'The web shows your map and route. For live turn-by-turn '
+      + 'while you drive, use the OG app.'));
+
+    var map = null, myPos = null, centeredOnUser = false, alive = true;
+    view.track(function () { alive = false; });
+    function ensureMap(lat, lon) {
+      if (!alive || map || lat == null || lon == null) return;
+      map = window.OG70.createMap(mapBox, { lat: lat, lon: lon, zoom: 15 });
+      map.setPoints(points);
+      if (myPos) map.setUser(myPos);
+      view.track(function () { map.destroy(); });
+    }
+    function showRoute(d, stored) {
+      if (stored && stored.from && stored.to) {
+        ends.textContent = (stored.from.label || 'Start') + ' → '
+          + (stored.to.label || 'Destination');
+        ensureMap(stored.from.lat, stored.from.lon);
+        if (map) map.setRoute({ from: stored.from, to: stored.to });
+      }
+      totals.textContent = 'Total: ' + fmtDist(d.distance_m)
+        + ' · ' + fmtDur(d.duration_s);
+      renderSteps(stepsBox, d);
+    }
+
+    // The account's active route — the same one chat and
+    // the app load (Round 68).
+    api('/gps/route/active').then(function (res) {
+      if (!alive) return;
+      var r = res.d && res.d.route;
+      if (r && r.steps) showRoute(r, r);
+    }).catch(function () { /* form below still works */ });
+    api('/gps/points').then(function (res) {
+      if (!alive) return;
+      points = (res.d && res.d.points) || [];
+      if (map) map.setPoints(points);
+      else if (points.length) ensureMap(points[0].lat, points[0].lon);
+    }).catch(function () { /* map stays as-is */ });
+
+    if (!navigator.geolocation) {
+      chip.textContent = 'Location: Off — this browser has no GPS.';
+    } else {
+      var watchId = navigator.geolocation.watchPosition(function (p) {
+        myPos = { lat: p.coords.latitude, lon: p.coords.longitude };
+        chip.textContent = 'Location: On';
+        chip.className = 'og66-chip on';
+        var h = $('og66Here');
+        if (h) h.textContent = 'You are here: ' + myPos.lat.toFixed(5)
+          + ', ' + myPos.lon.toFixed(5)
+          + ' (±' + Math.round(p.coords.accuracy || 0) + ' m)';
+        ensureMap(myPos.lat, myPos.lon);
+        if (map) {
+          map.setUser(myPos);
+          if (!centeredOnUser) {
+            centeredOnUser = true;
+            map.setCenter(myPos.lat, myPos.lon);
+          }
+        }
+      }, function () {
+        chip.textContent = 'Location: Off — the map still shows '
+          + 'your route and points.';
+      }, { enableHighAccuracy: true });
+      view.track(function () {
+        navigator.geolocation.clearWatch(watchId);
+      });
+    }
+
     go.addEventListener('click', function () {
-      out.innerHTML = '';
-      out.appendChild(el('p', 'og66-note', 'Routing…'));
+      stepsBox.innerHTML = '';
+      totals.textContent = 'Routing…';
       post('/gps/route', { from: endpoint(from.value), to: endpoint(to.value) })
         .then(function (res) {
-          out.innerHTML = '';
           if (!res.ok || !res.d || !res.d.steps) {
-            out.appendChild(el('p', 'og66-note',
-              (res.d && res.d.detail) || 'Route unavailable — nothing was made up.'));
+            totals.textContent = (res.d && res.d.detail)
+              || 'Route unavailable — nothing was made up.';
             return;
           }
-          out.appendChild(el('p', 'og66-note',
-            'Total: ' + fmtDist(res.d.distance_m) + ' · ' + fmtDur(res.d.duration_s)));
-          res.d.steps.forEach(function (s) {
-            var row = el('div', 'og66-step', s.instruction);
-            row.appendChild(el('b', '', fmtDist(s.distance_m)));
-            out.appendChild(row);
-          });
+          showRoute(res.d, res.d.route);
         })
         .catch(function () {
-          out.innerHTML = '';
-          out.appendChild(el('p', 'og66-note', 'Route unavailable — nothing was made up.'));
+          totals.textContent = 'Route unavailable — nothing was made up.';
         });
     });
-    body.appendChild(from); body.appendChild(to);
-    body.appendChild(useMine); body.appendChild(go);
-    body.appendChild(here); body.appendChild(out);
-    if (navigator.geolocation && driveWatch === null) {
-      driveWatch = navigator.geolocation.watchPosition(function (p) {
-        myPos = { lat: p.coords.latitude, lon: p.coords.longitude };
-        var h = $('og66Here');
-        if (h) h.textContent = 'You are here: ' + myPos.lat.toFixed(5) + ', '
-          + myPos.lon.toFixed(5) + ' (±' + Math.round(p.coords.accuracy || 0) + ' m)';
-      }, function () { /* watch stays silent; fields still work */ },
-        { enableHighAccuracy: true });
-    }
   }
 
-  /* ---------------- Job sites ---------------- */
-  function refreshPoints(body) {
+  function openDriving() {
+    openView({ title: 'Driving', wide: true, onOpen: buildDriving });
+  }
+
+  /* ---------------- Construction: job sites ---------------- */
+  function refreshPoints() {
     api('/gps/points').then(function (res) {
       points = (res.d && res.d.points) || [];
-      renderPoints(body);
+      renderPoints();
     }).catch(function () { /* list stays as-is */ });
   }
 
-  function renderPoints(body) {
+  function renderPoints() {
     var list = $('og66PtList');
     if (!list) return;
     list.innerHTML = '';
@@ -167,7 +293,7 @@
     }
     points.forEach(function (pt) {
       var row = el('div', 'og66-pt');
-      var nm = el('b', 'name', pt.name); row.appendChild(nm);
+      row.appendChild(el('b', 'name', pt.name));
       row.appendChild(el('div', 'og66-small',
         pt.lat.toFixed(6) + ', ' + pt.lon.toFixed(6) + (pt.note ? ' · ' + pt.note : '')));
       var readout = el('div', 'og66-small'); readout.id = 'og66Conv' + pt.id;
@@ -185,10 +311,32 @@
         });
       });
       var stake = el('button', 'og66-btn dim', 'Stakeout'); stake.type = 'button';
-      stake.addEventListener('click', function () { startStakeout(pt, body); });
+      stake.addEventListener('click', function () { startStakeout(pt); });
+      var edit = el('button', 'og66-btn dim', 'Edit'); edit.type = 'button';
+      var editBox = el('div');
+      edit.addEventListener('click', function () {
+        editBox.innerHTML = '';
+        var nm = el('input'); nm.value = pt.name;
+        var nt = el('input'); nt.value = pt.note || '';
+        nt.placeholder = 'Note (optional)';
+        var save = el('button', 'og66-btn', 'Save'); save.type = 'button';
+        save.addEventListener('click', function () {
+          post('/gps/points/update', {
+            id: pt.id, name: nm.value, note: nt.value
+          }).then(function (res) {
+            if (res.ok) refreshPoints();
+            else editBox.appendChild(el('div', 'og66-small',
+              (res.d && res.d.detail) || 'That edit did not save.'));
+          });
+        });
+        var cancel = el('button', 'og66-btn dim', 'Cancel'); cancel.type = 'button';
+        cancel.addEventListener('click', function () { editBox.innerHTML = ''; });
+        editBox.appendChild(nm); editBox.appendChild(nt);
+        editBox.appendChild(save); editBox.appendChild(cancel);
+      });
       var del = el('button', 'og66-btn dim', 'Delete'); del.type = 'button';
       del.addEventListener('click', function () {
-        post('/gps/points/delete', { id: pt.id }).then(function () { refreshPoints(body); });
+        post('/gps/points/delete', { id: pt.id }).then(function () { refreshPoints(); });
       });
       var picker = el('select');
       picker.appendChild(el('option', '', 'Distance to…'));
@@ -205,17 +353,20 @@
           a: { lat: pt.lat, lon: pt.lon }, b: { lat: other.lat, lon: other.lon }
         }).then(function (res) {
           if (res.d) distOut.textContent = fmtDist(res.d.distance_m)
-            + ' at ' + Math.round(res.d.bearing_deg) + '° to ' + other.name;
+            + ' at ' + Math.round(res.d.bearing_deg) + '° to ' + other.name
+            + ' · back ' + Math.round(res.d.bearing_back_deg) + '°';
         });
       });
       row.appendChild(readout);
-      row.appendChild(conv); row.appendChild(stake); row.appendChild(del);
+      row.appendChild(conv); row.appendChild(stake);
+      row.appendChild(edit); row.appendChild(del);
       row.appendChild(picker); row.appendChild(distOut);
+      row.appendChild(editBox);
       list.appendChild(row);
     });
   }
 
-  function startStakeout(pt, body) {
+  function startStakeout(pt) {
     stakeTarget = pt.id;
     var box = $('og66Stake');
     if (!box) return;
@@ -246,9 +397,126 @@
     }, function () { /* keep last reading */ }, { enableHighAccuracy: true });
   }
 
-  function buildSites(body) {
-    body.innerHTML = '';
-    body.appendChild(el('p', 'og66-note',
+  /* ---------------- Construction: CSV ---------------- */
+  function buildCsv(wrap) {
+    wrap.appendChild(el('h3', 'og66-sec', 'Point file (CSV)'));
+    var exp = el('button', 'og66-btn dim', 'Export CSV'); exp.type = 'button';
+    exp.addEventListener('click', function () {
+      window.location.href = '/gps/points/export';
+    });
+    var lab = el('label', 'og66-btn dim', 'Import CSV');
+    lab.setAttribute('for', 'og66CsvFile');
+    var file = el('input'); file.type = 'file'; file.id = 'og66CsvFile';
+    file.accept = '.csv,text/csv,text/plain';
+    file.hidden = true;
+    var out = el('p', 'og66-note',
+      'Import takes the same file Export makes: name, lat, lon, note.');
+    out.id = 'og66CsvOut';
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      out.textContent = 'Importing ' + f.name + '…';
+      f.text().then(function (text) {
+        return post('/gps/points/import', { csv: text });
+      }).then(function (res) {
+        if (res.ok && res.d && res.d.ok) {
+          out.textContent = 'Imported ' + res.d.added + ' points, skipped '
+            + res.d.skipped + ' rows.';
+          refreshPoints();
+        } else {
+          out.textContent = (res.d && (res.d.detail || res.d.error))
+            || 'That file did not import.';
+        }
+      }).catch(function () {
+        out.textContent = 'That file did not import.';
+      });
+      file.value = '';
+    });
+    wrap.appendChild(exp); wrap.appendChild(lab);
+    wrap.appendChild(file); wrap.appendChild(out);
+  }
+
+  /* ---------------- Construction: blueprint reader ---------------- */
+  function buildBlueprint(wrap) {
+    wrap.appendChild(el('h3', 'og66-sec', 'Blueprint reader'));
+    var lab = el('label', 'og66-btn dim', 'Open a blueprint sheet');
+    lab.setAttribute('for', 'og66BpFile');
+    var file = el('input'); file.type = 'file'; file.id = 'og66BpFile';
+    file.accept = 'image/*,.pdf';
+    file.hidden = true;
+    var msg = el('p', 'og66-note',
+      'Open a blueprint as a picture (PNG or JPG) — drag to pan, '
+      + 'zoom with the buttons.');
+    msg.id = 'og66BpMsg';
+    var viewer = el('div', 'og66-bp'); viewer.id = 'og66BpView';
+    var img = el('img'); img.id = 'og66BpImg'; img.hidden = true;
+    img.alt = 'Blueprint sheet';
+    viewer.appendChild(img);
+    var zOut = el('button', 'og66-btn dim', '−'); zOut.type = 'button';
+    var zIn = el('button', 'og66-btn dim', '+'); zIn.type = 'button';
+    var zReset = el('button', 'og66-btn dim', 'Reset view'); zReset.type = 'button';
+    var scale = 1, tx = 0, ty = 0;
+    function apply() {
+      img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+    }
+    zIn.addEventListener('click', function () { scale = Math.min(8, scale * 1.25); apply(); });
+    zOut.addEventListener('click', function () { scale = Math.max(0.2, scale / 1.25); apply(); });
+    zReset.addEventListener('click', function () { scale = 1; tx = 0; ty = 0; apply(); });
+    var drag = null;
+    viewer.addEventListener('pointerdown', function (e) {
+      drag = { x: e.clientX, y: e.clientY };
+    });
+    viewer.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      tx += e.clientX - drag.x;
+      ty += e.clientY - drag.y;
+      drag = { x: e.clientX, y: e.clientY };
+      apply();
+    });
+    viewer.addEventListener('pointerup', function () { drag = null; });
+    viewer.addEventListener('pointercancel', function () { drag = null; });
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      var isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+      if (isPdf) {
+        img.hidden = true;
+        msg.textContent = 'PDF sheets can\'t open in the reader yet — '
+          + 'export the sheet as a PNG or JPG and open that.';
+      } else if (f.type.indexOf('image/') !== 0) {
+        img.hidden = true;
+        msg.textContent = 'That file isn\'t an image — blueprints open '
+          + 'here as a PNG or JPG picture.';
+      } else {
+        img.src = URL.createObjectURL(f);
+        img.hidden = false;
+        scale = 1; tx = 0; ty = 0; apply();
+        msg.textContent = f.name + ' — drag to pan, + / − to zoom.';
+      }
+      file.value = '';
+    });
+    wrap.appendChild(lab); wrap.appendChild(file);
+    wrap.appendChild(msg); wrap.appendChild(viewer);
+    wrap.appendChild(zOut); wrap.appendChild(zIn); wrap.appendChild(zReset);
+  }
+
+  /* ---------------- Construction: open in OG's browser ---------------- */
+  function openSite(host) {
+    if (window.OG70) window.OG70.closeView();
+    var mc = $('menuClose');
+    if (mc) mc.click();
+    var input = $('messageInput');
+    if (input) {
+      input.value = 'Open ' + host;
+      input.focus();
+    }
+    if (typeof window.sendMessage === 'function') {
+      window.sendMessage(true);
+    }
+  }
+
+  function buildSites(wrap) {
+    wrap.appendChild(el('p', 'og66-note',
       'Phone GPS is accurate to a few meters — good for finding '
       + 'and checking points, not a survey rover.'));
     var name = el('input'); name.id = 'og66PtName'; name.placeholder = 'Point name (e.g. NW corner)';
@@ -269,50 +537,70 @@
         name: name.value, lat: parseFloat(lat.value),
         lon: parseFloat(lon.value), note: note.value
       }).then(function (res) {
-        if (res.ok) { name.value = ''; note.value = ''; refreshPoints(body); }
+        if (res.ok) { name.value = ''; note.value = ''; refreshPoints(); }
       });
     });
-    var exp = el('button', 'og66-btn dim', 'Export CSV'); exp.type = 'button';
-    exp.addEventListener('click', function () {
-      window.location.href = '/gps/points/export';
+    wrap.appendChild(name); wrap.appendChild(lat); wrap.appendChild(lon);
+    wrap.appendChild(note); wrap.appendChild(drop); wrap.appendChild(add);
+    var stakeBox = el('div'); stakeBox.id = 'og66Stake'; wrap.appendChild(stakeBox);
+    var list = el('div'); list.id = 'og66PtList'; wrap.appendChild(list);
+    refreshPoints();
+  }
+
+  function buildConstruction(body, view) {
+    var wrap = el('div', 'og66-body');
+    body.appendChild(wrap);
+    wrap.appendChild(el('h3', 'og66-sec', 'Job sites'));
+    buildSites(wrap);
+    buildCsv(wrap);
+    buildBlueprint(wrap);
+    wrap.appendChild(el('h3', 'og66-sec', "Open in OG's browser"));
+    var pro = el('button', 'og66-site', 'Procore'); pro.type = 'button';
+    pro.appendChild(el('span', 'og66-small', 'app.procore.com — opens in OG\'s browser'));
+    pro.addEventListener('click', function () { openSite('app.procore.com'); });
+    var blu = el('button', 'og66-site', 'Bluebeam'); blu.type = 'button';
+    blu.appendChild(el('span', 'og66-small', 'bluebeam.com — opens in OG\'s browser'));
+    blu.addEventListener('click', function () { openSite('bluebeam.com'); });
+    wrap.appendChild(pro); wrap.appendChild(blu);
+    view.track(function () {
+      if (stakeWatch !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(stakeWatch);
+        stakeWatch = null;
+      }
+      stakeTarget = null;
     });
-    body.appendChild(name); body.appendChild(lat); body.appendChild(lon);
-    body.appendChild(note); body.appendChild(drop); body.appendChild(add);
-    body.appendChild(exp);
-    var stakeBox = el('div'); stakeBox.id = 'og66Stake'; body.appendChild(stakeBox);
-    var list = el('div'); list.id = 'og66PtList'; body.appendChild(list);
-    refreshPoints(body);
   }
 
-  /* ---------------- Section shell ---------------- */
-  function renderTab() {
-    var body = $('og66Body');
-    if (!body) return;
-    var dBtn = $('og66TabDrive'), sBtn = $('og66TabSites');
-    if (dBtn) dBtn.className = 'og66-tab' + (tab === 'drive' ? ' on' : '');
-    if (sBtn) sBtn.className = 'og66-tab' + (tab === 'sites' ? ' on' : '');
-    if (tab === 'drive') buildDrive(body); else buildSites(body);
+  function openConstruction() {
+    openView({ title: 'Construction', wide: true, onOpen: buildConstruction });
   }
 
+  /* ---------------- Menu rows ---------------- */
   function buildSection() {
     var card = $('menuAccountCard');
     if (!card || sec) return !!sec;
     head = el('h3', 'og-menu-sec', 'GPS');
     sec = el('nav', 'og-menu-card', '');
     sec.id = 'ogGpsCard';
-    var tabs = el('div', 'og66-tabs');
-    var dBtn = el('button', 'og66-tab on', 'Driving'); dBtn.type = 'button'; dBtn.id = 'og66TabDrive';
-    var sBtn = el('button', 'og66-tab', 'Job sites'); sBtn.type = 'button'; sBtn.id = 'og66TabSites';
-    dBtn.addEventListener('click', function () { tab = 'drive'; renderTab(); });
-    sBtn.addEventListener('click', function () { tab = 'sites'; renderTab(); });
-    tabs.appendChild(dBtn); tabs.appendChild(sBtn);
-    var body = el('div', 'og66-body'); body.id = 'og66Body';
-    sec.appendChild(tabs); sec.appendChild(body);
+    var dRow = el('button', 'og-menu-item', '');
+    dRow.type = 'button'; dRow.id = 'og66DrivingRow';
+    var dIco = el('span', 'og-mi', '');
+    dIco.innerHTML = '<svg><use href="#i-pin"/></svg>';
+    dRow.appendChild(dIco);
+    dRow.appendChild(el('span', '', 'Driving'));
+    dRow.addEventListener('click', openDriving);
+    var cRow = el('button', 'og-menu-item', '');
+    cRow.type = 'button'; cRow.id = 'og66ConstructionRow';
+    var cIco = el('span', 'og-mi', '');
+    cIco.innerHTML = '<svg><use href="#i-folder"/></svg>';
+    cRow.appendChild(cIco);
+    cRow.appendChild(el('span', '', 'Construction'));
+    cRow.addEventListener('click', openConstruction);
+    sec.appendChild(dRow); sec.appendChild(cRow);
     card.parentNode.insertBefore(head, card.nextSibling);
     card.parentNode.insertBefore(sec, head.nextSibling);
     sec.hidden = true;
     head.hidden = true;
-    renderTab();
     return true;
   }
 
