@@ -481,3 +481,53 @@ def _find_post_button(elements: List[Dict]) -> Optional[Dict]:
                  str(el.get("label") or ""))]
     return loose[0] if len(loose) == 1 else None
 
+
+# --- Parked-approval identity + host helpers --------------------------------
+# Round 61 code motion: byte-identical moves out of og_browser.py
+# (that file rides the push ceiling — the same surgery that
+# created this module in Round 46). All three are pure logic
+# over dicts/strings; og_browser imports the names back, so
+# callers and suites see the same attributes on og_browser.
+
+
+def _pending_identity(state: Dict) -> tuple:
+    """The identity of a parked approval — desc + site + text,
+    the same triple the approval card shows (and /browser/status
+    serves). Round 38 dedupe compares identities, never object
+    identity, so a re-park of the SAME approval is recognizably
+    the same ask."""
+    site = str(state.get("disp_site") or state.get("post_site")
+               or "")
+    if not site and state.get("page_url"):
+        try:
+            site = urllib.parse.urlparse(
+                state["page_url"]).hostname or ""
+        except Exception:
+            site = ""
+    text = str(state.get("post_text") or state.get("disp_text")
+               or state.get("text") or "")
+    return (str(state.get("desc") or ""), site, text)
+
+
+def _pending_site(pend: Dict) -> str:
+    """The host a parked approval belongs to — the same
+    resolution /browser/status shows the card."""
+    site = str(pend.get("disp_site") or pend.get("post_site")
+               or "")
+    if not site and pend.get("page_url"):
+        try:
+            site = urllib.parse.urlparse(
+                pend["page_url"]).hostname or ""
+        except Exception:
+            site = ""
+    return site
+
+
+def _norm_host(host: str) -> str:
+    h = str(host or "").strip().lower()
+    for pre in ("www.", "m.", "mobile."):
+        if h.startswith(pre):
+            h = h[len(pre):]
+            break
+    return h
+
