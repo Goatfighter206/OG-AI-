@@ -42,6 +42,14 @@ owner's cost visibility.
 
 SWITCH. OG_REGISTER_ENABLED=0 turns the pass into a no-op (app.py
 then serves the model's raw text, Round 25 behavior).
+
+SWEARING SWITCH ("swearing on switch off switch",
+swearing_on_switch_off_switch.py): when OG_PROFANITY_MODE=off,
+enforce_text — the shared entry every call site routes through
+(enforce_reply for classic /chat and og_respond drafts, the
+RegisterSink for SSE) — returns the reply UNCHANGED: this pass
+inserts and forces nothing. Read per call, so the mode flips
+live. Unset/"on": the original pass above, byte-identical.
 """
 
 import hashlib
@@ -332,6 +340,15 @@ def enforce_text(text: str, rewrite_fn=None, max_rewrites=None):
     stats = {"sentences": 0, "passed": 0, "rewritten": 0, "fallback": 0,
              "left": 0, "attempts": 0, "rewrite_tokens": 0, "ms": 0.0,
              "skipped": False}
+    # Swearing switch: OFF -> pure pass-through, nothing forced.
+    try:
+        import swearing_on_switch_off_switch as _swearing
+        if not _swearing.swearing_on():
+            stats["skipped"] = True
+            stats["ms"] = (time.perf_counter() - t0) * 1000
+            return text, stats
+    except Exception:
+        pass  # a switch glitch never eats the register pass
     if not text or not _enabled() or _SHEET_RE.search(text):
         stats["skipped"] = bool(text) and bool(_SHEET_RE.search(text or ""))
         stats["ms"] = (time.perf_counter() - t0) * 1000
