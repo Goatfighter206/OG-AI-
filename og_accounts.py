@@ -526,6 +526,10 @@ PUBLIC_PATHS = frozenset({
     "/", "/static",
     "/auth/signup", "/auth/login", "/auth/logout", "/auth/me",
     "/auth/forgot", "/auth/reset",
+    # Round 63: the pre-session 2-step verify paths — useless
+    # without a live server-held challenge, which is their auth.
+    "/auth/2fa/verify", "/auth/2fa/passkey/options",
+    "/auth/2fa/passkey/verify",
     "/privacy", "/terms", "/health",
     "/system/check", "/system/lessons", "/system/conventions",
     "/stripe/webhook",
@@ -646,6 +650,24 @@ def register_account_routes(app):
             _record_failure(email, ip)
             return _err(ERR_GENERIC, status=401)
         _del(_fail_key(email, ip))
+        # Round 63: a 2-step account gets NO session from the
+        # password alone — og_2fa holds a 5-minute single-use
+        # challenge and its verify mints the session instead
+        # (attach hooks fire there, with this guest uid riding
+        # the challenge). Non-2FA accounts fall straight
+        # through, byte-identical to before. Fail-safe: a 2FA
+        # module problem can never lock every login out.
+        try:
+            import og_2fa as _2fa
+            if _2fa.twofa_enabled(acct["uid"]):
+                chal = _2fa.create_challenge(
+                    email, acct["uid"], remember,
+                    guest_uid=request.cookies.get(UID_COOKIE) or "")
+                return JSONResponse({
+                    "ok": True, "two_factor_required": True,
+                    "challenge": chal})
+        except Exception as e:
+            logger.warning(f"2FA login step skipped: {e}")
         # Round 44: uid-keyed guest state (a buyer entitlement)
         # follows the person onto their account's uid.
         _fire_attach_hooks(
