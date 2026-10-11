@@ -232,6 +232,13 @@ def register_library_routes(app):
         _ogmp.register_mp_routes(app)
     except Exception as e:
         logger.warning(f"MPWatch routes skipped: {e}")
+    # Round 65: language preference routes ride the same
+    # registration (app.py ceiling — see above).
+    try:
+        import og_language as _oglang
+        _oglang.register_language_routes(app)
+    except Exception as e:
+        logger.warning(f"Language routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
