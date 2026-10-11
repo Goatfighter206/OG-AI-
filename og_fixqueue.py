@@ -1500,6 +1500,16 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogdes.install_designer_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Designer install skipped: {e}")
+    # Generator 7c: the book claim seam rides the same last
+    # install, AFTER 7b (so book wraps land outermost; its
+    # bare YES/NO handling defers to any NEWER video/song/
+    # podcast pending, and its other claims require an
+    # explicit book/continue/rewrite shape). Fail-safe.
+    try:
+        import og_books as _ogbooks
+        _ogbooks.install_books_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Book install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
