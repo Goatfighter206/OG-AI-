@@ -105,7 +105,10 @@ BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
          "song_done", "storage_warning", "notice",
          "approval_needed", "signin_needed", "system_check",
-         "fix_needed")
+         "fix_needed",
+         # Round 54: Marketplace watch matches (og_mpwatch via
+         # og_watch delivery), target {"view": "watch", ...}.
+         "mp_match")
 
 # Round 59: a notification may carry a route descriptor ("target") so
 # tapping it takes the user to the thing it is about. Additive and
