@@ -136,6 +136,9 @@ KINDS = ("watch_match", "price_alert", "video_done",
          "storage_warning", "notice",
          "approval_needed", "signin_needed", "system_check",
          "fix_needed",
+         # Round 69: the nightly auto-update's outcome reports
+         # (applied + verified, or rolled back) to the operator.
+         "auto_update",
          # Round 54: Marketplace watch matches (og_mpwatch via
          # og_watch delivery), target {"view": "watch", ...}.
          "mp_match")
@@ -173,8 +176,10 @@ def _clean_target(target):
 # self-check reports through the same own-switches posture.
 # Round 53: fix_needed joins too — a prepared fix waiting on the
 # owner's approval is an alert-family event, same posture.
+# Round 69: auto_update joins too — the owner hears the night's
+# outcome (or its rollback) with the same posture.
 ALERT_KINDS = ("approval_needed", "signin_needed", "system_check",
-               "fix_needed")
+               "fix_needed", "auto_update")
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
 try:
