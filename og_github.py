@@ -111,6 +111,23 @@ the visitor revokes the app (or the token otherwise dies), the API
 answers 401 and the stored connection is dropped gracefully — the
 visitor gets a reconnect prompt, never an error page. Persona files
 are never touched.
+
+ROUND 60 (coding upgrade part 2) — five additions, same laws:
+the repo map, the full test battery, the multi-file machinery,
+the checks subsystem and post-merge live verification live in
+og_codemore.py (this module is at the push-size ceiling),
+re-exported at the bottom of this file; the conventions
+notebook is og_conventions.py. Drafting consults a cached
+per-repo map (ast symbols + references, 6h TTL) and the repo's
+conventions notebook, citing both; a pending change may carry
+up to _MAX_CHANGE_FILES (3) files, checked as one combined
+tree and shipped in one PR, the loop revising only the
+failing file(s); the sandbox battery (pytest + r*-style
+suites, 120s/suite, 600s total) reports per-suite, a timeout
+never reading as a pass; a fix-linked PR watch runs exactly
+one verification pass after the deploy window when the PR
+merges (verified_fixed | still_present on the proposal).
+One-file flows are byte-identical; all of it fails safe.
 """
 
 import base64
@@ -178,8 +195,14 @@ _MAX_FIX_ATTEMPTS = 3
 _CHECKS_POLL_FIRST = 20  # first Actions poll delay, seconds
 _CHECKS_POLL_SECONDS = 60  # Actions poll cadence after that
 _CHECKS_POLL_BUDGET = 20 * 60  # stop tracking a PR after ~20 minutes
-_CHECKS_STORE_FILE = "github_checks.json"
-_CHECKS_KEEP = 5  # tracked PRs remembered per visitor
+# Round 60 (coding upgrade part 2) bounds kept in this module;
+# the repo-map / battery / checks-store bounds live with their
+# subsystems in og_codemore.py.
+_MAX_CHANGE_FILES = 3  # a pending change may carry at most this
+# many files; one-file flows are unchanged
+_DEPLOY_WINDOW = 240  # post-merge wait (deploy window), seconds
+_MERGE_POLL_SECONDS = 300  # merge-watch cadence, seconds
+_MERGE_POLL_BUDGET = 48 * 60 * 60  # merge-watch bound, seconds
 
 # Durable backend (opt-in, same rule as the memory/Google/Spotify
 # stores): when OG_MEMORY_DB_URL points at a Postgres database the
@@ -911,6 +934,23 @@ def _draft_answer(entry: Dict, job: Dict, message: str,
         # ever guessed blind.
         mode, path = "new", named
 
+    # Round 60: an ask naming 2-3 EXISTING files is a multi-file
+    # change (the _MAX_CHANGE_FILES bound) — every named file is
+    # drafted and shown, and the verify step checks the combined
+    # tree. Test-generation asks stay on the single-file flow.
+    if tree_paths and not _TEST_FOR_RE.search(low):
+        named_paths = []
+        for m in _PATH_TOKEN_RE.finditer(ask_text):
+            p = m.group(1)
+            if _valid_path(p) and p in tree_paths \
+                    and p not in named_paths:
+                named_paths.append(p)
+        if 2 <= len(named_paths) <= _MAX_CHANGE_FILES:
+            return _draft_answer_multi(
+                entry, uid, ask_text, thing, who, full_name,
+                owner, repo, default_branch, data, named_paths,
+                tree_paths)
+
     # An edit ask with no resolvable file earns ONE question.
     if not path and _EDIT_VERB_RE.search(low) \
             and not _TEST_FOR_RE.search(low):
@@ -951,6 +991,23 @@ def _draft_answer(entry: Dict, job: Dict, message: str,
                      "href": data.get("html_url", "")}]
         base_text, base_sha = info["text"], info["sha"]
 
+    # Round 60: the repo map's facts for the target + the repo's
+    # conventions notebook ride the drafting context (fail-safe —
+    # no map and no notebook means the pre-Round-60 instruction).
+    repo_map = None
+    map_facts = ""
+    conv_entries: list = []
+    if tree_paths:
+        repo_map = get_repo_map(token, owner, repo,
+                                default_branch, tree_paths)
+        if repo_map:
+            map_facts = map_facts_block(
+                repo_map, path or named or "")
+        conv_entries = _consult_conventions(full_name)
+    conv_block = _conventions_block(conv_entries)
+    conv_texts = [str(e.get("text", "")) for e in conv_entries
+                  if e.get("text")][:2]
+
     slug_src = thing or (path.rsplit("/", 1)[-1] if path else repo)
     branch = "og/" + _slugify(slug_src)
     verify_first = mode == "edit" or not path \
@@ -964,6 +1021,7 @@ def _draft_answer(entry: Dict, job: Dict, message: str,
         "py_paths": [p for p in (tree_paths or [])
                      if p.endswith(".py")],
         "tree_paths": tree_paths or [],
+        "conventions": conv_texts,
     })
     closing = (
         "Reply YES — OG will run the checks and show you the "
@@ -990,6 +1048,8 @@ def _draft_answer(entry: Dict, job: Dict, message: str,
             "approves.\n\n"
             "Repo files (context for the draft):\n"
             + _tree_excerpt(tree_paths, path) + "\n\n"
+            + (map_facts + "\n\n" if map_facts else "")
+            + (conv_block + "\n" if conv_block else "")
             + shape
             + f"Line 4: File: {path}\n"
               "Line 5: Mode: edit\n"
@@ -1021,6 +1081,8 @@ def _draft_answer(entry: Dict, job: Dict, message: str,
             "request the owner approves first.\n\n"
             "Repo files (context for the draft):\n"
             + _tree_excerpt(tree_paths, path) + "\n\n"
+            + (map_facts + "\n\n" if map_facts else "")
+            + (conv_block + "\n" if conv_block else "")
             + shape
             + path_line
             + "Line 5: Mode: new\n"
@@ -1040,6 +1102,8 @@ def _extract_preview(uid: str, pending: Dict) -> Optional[Dict]:
     for THIS pending change and parse Repo/Branch/File + the code
     block. What the visitor saw is what ships — anything that
     doesn't line up with the pending change fails extraction."""
+    if pending.get("multi"):
+        return _extract_preview_multi(uid, pending)
     load_history = _deps.get("load_history")
     if load_history is None:
         return None
@@ -1257,6 +1321,45 @@ def run_python_checks(files: Dict, changed_paths, timeout: int =
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _consult_conventions(repo_full) -> list:
+    """Round 60 item 4: the notebook entries a drafter must see
+    for this repo. Fail-safe — a broken notebook reads as an
+    empty one, never as a drafting failure."""
+    try:
+        import og_conventions
+        return og_conventions.conventions_for(
+            repo_full, limit=5) or []
+    except Exception as e:
+        logger.warning(f"Conventions consult failed: {e}")
+        return []
+
+
+def _conventions_block(entries) -> str:
+    if not entries:
+        return ""
+    lines = ["", "Conventions OG has noted for this repo — "
+             "follow them:"]
+    for entry in entries[:5]:
+        lines.append(f"- {entry.get('text', '')}")
+    return "\n".join(lines)
+
+
+def _note_loop_correction(repo_full, path, attempts) -> None:
+    """When the loop had to revise a draft, note the pattern in
+    the repo's notebook (item 4's update hook). Fail-safe."""
+    try:
+        if not repo_full or not path or not attempts \
+                or len(attempts) < 2:
+            return
+        first = attempts[0] or {}
+        fail = ", ".join(first.get("failing") or []) \
+            or first.get("status") or "checks failed"
+        import og_conventions
+        og_conventions.note_correction(repo_full, path, fail)
+    except Exception as e:
+        logger.warning(f"Convention loop note failed: {e}")
+
+
 # --- Self-drafting + the competence loop (Round 51) -----------------------------
 # Until now OG's code was drafted by the agent in chat, and a failed
 # verification run was only REPORTED — the human decided, from a
@@ -1432,9 +1535,13 @@ def _failure_brief(test) -> str:
 
 
 def _revise_content(path: str, base_text: str, current: str,
-                    test, thing: str, lessons) -> tuple:
+                    test, thing: str, lessons,
+                    extra_context: str = "") -> tuple:
     """Feed one failed run back and draft the SAME edit again.
-    Returns (content|None, cited_lesson_titles)."""
+    Returns (content|None, cited_lesson_titles). Round 60:
+    extra_context carries map facts + notebook conventions for
+    this file when the caller has them (empty = the pre-Round-60
+    prompt, byte for byte)."""
     raw = _draft_completion([
         {"role": "system", "content":
          "You are OG's code drafter. A draft change just FAILED "
@@ -1449,6 +1556,7 @@ def _revise_content(path: str, base_text: str, current: str,
          f"File: {path}\n\n"
          f"Why the last draft failed:\n{_failure_brief(test)}\n"
          + _lessons_block(lessons)
+         + (f"\n\n{extra_context}" if extra_context else "")
          + f"\n\nThe current (failing) draft of {path}:\n"
            f"```\n{current}\n```\n\n"
            "Reply with the complete revised file in one fenced "
@@ -1462,7 +1570,8 @@ def _revise_content(path: str, base_text: str, current: str,
 
 
 def _fix_loop(run_checks, path: str, base_text: str, content: str,
-              thing: str, lessons) -> tuple:
+              thing: str, lessons,
+              extra_context: str = "") -> tuple:
     """The bounded diagnose -> revise -> re-verify loop.
     run_checks(content) -> a run_python_checks record. Returns
     (content, test, attempts, cited_lesson_titles): the LAST
@@ -1475,7 +1584,8 @@ def _fix_loop(run_checks, path: str, base_text: str, content: str,
     while len(attempts) < _MAX_FIX_ATTEMPTS \
             and not checks_green(test) and _revisable(test):
         revised, used = _revise_content(
-            path, base_text, content, test, thing, lessons)
+            path, base_text, content, test, thing, lessons,
+            extra_context=extra_context)
         if revised is None:
             break
         content = revised
@@ -1608,9 +1718,12 @@ def run_local_checks(changed_path: str, content: str) -> Dict:
 
 
 def _choose_fix_file(title: str, diagnosis: str, spec: Dict,
-                     paths: list, lessons) -> Optional[str]:
+                     paths: list, lessons,
+                     map_summary: str = "") -> Optional[str]:
     """Pick the ONE existing file a diagnosed system problem lives
-    in. Strict JSON out; anything unparseable or off-tree = None."""
+    in. Strict JSON out; anything unparseable or off-tree = None.
+    Round 60: map_summary (per-file headline symbols from the
+    repo map) rides after the file list when available."""
     excerpt = "\n".join("- " + p for p in paths[:_MAX_TREE_LINES])
     raw = _draft_completion([
         {"role": "system", "content":
@@ -1623,7 +1736,9 @@ def _choose_fix_file(title: str, diagnosis: str, spec: Dict,
          f"Problem: {title}\nDiagnosis: {diagnosis}\n"
          f"Fix brief: {spec.get('what', '')}\n"
          + _lessons_block(lessons)
-         + f"\n\nFiles in the codebase:\n{excerpt}"},
+         + f"\n\nFiles in the codebase:\n{excerpt}"
+         + (f"\n\nWhat each file defines (repo map):\n"
+            f"{map_summary}" if map_summary else "")},
     ])
     if not raw:
         return None
@@ -1642,7 +1757,12 @@ def _choose_fix_file(title: str, diagnosis: str, spec: Dict,
 
 def _draft_fix_content(title: str, diagnosis: str, spec: Dict,
                        path: str, base_text: str,
-                       lessons) -> Optional[str]:
+                       lessons,
+                       extra_context: str = "") -> Optional[str]:
+    """Draft one file's fixed content. Round 60: extra_context
+    carries the target's repo-map facts + the conventions
+    notebook entries for the repo when available (empty = the
+    pre-Round-60 prompt)."""
     raw = _draft_completion([
         {"role": "system", "content":
          "You are OG's code drafter working on OG's own server "
@@ -1655,6 +1775,7 @@ def _draft_fix_content(title: str, diagnosis: str, spec: Dict,
          f"Problem: {title}\nDiagnosis: {diagnosis}\n"
          f"Fix brief: {spec.get('what', '')}\n"
          + _lessons_block(lessons)
+         + (f"\n\n{extra_context}" if extra_context else "")
          + f"\n\nCurrent content of {path}:\n```\n{base_text}\n```"},
     ])
     return _extract_code_block(raw or "")
@@ -1680,21 +1801,53 @@ def draft_system_fix(title: str, diagnosis: str, spec: Dict,
         if not paths:
             return None, attempts
         lessons = lessons or []
-        target = str(spec.get("target_path") or "")
+        # Round 60: the conventions notebook for OG's own repo
+        # is consulted for every system draft (fail-safe), and
+        # the local repo map supplies per-file facts.
+        conv_entries = _consult_conventions(_self_repo_label())
+        conv_texts = [str(e.get("text", "")) for e in conv_entries
+                      if e.get("text")]
+        repo_map = build_local_repo_map()
+        targets = [str(t) for t in (spec.get("target_paths")
+                                    or []) if str(t).strip()]
+        if len(targets) > _MAX_CHANGE_FILES:
+            return None, attempts
+        if len(targets) > 1:
+            return _draft_system_fix_multi(
+                title, diagnosis, spec, lessons, targets,
+                conv_entries, repo_map)
+        target = str(spec.get("target_path") or "") \
+            or (targets[0] if targets else "")
         if target:
             if target not in paths:
                 return None, attempts
             path = target
         else:
+            map_summary = ""
+            if repo_map:
+                rows = []
+                for p in paths[:_MAX_TREE_LINES]:
+                    syms = ((repo_map.get("files") or {})
+                            .get(p) or {}).get("symbols") or []
+                    head = ", ".join(str(s.get("name"))
+                                     for s in syms[:3])
+                    rows.append(f"- {p}: {head}" if head
+                                else f"- {p}")
+                map_summary = "\n".join(rows)
             path = _choose_fix_file(title, diagnosis, spec,
-                                    paths, lessons)
+                                    paths, lessons,
+                                    map_summary=map_summary)
             if not path:
                 return None, attempts
         base_text = _local_read(path)
         if base_text is None or len(base_text) > _MAX_EDIT_CHARS:
             return None, attempts
+        extra = "\n\n".join(
+            x for x in [map_facts_block(repo_map, path),
+                        _conventions_block(conv_entries)] if x)
         content = _draft_fix_content(title, diagnosis, spec, path,
-                                     base_text, lessons)
+                                     base_text, lessons,
+                                     extra_context=extra)
         if not _usable_revision(content, base_text):
             return None, attempts
 
@@ -1703,7 +1856,9 @@ def draft_system_fix(title: str, diagnosis: str, spec: Dict,
 
         content, test, attempts, cited = _fix_loop(
             _run, path, base_text, content,
-            str(spec.get("what") or title), lessons)
+            str(spec.get("what") or title), lessons,
+            extra_context=extra)
+        _note_loop_correction(_self_repo_label(), path, attempts)
         if not checks_green(test) or content == base_text:
             return None, attempts
         digest = hashlib.sha256(
@@ -1717,6 +1872,7 @@ def draft_system_fix(title: str, diagnosis: str, spec: Dict,
             "attempts": attempts,
             "approach_key": f"code:{path}:{digest}",
             "lessons_cited": cited,
+            "conventions_cited": conv_texts[:2],
         }, attempts
     except Exception as e:
         logger.warning(f"System fix draft failed: {e}")
@@ -1836,6 +1992,9 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
     exact diff, run the Python checks, park the verified package
     and present the FINAL preview. The second YES executes. Any
     failure here writes NOTHING."""
+    if extracted.get("files") and len(extracted["files"]) > 1:
+        return _verify_pending_multi(entry, pending, extracted,
+                                     uid)
     token = entry.get("access_token", "")
     who = entry.get("login") or entry.get("name") or "the visitor"
     owner, repo, full = (pending["owner"], pending["repo"],
@@ -1907,10 +2066,22 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
         # Round 51: a failed run is fed back and OG revises the
         # SAME edit himself (bounded), consulting the lessons
         # book for this file. Inert without a drafting key.
+        # Round 60: the reviser also sees the target's map facts
+        # + the repo's conventions notebook.
         lessons = _consult_lessons(path=path)
+        repo_map = None
+        if pending.get("tree_paths"):
+            repo_map = get_repo_map(token, owner, repo, ref,
+                                    pending.get("tree_paths"))
+        extra_ctx = "\n\n".join(
+            x for x in [map_facts_block(repo_map, path),
+                        _conventions_block(
+                            _consult_conventions(full))] if x)
         content, test, attempts, cited = _fix_loop(
             _run, path, pending.get("base_text") or "", content,
-            pending.get("thing") or "", lessons)
+            pending.get("thing") or "", lessons,
+            extra_context=extra_ctx)
+        _note_loop_correction(full, path, attempts)
         if pending.get("mode") == "edit" \
                 and content == (pending.get("base_text") or ""):
             return abort(
@@ -1920,11 +2091,27 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
                 f"of {path} is back to IDENTICAL with the current "
                 "file — there is no change to ship. NOTHING was "
                 "written. Tell them plainly, in persona.")
+    # Round 60 item 3: when the repo carries r*-style suite
+    # scripts, the FULL battery runs over the final assembled
+    # tree (preparation only) and reports per-suite in the
+    # preview. Without r-suites the standard run above already
+    # covers the surface, so the preview stays byte-identical.
+    battery = None
+    if path.endswith(".py") \
+            and _repo_has_r_suites(pending.get("tree_paths")):
+        bfiles, bhard, _bsoft = _assemble_test_files(
+            entry, pending, path, content)
+        if not bhard:
+            battery = run_test_battery(bfiles, [path])
     if pending.get("mode") == "edit":
         diff = _make_diff(pending.get("base_text") or "", content,
                           path)
     pkg = {"path": path, "content": content, "diff": diff,
            "test": test, "attempts": attempts, "lessons": cited}
+    if pending.get("conventions"):
+        pkg["conventions"] = pending["conventions"]
+    if battery is not None:
+        pkg["battery"] = battery
     verified = dict(pending)
     verified["stage"] = "verified"
     verified["pkg"] = pkg
@@ -1939,6 +2126,11 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
         extra_lines += aline + "\n"
     for title_ in cited:
         extra_lines += f"📘 Lesson applied: {title_}\n"
+    if battery is not None:
+        for line in _battery_lines(battery):
+            extra_lines += line + "\n"
+    for conv in (pkg.get("conventions") or []):
+        extra_lines += f"📐 Convention applied: {conv}\n"
     block = (f"```diff\n{diff}```" if diff is not None
              else f"```\n{content}\n```")
     preview = (
@@ -1969,6 +2161,10 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
     commit the file with the Contents API, open the PR. Returns
     web_search-shaped results describing exactly what happened —
     including honest partial states when a step fails."""
+    _files = extracted.get("files") if isinstance(
+        extracted, dict) else None
+    if _files and len(_files) > 1:
+        return _create_pr_multi(entry, pending, _files, uid)
     token = entry.get("access_token", "")
     who = entry.get("login") or entry.get("name") or "the visitor"
     owner = pending["owner"]
@@ -2116,12 +2312,17 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
     pr_url = pr["html_url"]
     head_sha = (pr.get("head") or {}).get("sha", "")
     if head_sha:
-        _register_checks_watch(uid, {
+        watch = {
             "repo_full": full, "owner": owner, "repo": repo,
             "pr_number": pr.get("number"), "pr_url": pr_url,
             "branch": branch, "head_sha": head_sha,
             "status": "pending", "checks": [], "notified": False,
-            "created": time.time(), "updated": time.time()})
+            "created": time.time(), "updated": time.time()}
+        # Round 60 item 5: a fix-pipeline fix carries its link
+        # so the watch can run the post-merge verification.
+        if pending.get("fix_link"):
+            watch["fix_link"] = pending["fix_link"]
+        _register_checks_watch(uid, watch)
         _start_checks_watch(uid, pr_url)
     action = "edited file" if mode == "edit" else "new file"
     body = (f"DONE — the pull request the visitor ({who}) approved "
@@ -2136,299 +2337,6 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
                if head_sha else ""))
     return [{"title": "🐙 GitHub PR opened", "body": body,
              "href": pr_url}]
-
-
-# --- GitHub Actions check tracking (Brent's rule: test it with GitHub) ---------
-# After a PR opens, OG watches its check runs: a bounded background
-# poll (~20 min) plus a lazy refresh when the visitor asks. The
-# terminal outcome is recorded through og_notify exactly once per
-# PR. Watches are per visitor and durable (Postgres when configured,
-# else a JSON file next to the token store).
-
-_checks_lock = threading.Lock()
-_CHECK_TERMINAL = ("success", "failure", "none", "stopped")
-
-
-def _checks_db_connect():
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
-    with conn.cursor() as cur:
-        cur.execute(
-            "CREATE TABLE IF NOT EXISTS og_github_checks ("
-            "uid TEXT PRIMARY KEY, data JSONB)")
-    conn.commit()
-    return conn
-
-
-def _load_checks_store() -> Dict:
-    if MEMORY_DB_URL and psycopg is not None:
-        try:
-            with _checks_db_connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT uid, data FROM og_github_checks")
-                    return {u: d for u, d in cur.fetchall()}
-        except Exception as e:
-            logger.warning(f"GitHub checks DB load failed, "
-                           f"using file: {e}")
-    if os.path.exists(_CHECKS_STORE_FILE):
-        try:
-            with open(_CHECKS_STORE_FILE, 'r') as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-        except Exception as e:
-            logger.warning(f"Could not load checks store: {e}")
-    return {}
-
-
-def _save_checks_store(store: Dict):
-    if MEMORY_DB_URL and psycopg is not None:
-        try:
-            with _checks_db_connect() as conn:
-                with conn.cursor() as cur:
-                    for uid, data in store.items():
-                        cur.execute(
-                            "INSERT INTO og_github_checks (uid, data) "
-                            "VALUES (%s, %s) ON CONFLICT (uid) DO "
-                            "UPDATE SET data = EXCLUDED.data",
-                            (uid, _Jsonb(data)))
-                    cur.execute("SELECT uid FROM og_github_checks")
-                    existing = {row[0] for row in cur.fetchall()}
-                    for stale in existing - set(store.keys()):
-                        cur.execute(
-                            "DELETE FROM og_github_checks WHERE "
-                            "uid = %s", (stale,))
-                conn.commit()
-            return
-        except Exception as e:
-            logger.warning(f"GitHub checks DB save failed, "
-                           f"using file: {e}")
-    try:
-        with open(_CHECKS_STORE_FILE, 'w') as f:
-            json.dump(store, f)
-    except Exception as e:
-        logger.warning(f"Could not save checks store: {e}")
-
-
-def _get_watches(uid: str) -> list:
-    if not uid:
-        return []
-    with _checks_lock:
-        store = _load_checks_store()
-    watches = store.get(uid)
-    return list(watches) if isinstance(watches, list) else []
-
-
-def _register_checks_watch(uid: str, watch: Dict):
-    with _checks_lock:
-        store = _load_checks_store()
-        watches = store.get(uid)
-        if not isinstance(watches, list):
-            watches = []
-        watches.append(watch)
-        store[uid] = watches[-_CHECKS_KEEP:]
-        _save_checks_store(store)
-
-
-def _update_watch(uid: str, pr_url: str, **fields):
-    with _checks_lock:
-        store = _load_checks_store()
-        watches = store.get(uid)
-        if not isinstance(watches, list):
-            return
-        for watch in watches:
-            if isinstance(watch, dict) \
-                    and watch.get("pr_url") == pr_url:
-                watch.update(fields)
-                watch["updated"] = time.time()
-        _save_checks_store(store)
-
-
-def _get_watch(uid: str, pr_url: str) -> Optional[Dict]:
-    for watch in _get_watches(uid):
-        if isinstance(watch, dict) \
-                and watch.get("pr_url") == pr_url:
-            return watch
-    return None
-
-
-def _aggregate_check_runs(data) -> tuple:
-    """(state, lines) from a check-runs API payload. state is
-    'none' (the repo runs no Actions checks), 'pending',
-    'success' or 'failure'; lines are (name, status, conclusion)
-    per run."""
-    if not isinstance(data, dict):
-        return "pending", []
-    runs = [r for r in (data.get("check_runs") or [])
-            if isinstance(r, dict)]
-    total = data.get("total_count", len(runs))
-    if not total or not runs:
-        return "none", []
-    lines = [(r.get("name") or "check", r.get("status") or "",
-              r.get("conclusion") or "") for r in runs]
-    state = "success"
-    for _name, st, concl in lines:
-        if st != "completed":
-            state = "pending"
-        elif concl in ("failure", "cancelled", "timed_out",
-                       "action_required", "startup_failure"):
-            if state != "pending":
-                state = "failure"
-    return state, lines
-
-
-def _notify_checks(uid: str, watch: Dict, state: str):
-    """Record a PR's terminal checks outcome exactly once, via
-    the notification seam (kind 'notice' — og_notify's tidy
-    general kind). Fail-safe: a notification can never break
-    tracking."""
-    verdict = {
-        "success": ("✅ GitHub checks passed",
-                    "All GitHub Actions checks passed."),
-        "failure": ("❌ GitHub checks FAILED",
-                    "At least one GitHub Actions check failed."),
-        "none": ("🐙 No GitHub Actions checks",
-                 "That repo has no GitHub Actions checks, so "
-                 "there was nothing to run."),
-    }.get(state)
-    if verdict is None:
-        return
-    title, line = verdict
-    try:
-        import og_notify
-        og_notify.record(
-            uid, "notice",
-            f"{title} — {watch.get('repo_full')}"
-            f"#{watch.get('pr_number')}",
-            f"{line} PR: {watch.get('pr_url')}")
-    except Exception as e:
-        logger.warning(f"Checks notify failed: {e}")
-
-
-def _refresh_watch(entry: Dict, uid: str, watch: Dict) -> Optional[str]:
-    """One live check-runs read for a tracked PR; updates the
-    stored state and notifies (once) at a terminal state. Returns
-    the state, or None when the read itself failed."""
-    token = entry.get("access_token", "")
-    status, data = _gh_request(
-        "GET", f"/repos/{watch['owner']}/{watch['repo']}/commits/"
-        + quote(str(watch.get("head_sha", "")), safe="")
-        + "/check-runs", token)
-    if status == 401:
-        _update_watch(uid, watch["pr_url"], status="stopped")
-        return "stopped"
-    if status != 200:
-        return None
-    state, lines = _aggregate_check_runs(data)
-    fields = {"status": state,
-              "checks": [f"{n}: {c or s}" for n, s, c in lines]}
-    fresh = _get_watch(uid, watch["pr_url"]) or watch
-    if state in _CHECK_TERMINAL and not fresh.get("notified"):
-        fields["notified"] = True
-        _update_watch(uid, watch["pr_url"], **fields)
-        _notify_checks(uid, fresh, state)
-    else:
-        _update_watch(uid, watch["pr_url"], **fields)
-    return state
-
-
-def _start_checks_watch(uid: str, pr_url: str):
-    """The bounded background poller: first look after a short
-    delay, then on the poll cadence, until a terminal state or
-    the ~20-minute budget runs out (then the watch is marked
-    'stopped' — a later ask can still refresh it lazily)."""
-    def run():
-        deadline = time.time() + _CHECKS_POLL_BUDGET
-        delay = _CHECKS_POLL_FIRST
-        while time.time() < deadline:
-            time.sleep(delay)
-            delay = _CHECKS_POLL_SECONDS
-            watch = _get_watch(uid, pr_url)
-            if watch is None \
-                    or watch.get("status") in _CHECK_TERMINAL:
-                return
-            entry = _github_connection(uid)
-            if not entry:
-                _update_watch(uid, pr_url, status="stopped")
-                return
-            try:
-                state = _refresh_watch(entry, uid, watch)
-            except Exception as e:
-                logger.warning(f"Checks poll failed: {e}")
-                state = None
-            if state in _CHECK_TERMINAL:
-                return
-        watch = _get_watch(uid, pr_url)
-        if watch is not None \
-                and watch.get("status") not in _CHECK_TERMINAL:
-            _update_watch(uid, pr_url, status="stopped")
-
-    threading.Thread(target=run, daemon=True).start()
-
-
-def _checks_answer(entry: Optional[Dict], uid: str,
-                   consume_lookup) -> Optional[list]:
-    """'Did the checks pass on my PR?' — answered from the stored
-    watch state, with ONE live refresh while the latest is still
-    pending and inside its tracking budget."""
-    watches = [w for w in _get_watches(uid) if isinstance(w, dict)]
-    who = (entry or {}).get("login") or (entry or {}).get("name") \
-        or "the visitor"
-    if not watches:
-        if not entry:
-            return None
-        if not _spend(consume_lookup, uid):
-            return None
-        body = (f"The visitor ({who}) is asking about GitHub "
-                "Actions checks, but OG is not tracking any pull "
-                "request for them — no PR they approved through OG "
-                "is being watched. Tell them plainly, in persona; "
-                "do not invent check results.")
-        return [{"title": "🐙 GitHub checks — none tracked",
-                 "body": body, "href": "/auth/github"}]
-    latest = watches[-1]
-    if entry and latest.get("status") == "pending" \
-            and time.time() - float(latest.get("created", 0)) \
-            <= _CHECKS_POLL_BUDGET:
-        try:
-            _refresh_watch(entry, uid, latest)
-        except Exception as e:
-            logger.warning(f"Checks lazy refresh failed: {e}")
-        latest = _get_watch(uid, latest["pr_url"]) or latest
-    if not _spend(consume_lookup, uid):
-        logger.info("GitHub checks answer skipped: visitor at "
-                    "daily lookup cap")
-        return None
-    state = latest.get("status", "pending")
-    state_line = {
-        "success": "✅ ALL CHECKS PASSED",
-        "failure": "❌ CHECKS FAILED",
-        "pending": "⏳ checks are still running",
-        "none": "this repo has NO GitHub Actions checks — "
-                "nothing ran",
-        "stopped": "OG stopped tracking after ~20 minutes — the "
-                   "PR page shows the current state",
-    }.get(state, state)
-    facts = [
-        f"Pull request: {latest.get('repo_full')}"
-        f"#{latest.get('pr_number')} ({latest.get('pr_url')})",
-        f"Branch: {latest.get('branch')}",
-        f"Checks state: {state_line}",
-    ]
-    for line in latest.get("checks") or []:
-        facts.append(f"- {line}")
-    if len(watches) > 1:
-        others = "; ".join(
-            f"{w.get('repo_full')}#{w.get('pr_number')}: "
-            f"{w.get('status')}" for w in watches[:-1])
-        facts.append(f"Also tracked earlier: {others}")
-    body = (f"The visitor ({who}) is asking about the GitHub "
-            "Actions checks on their pull request. Answer ONLY "
-            "from these facts — OG's tracked state, refreshed "
-            "live just now when it was still pending:\n\n"
-            + "\n".join(facts))
-    return [{"title": "🐙 GitHub checks — "
-                       f"{latest.get('repo_full')}",
-             "body": body, "href": latest.get("pr_url", "")}]
 
 
 def _clarify_answer(entry: Dict, job: Dict, message: str,
@@ -2506,11 +2414,14 @@ def github_results(job, message, uid, consume_lookup):
                         "scrapped. Tell them plainly, in persona.")
                 return [{"title": "🐙 GitHub PR — daily cap",
                          "body": body, "href": "/auth/github"}]
+            extracted = {"path": pkg["path"],
+                         "content": pkg["content"]}
+            if pkg.get("files"):
+                extracted["files"] = [
+                    {"path": f["path"], "content": f["content"]}
+                    for f in pkg["files"]]
             try:
-                return _create_pr(
-                    entry, pending,
-                    {"path": pkg["path"],
-                     "content": pkg["content"]}, uid)
+                return _create_pr(entry, pending, extracted, uid)
             finally:
                 _clear_pending(uid)
         extracted = _extract_preview(uid, pending)
@@ -2873,3 +2784,30 @@ def register_github_routes(app):
             _drop_entry(uid)
             _clear_pending(uid)
         return {"status": "disconnected"}
+
+
+# --- Round 60 split: og_codemore re-exports --------------------------------------
+# The repo map, battery, multi-file machinery, checks subsystem
+# and merge verification live in og_codemore.py (this module is
+# at the push-size ceiling). They are re-exported here so every
+# caller keeps the one og_github seam; og_codemore reaches back
+# through its own lazy _gh() seam, never a top-level import.
+try:
+    import og_codemore as _codemore
+    _codemore.bind_app({"gh": sys.modules[__name__]})
+    for _r60_name in (
+            "get_repo_map", "build_repo_map", "map_facts_block",
+            "build_local_repo_map", "run_test_battery",
+            "battery_green", "run_local_checks_multi",
+            "_pr_merged", "_run_fix_verification",
+            "_repo_has_r_suites", "_battery_lines",
+            "_self_repo_label", "_draft_answer_multi",
+            "_extract_preview_multi", "_verify_pending_multi",
+            "_create_pr_multi", "_draft_system_fix_multi",
+            "_register_checks_watch", "_start_checks_watch",
+            "_checks_answer", "_get_watches", "_get_watch",
+            "_update_watch", "_aggregate_check_runs",
+            "_refresh_watch", "_notify_checks"):
+        globals()[_r60_name] = getattr(_codemore, _r60_name)
+except Exception as _r60_e:  # pragma: no cover
+    logger.warning(f"og_codemore unavailable: {_r60_e}")
