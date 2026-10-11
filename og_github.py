@@ -170,6 +170,11 @@ _SANDBOX_TIMEOUT = 60  # hard per-subprocess cap, seconds (Brent's
 # Python-testing rule runs under this, never without it)
 _SANDBOX_MAX_FILES = 120  # .py files assembled for one test run
 _SANDBOX_MAX_BYTES = 6 * 1024 * 1024  # total assembled bytes cap
+_DRAFT_MODEL = os.getenv("OG_CODE_MODEL", "gpt-4o-mini")
+# Round 51 competence loop: when a verification run fails, OG may
+# revise his OWN draft and re-verify — at most this many check
+# runs total (the original draft's run is attempt 1).
+_MAX_FIX_ATTEMPTS = 3
 _CHECKS_POLL_FIRST = 20  # first Actions poll delay, seconds
 _CHECKS_POLL_SECONDS = 60  # Actions poll cadence after that
 _CHECKS_POLL_BUDGET = 20 * 60  # stop tracking a PR after ~20 minutes
@@ -1252,6 +1257,472 @@ def run_python_checks(files: Dict, changed_paths, timeout: int =
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# --- Self-drafting + the competence loop (Round 51) -----------------------------
+# Until now OG's code was drafted by the agent in chat, and a failed
+# verification run was only REPORTED — the human decided, from a
+# failing preview, whether to try again by hand. Two upgrades:
+#
+# (1) THE LOOP. When the checks on a draft fail in a way a code
+# change can fix (compile errors, failing/erroring tests), OG gets
+# the failure fed back and revises the SAME edit himself, then
+# re-verifies — bounded at _MAX_FIX_ATTEMPTS check runs total. The
+# loop runs entirely in preparation: nothing is written anywhere
+# until the human approves, exactly as before. The verified preview
+# reports the attempts honestly; OG never claims "works" without a
+# green run (the standing rule, unchanged).
+#
+# (2) SYSTEM DRAFTS. draft_system_fix() lets the fix-approval
+# pipeline (og_fixqueue) pre-draft a fix for a diagnosed problem in
+# OG's OWN codebase — the files beside this module ARE the deployed
+# OG server repo — through the same loop. Green draft or nothing:
+# an exhausted loop produces no code proposal at all.
+#
+# Drafting rides one model seam (_draft_completion), in the
+# og_monitor house pattern: a direct chat-completions call on the
+# app's OpenAI key, None on ANY failure. With no key (or a dead
+# upstream) drafting is simply unavailable and every caller falls
+# back to exactly the pre-Round-51 behavior.
+
+def _draft_available() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY", ""))
+
+
+def _draft_completion(messages, timeout: int = 30) -> Optional[str]:
+    """One drafting completion. None on any failure — no key,
+    upstream down, empty answer. Never raises."""
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        return None
+    import httpx
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": _DRAFT_MODEL, "messages": messages,
+                      "temperature": 0.2})
+        if resp.status_code != 200:
+            logger.warning(
+                f"Draft completion status: {resp.status_code}")
+            return None
+        data = resp.json()
+        content = ((data.get("choices") or [{}])[0].get("message")
+                   or {}).get("content", "")
+        return content or None
+    except Exception as e:
+        logger.warning(f"Draft completion failed: {e}")
+        return None
+
+
+def _extract_code_block(text: str) -> Optional[str]:
+    """The fenced block out of a drafting answer, else None.
+    The drafter is told to reply with ONLY one block holding a
+    COMPLETE file — and a complete file can itself contain
+    fence sequences (regexes, markdown handling), so the block
+    runs from the FIRST fence to the LAST one, not the first
+    inner match."""
+    if not text:
+        return None
+    m = re.search(r"```[^\n]*\n", text)
+    if not m:
+        return None
+    end = text.rfind("```")
+    if end <= m.end():
+        return None
+    block = text[m.end():end]
+    return block if block.strip() else None
+
+
+def _usable_revision(content, current: str) -> bool:
+    """A drafted revision must exist, differ from what failed, and
+    fit the same caps as any drafted file."""
+    if not isinstance(content, str) or not content.strip():
+        return False
+    if content == current:
+        return False
+    return len(content.encode("utf-8")) <= _MAX_FILE_BYTES
+
+
+def _consult_lessons(fingerprint=None, path=None) -> list:
+    """Round 51 Part 3: the lessons a drafter must see before
+    drafting. Fail-safe — a broken lessons book reads as no
+    lessons, never as a drafting failure."""
+    try:
+        import og_lessons
+        return og_lessons.relevant_lessons(
+            fingerprint=fingerprint, path=path, limit=5) or []
+    except Exception as e:
+        logger.warning(f"Lessons consult failed: {e}")
+        return []
+
+
+def _lessons_block(lessons) -> str:
+    if not lessons:
+        return ""
+    lines = ["", "Lessons OG has already learned the hard way — "
+             "do NOT repeat these mistakes:"]
+    for les in lessons[:5]:
+        lines.append(f"- [{les.get('title', 'Lesson')}] "
+                     f"{les.get('lesson', '')}")
+    return "\n".join(lines)
+
+
+def checks_green(test) -> bool:
+    """A check run is GREEN when nothing failed: no compile
+    errors, and the test suite passed or there was no suite to
+    run. Anything else (failed, errored, timed out, unavailable,
+    never ran) is not green — OG never claims 'works' off it."""
+    if not isinstance(test, dict):
+        return False
+    comp = test.get("compile") or {}
+    if comp.get("errors"):
+        return False
+    status = (test.get("tests") or {}).get("status", "")
+    return status in ("passed", "none")
+
+
+def _revisable(test) -> bool:
+    """A failure a code revision could plausibly fix: compile
+    errors, failing tests, or a test run that errored (collection
+    / import errors are code-shaped). Timeouts and unavailable
+    runners are infrastructure — presented as-is, never burned
+    revisions on."""
+    if not isinstance(test, dict):
+        return False
+    comp = test.get("compile") or {}
+    if comp.get("errors"):
+        return True
+    status = (test.get("tests") or {}).get("status", "")
+    return status in ("failed", "error")
+
+
+def _attempt_record(n: int, test) -> Dict:
+    failing = []
+    comp = (test or {}).get("compile") or {}
+    failing += [str(e)[:160] for e in (comp.get("errors") or [])]
+    tests = (test or {}).get("tests") or {}
+    failing += [str(f) for f in (tests.get("failing") or [])]
+    if tests.get("status") == "failed" and not tests.get("failing"):
+        failing.append(f"{tests.get('failed', 0)} test(s) failed")
+    if tests.get("status") == "error" and tests.get("reason"):
+        failing.append(str(tests["reason"])[:160])
+    return {"n": n, "green": checks_green(test),
+            "failing": failing[:5],
+            "status": tests.get("status", "")}
+
+
+def _failure_brief(test) -> str:
+    """What the reviser sees: the failing names, the compile
+    errors and the tail of the run's own output."""
+    comp = (test or {}).get("compile") or {}
+    tests = (test or {}).get("tests") or {}
+    lines = []
+    for e in comp.get("errors") or []:
+        lines.append(f"COMPILE ERROR: {e}")
+    if tests.get("status"):
+        lines.append(f"Test run status: {tests['status']} "
+                     f"({tests.get('passed', 0)} passed, "
+                     f"{tests.get('failed', 0)} failed)")
+    for name in tests.get("failing") or []:
+        lines.append(f"FAILING: {name}")
+    tail = str(tests.get("tail") or "").strip()
+    if tail:
+        lines.append("Run output (tail):\n" + tail[-1000:])
+    return "\n".join(lines)
+
+
+def _revise_content(path: str, base_text: str, current: str,
+                    test, thing: str, lessons) -> tuple:
+    """Feed one failed run back and draft the SAME edit again.
+    Returns (content|None, cited_lesson_titles)."""
+    raw = _draft_completion([
+        {"role": "system", "content":
+         "You are OG's code drafter. A draft change just FAILED "
+         "its verification run. Diagnose the failure from the run "
+         "output and revise the SAME change — fix the code, do "
+         "not change what the change is trying to do, and do not "
+         "weaken or delete tests to make them pass. Reply with "
+         "ONLY the complete revised file content in ONE fenced "
+         "code block — no explanation."},
+        {"role": "user", "content":
+         f"The change: {thing or 'fix the code'}\n"
+         f"File: {path}\n\n"
+         f"Why the last draft failed:\n{_failure_brief(test)}\n"
+         + _lessons_block(lessons)
+         + f"\n\nThe current (failing) draft of {path}:\n"
+           f"```\n{current}\n```\n\n"
+           "Reply with the complete revised file in one fenced "
+           "code block."},
+    ])
+    revised = _extract_code_block(raw or "")
+    if not _usable_revision(revised, current):
+        return None, []
+    cited = [str(les.get("title") or "") for les in (lessons or [])][:3]
+    return revised, [t for t in cited if t]
+
+
+def _fix_loop(run_checks, path: str, base_text: str, content: str,
+              thing: str, lessons) -> tuple:
+    """The bounded diagnose -> revise -> re-verify loop.
+    run_checks(content) -> a run_python_checks record. Returns
+    (content, test, attempts, cited_lesson_titles): the LAST
+    attempt's content and run, the honest attempt history, and
+    the lessons the winning revision was drafted with."""
+    attempts = []
+    cited: list = []
+    test = run_checks(content)
+    attempts.append(_attempt_record(1, test))
+    while len(attempts) < _MAX_FIX_ATTEMPTS \
+            and not checks_green(test) and _revisable(test):
+        revised, used = _revise_content(
+            path, base_text, content, test, thing, lessons)
+        if revised is None:
+            break
+        content = revised
+        cited = used
+        test = run_checks(content)
+        attempts.append(_attempt_record(len(attempts) + 1, test))
+    return content, test, attempts, cited
+
+
+def _attempts_line(attempts, test) -> str:
+    """The verified preview's honest line about the loop — empty
+    when the first draft simply passed (pre-Round-51 output)."""
+    if not attempts or len(attempts) < 2:
+        return ""
+    first_fail = ", ".join(attempts[0].get("failing") or []) \
+        or attempts[0].get("status") or "checks failed"
+    n = attempts[-1].get("n", len(attempts))
+    if checks_green(test):
+        return (f"🔁 OG's first draft failed his own checks "
+                f"({first_fail}) — he diagnosed it, revised the "
+                f"code himself, and attempt {n} of "
+                f"{_MAX_FIX_ATTEMPTS} passed. Nothing was written "
+                f"at any point.")
+    last_fail = ", ".join(attempts[-1].get("failing") or []) \
+        or attempts[-1].get("status") or "checks failed"
+    return (f"🔁 OG drafted and revised this {len(attempts)} "
+            f"times himself and the checks STILL fail "
+            f"({last_fail}). The last draft is what's shown — "
+            f"OG does NOT claim it works.")
+
+
+# --- System drafts (Part 2: the fix pipeline drafts against this repo) ----------
+
+
+def _local_dir() -> str:
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _local_paths() -> list:
+    """The deployed codebase's own files (paths relative to the
+    source dir): every .py module plus the dependency/runtime
+    pins a fix might legitimately touch."""
+    try:
+        names = os.listdir(_local_dir())
+    except Exception:
+        return []
+    paths = [n for n in names if n.endswith(".py")]
+    for extra in ("requirements.txt", "pyproject.toml",
+                  "runtime.txt"):
+        if extra in names:
+            paths.append(extra)
+    return sorted(paths)
+
+
+def _local_read(path: str) -> Optional[str]:
+    if not _safe_rel(path):
+        return None
+    try:
+        with open(os.path.join(_local_dir(), path),
+                  encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return None
+
+
+def _local_sandbox_files(changed_path: str, content: str) -> Dict:
+    """Assemble this codebase for a sandbox run with the draft
+    applied. Test files are excluded by design (the repo's own
+    suites run in the builders' harness — src's legacy test_*.py
+    carry known environment reds that would fail every draft for
+    reasons that have nothing to do with it); the changed file
+    itself is always in, and py_compile still validates it."""
+    files: Dict = {}
+    total = 0
+    for p in _local_paths():
+        if not p.endswith(".py") or p == changed_path:
+            continue
+        if _is_test_path(p):
+            continue
+        text = _local_read(p)
+        if text is None:
+            continue
+        blob = text.encode("utf-8")
+        if len(files) >= _SANDBOX_MAX_FILES \
+                or total + len(blob) > _SANDBOX_MAX_BYTES:
+            continue
+        files[p] = blob
+        total += len(blob)
+    files[changed_path] = content.encode("utf-8")
+    # pytest config is deliberately NOT copied: src's own
+    # pyproject.toml carries coverage addopts meant for the
+    # repo's full suite, which would break (or slow) a draft's
+    # sandbox run. The draft's check is py_compile + nothing
+    # collected, stated plainly in the run record.
+    for cfg in ("pytest.ini", "setup.cfg", "tox.ini"):
+        if cfg not in files:
+            text = _local_read(cfg)
+            if text is not None and len(text) < 64 * 1024:
+                files[cfg] = text.encode("utf-8")
+    return files
+
+
+def run_local_checks(changed_path: str, content: str) -> Dict:
+    """Sandbox checks for a draft against OG's own codebase (the
+    fix pipeline's re-verify at approval time runs exactly this).
+    A non-Python target (requirements.txt) can't be compiled or
+    tested as Python — its check is simply that the draft is a
+    real, non-empty change."""
+    if not changed_path.endswith(".py"):
+        ok = bool(content and content.strip())
+        return {"compile": {"ok": ok,
+                            "errors": [] if ok else
+                            ["the draft is empty"]},
+                "tests": {"status": "none", "passed": 0,
+                          "failed": 0, "failing": [], "tail": ""},
+                "timeout": False}
+    result = run_python_checks(
+        _local_sandbox_files(changed_path, content), [changed_path])
+    tests = result.get("tests") or {}
+    if tests.get("status") == "error" \
+            and "exit 5" in str(tests.get("reason") or ""):
+        # pytest exit 5 = nothing collected: the server tree
+        # ships no suite beside its modules (excluded by
+        # design), so the compile pass IS the check here.
+        tests["status"] = "none"
+        tests["reason"] = ("no pytest suite ships with the "
+                            "server modules — py_compile is "
+                            "the check")
+    return result
+
+
+def _choose_fix_file(title: str, diagnosis: str, spec: Dict,
+                     paths: list, lessons) -> Optional[str]:
+    """Pick the ONE existing file a diagnosed system problem lives
+    in. Strict JSON out; anything unparseable or off-tree = None."""
+    excerpt = "\n".join("- " + p for p in paths[:_MAX_TREE_LINES])
+    raw = _draft_completion([
+        {"role": "system", "content":
+         "You are OG's code drafter working on OG's own server "
+         "codebase. A system problem was diagnosed. Choose the ONE "
+         "existing file from the list where the fix belongs. "
+         "Reply with STRICT JSON only: {\"path\": \"<file>\"}. "
+         "No other text."},
+        {"role": "user", "content":
+         f"Problem: {title}\nDiagnosis: {diagnosis}\n"
+         f"Fix brief: {spec.get('what', '')}\n"
+         + _lessons_block(lessons)
+         + f"\n\nFiles in the codebase:\n{excerpt}"},
+    ])
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw.strip().strip("`"))
+    except Exception:
+        m = re.search(r'"path"\s*:\s*"([^"]+)"', raw)
+        if not m:
+            return None
+        parsed = {"path": m.group(1)}
+    path = str((parsed or {}).get("path") or "")
+    if path in paths and path.endswith(".py") and _valid_path(path):
+        return path
+    return None
+
+
+def _draft_fix_content(title: str, diagnosis: str, spec: Dict,
+                       path: str, base_text: str,
+                       lessons) -> Optional[str]:
+    raw = _draft_completion([
+        {"role": "system", "content":
+         "You are OG's code drafter working on OG's own server "
+         "codebase. Draft the SMALLEST complete fix for the "
+         "diagnosed problem: return the ENTIRE new content of "
+         "the one file, with the fix applied and everything else "
+         "kept as it is. Reply with ONLY the file content in ONE "
+         "fenced code block — no explanation."},
+        {"role": "user", "content":
+         f"Problem: {title}\nDiagnosis: {diagnosis}\n"
+         f"Fix brief: {spec.get('what', '')}\n"
+         + _lessons_block(lessons)
+         + f"\n\nCurrent content of {path}:\n```\n{base_text}\n```"},
+    ])
+    return _extract_code_block(raw or "")
+
+
+def draft_system_fix(title: str, diagnosis: str, spec: Dict,
+                     lessons=None) -> tuple:
+    """Pre-draft a fix for a diagnosed OPERATOR problem against
+    OG's own codebase, through the competence loop. Returns
+    (draft|None, attempts): a draft only when the loop reached a
+    GREEN run — {path, base_text, content, diff, test, attempts,
+    approach_key, lessons_cited}. Exhaustion or any failure =
+    (None, attempts) and the caller falls back to owner steps.
+    Preparation only: this NEVER writes a file or touches the
+    repo — the returned content ships, if ever, through the
+    Round 32 PR flow after the owner's approval."""
+    attempts: list = []
+    try:
+        if not _draft_available():
+            return None, attempts
+        spec = spec or {}
+        paths = _local_paths()
+        if not paths:
+            return None, attempts
+        lessons = lessons or []
+        target = str(spec.get("target_path") or "")
+        if target:
+            if target not in paths:
+                return None, attempts
+            path = target
+        else:
+            path = _choose_fix_file(title, diagnosis, spec,
+                                    paths, lessons)
+            if not path:
+                return None, attempts
+        base_text = _local_read(path)
+        if base_text is None or len(base_text) > _MAX_EDIT_CHARS:
+            return None, attempts
+        content = _draft_fix_content(title, diagnosis, spec, path,
+                                     base_text, lessons)
+        if not _usable_revision(content, base_text):
+            return None, attempts
+
+        def _run(c):
+            return run_local_checks(path, c)
+
+        content, test, attempts, cited = _fix_loop(
+            _run, path, base_text, content,
+            str(spec.get("what") or title), lessons)
+        if not checks_green(test) or content == base_text:
+            return None, attempts
+        digest = hashlib.sha256(
+            content.encode("utf-8")).hexdigest()[:16]
+        return {
+            "path": path,
+            "base_text": base_text,
+            "content": content,
+            "diff": _make_diff(base_text, content, path),
+            "test": test,
+            "attempts": attempts,
+            "approach_key": f"code:{path}:{digest}",
+            "lessons_cited": cited,
+        }, attempts
+    except Exception as e:
+        logger.warning(f"System fix draft failed: {e}")
+        return None, attempts
+
+
 # --- The verified preview (first YES on an edit / Python change) ---------------
 
 def _make_diff(base_text: str, new_text: str, path: str) -> str:
@@ -1403,7 +1874,9 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
                 f"the current {path} — there is no change to ship. "
                 "NOTHING was written. Tell them plainly, in "
                 "persona.")
-        diff = _make_diff(base_text, content, path)
+        # The diff is computed AFTER the checks loop below: a
+        # self-revision (Round 51) changes the content, and the
+        # diff the visitor approves must match what ships.
     else:
         st, info = _fetch_file(token, owner, repo, path, ref)
         if st == 401:
@@ -1419,15 +1892,39 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
                 "persona, and invite them to ask again.")
 
     test = None
+    attempts: list = []
+    cited: list = []
     if path.endswith(".py"):
-        files, hard, soft = _assemble_test_files(
-            entry, pending, path, content)
-        test = run_python_checks(files, [path],
-                                 tests_skip_reason=hard)
-        if soft:
-            test["note"] = soft
+        def _run(c):
+            files, hard, soft = _assemble_test_files(
+                entry, pending, path, c)
+            t = run_python_checks(files, [path],
+                                  tests_skip_reason=hard)
+            if soft:
+                t["note"] = soft
+            return t
+
+        # Round 51: a failed run is fed back and OG revises the
+        # SAME edit himself (bounded), consulting the lessons
+        # book for this file. Inert without a drafting key.
+        lessons = _consult_lessons(path=path)
+        content, test, attempts, cited = _fix_loop(
+            _run, path, pending.get("base_text") or "", content,
+            pending.get("thing") or "", lessons)
+        if pending.get("mode") == "edit" \
+                and content == (pending.get("base_text") or ""):
+            return abort(
+                "🐙 GitHub PR — no change",
+                f"The visitor ({who}) approved a draft for "
+                f"{full}, but after OG's own revisions the content "
+                f"of {path} is back to IDENTICAL with the current "
+                "file — there is no change to ship. NOTHING was "
+                "written. Tell them plainly, in persona.")
+    if pending.get("mode") == "edit":
+        diff = _make_diff(pending.get("base_text") or "", content,
+                          path)
     pkg = {"path": path, "content": content, "diff": diff,
-           "test": test}
+           "test": test, "attempts": attempts, "lessons": cited}
     verified = dict(pending)
     verified["stage"] = "verified"
     verified["pkg"] = pkg
@@ -1436,6 +1933,12 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
     checks = _checks_line(test, path)
     if test is not None and test.get("note"):
         checks += f" (Partial run: {test['note']}.)"
+    extra_lines = ""
+    aline = _attempts_line(attempts, test)
+    if aline:
+        extra_lines += aline + "\n"
+    for title_ in cited:
+        extra_lines += f"📘 Lesson applied: {title_}\n"
     block = (f"```diff\n{diff}```" if diff is not None
              else f"```\n{content}\n```")
     preview = (
@@ -1443,6 +1946,7 @@ def _verify_pending(entry: Dict, pending: Dict, extracted: Dict,
         f"yet\nRepo: {full}\nBranch: {pending['branch']}\n"
         f"File: {path}\nMode: {pending.get('mode', 'new')}\n"
         f"{block}\nChecks: {checks}\n"
+        f"{extra_lines}"
         "Reply YES to open the PR — or NO to scrap it.")
     body = (
         f"The visitor ({who}) said YES to the draft for {full}. "
@@ -1589,6 +2093,16 @@ def _create_pr(entry: Dict, pending: Dict, extracted: Dict,
     if pkg_test is not None:
         pr_body += ("\n\nChecks OG ran before opening: "
                     + _checks_line(pkg_test, path))
+    pkg_attempts = (pending.get("pkg") or {}).get("attempts") or []
+    if len(pkg_attempts) > 1:
+        pr_body += (f"\n\nOG's first draft failed those checks; "
+                    f"he diagnosed it and revised the code "
+                    f"himself — attempt "
+                    f"{pkg_attempts[-1].get('n', len(pkg_attempts))} "
+                    f"of {_MAX_FIX_ATTEMPTS} is what was approved.")
+    pkg_lessons = (pending.get("pkg") or {}).get("lessons") or []
+    for title_ in pkg_lessons:
+        pr_body += f"\nLesson applied: {title_}"
     status, pr = _gh_request(
         "POST", f"/repos/{owner}/{repo}/pulls", token,
         json_body={"title": title, "head": branch,
