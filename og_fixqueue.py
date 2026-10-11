@@ -74,6 +74,7 @@ of Round 50's approve-to-upgrade hook:
    the condition actually clears.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -276,6 +277,145 @@ def _default_fix(problem: dict) -> dict:
     }
 
 
+# --- Round 51: OG drafts real code fixes (Part 2) + lessons (Part 3) --------------
+#
+# The Round 53 code seam said a diagnosed system problem could
+# not honestly pre-draft a sandbox-checked diff. Now it can:
+# og_github.draft_system_fix drafts against OG's own codebase
+# through the bounded competence loop. A GREEN draft becomes a
+# "code" proposal whose payload is the tested diff; anything
+# else (no drafting key, loop exhausted, drafting blew up)
+# falls back to exactly the owner_steps behavior Round 53
+# shipped — with the attempt history attached when the loop
+# honestly ran and failed. An approach the lessons book records
+# as failed for this fingerprint is NEVER re-proposed as code.
+
+
+def _approach_key(prop: dict) -> Optional[str]:
+    """The stable identity of WHAT a proposal would do — the
+    lessons book keys failed approaches by it."""
+    payload = prop.get("payload") or {}
+    if prop.get("fix_kind") == "code":
+        return payload.get("approach_key")
+    if prop.get("fix_kind") == "server":
+        executor = str(payload.get("executor") or "")
+        digest = hashlib.sha256(json.dumps(
+            payload.get("args") or {},
+            sort_keys=True).encode("utf-8")).hexdigest()[:12]
+        return f"server:{executor}:{digest}"
+    return None
+
+
+def _lesson_fix_failed(problem: dict, prop: dict, why: str):
+    """Part 3, source (a): an executed fix failed its
+    verification — write the lesson. Fail-safe."""
+    try:
+        import og_lessons as _lessons
+        key = _approach_key(prop)
+        _lessons.record_lesson(
+            "fix_failed",
+            f"Fix failed: {problem.get('title', 'a fix')}",
+            f"OG's approved fix for "
+            f"'{problem.get('title')}' was executed and the "
+            f"verification still showed the problem ({why}). "
+            f"Approach: {key or 'manual steps'}. Do not "
+            f"re-propose the same approach for this problem — "
+            f"diagnose differently next time.",
+            fingerprint=problem.get("fingerprint"),
+            approach_key=key)
+    except Exception as e:
+        logger.warning(f"Fix-failed lesson failed: {e}")
+
+
+def _is_operator_problem(problem: dict) -> bool:
+    owner = str(problem.get("owner") or "")
+    if owner == SENTINEL_OWNER:
+        return True
+    op = _operator_uid()
+    return bool(op) and owner == op
+
+
+def _attempts_text(attempts) -> str:
+    parts = []
+    for a in attempts or []:
+        if a.get("green"):
+            parts.append(f"attempt {a.get('n')}: passed")
+        else:
+            fail = ", ".join(a.get("failing") or []) \
+                or a.get("status") or "checks failed"
+            parts.append(f"attempt {a.get('n')}: failed — {fail}")
+    return "; ".join(parts)
+
+
+def _try_draft_fix(problem: dict, fix: dict) -> Optional[dict]:
+    """Draft a code fix for an operator problem. Returns one of:
+    {"mode": "code", "payload", "summary"} — a green, tested
+    draft; {"mode": "note", "note"} — drafting honestly ran (or
+    was vetoed by the lessons book) but produced no code
+    proposal, so the caller falls back to owner_steps with the
+    note attached; None — drafting unavailable, plain fallback.
+    NEVER raises; preparation NEVER mutates the repo."""
+    try:
+        import og_github as _gh
+        import og_lessons as _lessons
+        spec = fix.get("draft") or {}
+        lessons = _lessons.relevant_lessons(
+            fingerprint=problem.get("fingerprint"),
+            path=spec.get("target_path") or None, limit=5)
+        draft, attempts = _gh.draft_system_fix(
+            str(problem.get("title") or ""),
+            str(problem.get("diagnosis") or ""), spec, lessons)
+        if draft is None:
+            if attempts:
+                return {"mode": "note", "note":
+                        "OG tried to draft this fix himself "
+                        "first: " + _attempts_text(attempts)
+                        + ". His checks never passed, so no code "
+                          "fix is proposed — the steps below "
+                          "are the manual route."}
+            return None
+        failed = _lessons.failed_lesson_for(
+            problem.get("fingerprint"), draft.get("approach_key"))
+        if failed is not None:
+            return {"mode": "note", "note":
+                    "OG drafted a fix for this himself, but his "
+                    "lessons book says that exact approach was "
+                    "tried before and failed its verification "
+                    f"(\"{failed.get('title')}\") — he won't "
+                    "propose it again. The steps below are the "
+                    "manual route."}
+        try:
+            checks = _gh._checks_line(draft["test"], draft["path"])
+        except Exception:
+            checks = "sandbox checks passed"
+        summary = (f"OG drafted a fix for {draft['path']} "
+                   f"himself and verified it in his sandbox "
+                   f"before proposing it. Checks: {checks}")
+        if len(draft.get("attempts") or []) > 1:
+            summary += (f" It took "
+                        f"{draft['attempts'][-1].get('n')} "
+                        f"attempts — the earlier drafts failed "
+                        f"his checks and he revised them himself.")
+        for title_ in draft.get("lessons_cited") or []:
+            summary += f" Lesson applied: {title_}."
+        payload = {
+            "path": draft["path"],
+            "base_text": draft["base_text"],
+            "content": draft["content"],
+            "diff": draft["diff"],
+            "test": draft["test"],
+            "attempts": draft["attempts"],
+            "approach_key": draft["approach_key"],
+            "lessons_cited": draft["lessons_cited"],
+            "repo": os.getenv("OG_SELF_REPO", "").strip(),
+        }
+        return {"mode": "code", "payload": payload,
+                "summary": summary}
+    except Exception as e:
+        logger.warning(f"Fix draft attempt failed: {e}")
+        return None
+
+
 def _prepare(problem: dict) -> Optional[dict]:
     """Build the one live proposal for a problem, honouring the
     decline cooldown and any already-live proposal. Returns the
@@ -292,6 +432,30 @@ def _prepare(problem: dict) -> Optional[dict]:
             now - float(declined_at) < REPROPOSE_COOLDOWN_SECONDS:
         return None
     fix = problem.get("fix") or _default_fix(problem)
+    # Round 51: an operator problem carrying a draft spec gets a
+    # real drafted code proposal when the drafter reaches green.
+    draft_note = ""
+    if isinstance(fix, dict) and fix.get("draft") \
+            and _is_operator_problem(problem):
+        outcome = _try_draft_fix(problem, fix)
+        if outcome and outcome.get("mode") == "code":
+            proposal = {
+                "id": uuid.uuid4().hex[:12],
+                "problem_id": problem["id"],
+                "fix_kind": "code",
+                "summary": outcome["summary"],
+                "payload": outcome["payload"],
+                "verify": problem.get("verify") or {"kind": "none"},
+                "created": now,
+                "expires": now + PROPOSAL_TTL_SECONDS,
+                "status": "open",
+                "outcome": None,
+            }
+            problem["proposal"] = proposal
+            _note(problem, "proposal_prepared", "code")
+            return proposal
+        if outcome and outcome.get("note"):
+            draft_note = " " + outcome["note"]
     kind = str(fix.get("kind") or "owner_steps")
     if kind == "server":
         payload = {"executor": str(fix.get("executor") or ""),
@@ -309,7 +473,7 @@ def _prepare(problem: dict) -> Optional[dict]:
         "problem_id": problem["id"],
         "fix_kind": kind,
         "summary": str(fix.get("summary") or
-                       f"Fix for: {problem['title']}"),
+                       f"Fix for: {problem['title']}") + draft_note,
         "payload": payload,
         "verify": problem.get("verify") or {"kind": "none"},
         "created": now,
@@ -392,9 +556,31 @@ def record_problem(owner, source, fingerprint, slug, title,
                 # FRESH proposal may be prepared — a second
                 # attempt still needs that new proposal + a new
                 # approval; nothing retries on its own.
+                old_status = problem.get("status")
                 problem["status"] = "open"
                 problem["declined_at"] = None
                 _note(problem, "recurred")
+                if old_status in ("fixed", "resolved"):
+                    # Part 3, source (c): a fingerprint came
+                    # back AFTER a fix was verified working —
+                    # the fix wasn't durable; record the lesson.
+                    try:
+                        import og_lessons as _lessons
+                        last_prop = problem.get("proposal") or {}
+                        _lessons.record_lesson(
+                            "recurrence",
+                            f"Recurrence: {problem.get('title')}",
+                            f"'{problem.get('title')}' was "
+                            f"marked fixed, then came back. The "
+                            f"fix that closed it did not hold — "
+                            f"the next approach must address the "
+                            f"root cause, not just the symptom "
+                            f"that was verified.",
+                            fingerprint=fp,
+                            approach_key=_approach_key(last_prop))
+                    except Exception as e:
+                        logger.warning(
+                            f"Recurrence lesson failed: {e}")
         proposal = _prepare(problem)
         _save_problems(owner_key, problems)
         if proposal is not None:
@@ -455,7 +641,18 @@ def ingest_report(report: dict) -> int:
                          f"Search around the last system check "
                          f"for errors on {route}.",
                          _code_flow_step(f"the {name.lower()}"),
-                     ]})
+                     ],
+                     # Round 51: draft the code fix first; the
+                     # steps stay as the honest fallback.
+                     "draft": {
+                         "target_path": None,
+                         "what": f"the {name} ({route}) on the "
+                                 f"OG page answered "
+                                 f"{f.get('observed', 'nothing')} "
+                                 f"when probed instead of "
+                                 f"working — find the cause in "
+                                 f"its handler and fix it",
+                     }})
 
         for m in (report.get("overload") or {}).get("measures") or []:
             if m.get("level") not in ("near", "over"):
@@ -525,7 +722,16 @@ def ingest_report(report: dict) -> int:
                          _code_flow_step(
                              f"the {pkg} update to "
                              f"{u.get('latest')}"),
-                     ]})
+                     ],
+                     # Round 51: draft the pin bump first;
+                     # falls back to the steps above.
+                     "draft": {
+                         "target_path": "requirements.txt",
+                         "what": f"bump the {pkg} pin from "
+                                 f"{u.get('pinned')} to "
+                                 f"{u.get('latest')} in "
+                                 f"requirements.txt",
+                     }})
         # NOTE: the updates job's Python pin-vs-running drift is
         # deliberately NOT ingested as a problem. Round 50
         # already surfaces it in every report summary (and the
@@ -704,6 +910,123 @@ def _find(uid: str, ident: str):
     return slug_hit
 
 
+def _decide_code(owner, problems, problem, prop):
+    """Execute an approved CODE proposal under exactly the
+    Round 32 discipline: the target file must not have moved
+    since the draft, the drafted content must re-pass its
+    sandbox checks, the proposal is stamped executed BEFORE
+    anything runs (exactly once), and the fix ships ONLY as a
+    pull request through og_github's verified flow — never a
+    direct push, never a merge. Any staleness refuses honestly
+    and runs nothing."""
+    payload = prop.get("payload") or {}
+    path = str(payload.get("path") or "")
+    content = str(payload.get("content") or "")
+    base_text = str(payload.get("base_text") or "")
+    repo_full = str(payload.get("repo")
+                    or os.getenv("OG_SELF_REPO", "")).strip()
+
+    def supersede(title, body):
+        prop["status"] = "superseded"
+        _note(problem, "code_fix_superseded", title)
+        _save_problems(owner, problems)
+        return (False, title, body)
+
+    import og_github as _gh
+    entry = _gh._github_connection(owner)
+    if not repo_full or entry is None or "/" not in repo_full:
+        return supersede(
+            "Connect GitHub to ship this fix",
+            f"The drafted fix for '{problem['title']}' ships as "
+            "a pull request, which needs your GitHub connected "
+            "and OG_SELF_REPO set to OG's own repo. Nothing was "
+            "run and nothing was written.")
+    owner_login, repo_name = repo_full.split("/", 1)
+    token = str(entry.get("access_token") or "")
+    status, data = _gh._gh_request(
+        "GET", f"/repos/{owner_login}/{repo_name}", token)
+    if status != 200 or not isinstance(data, dict):
+        return supersede(
+            "Couldn't re-check the repo",
+            f"OG couldn't reach {repo_full} to re-verify the "
+            "draft against it, so the fix was retired instead "
+            "of shipped blind. Nothing was written.")
+    default_branch = str(data.get("default_branch") or "main")
+    st, info = _gh._fetch_file(token, owner_login, repo_name,
+                                path, default_branch)
+    if info is None or info.get("text") != base_text:
+        return supersede(
+            "The file moved since the draft",
+            f"{path} changed on {repo_full} after OG drafted "
+            "this fix, so the prepared diff no longer matches "
+            "the live file. Nothing was shipped — OG will "
+            "draft a fresh fix if the problem is still there.")
+    test = _gh.run_local_checks(path, content)
+    if not _gh.checks_green(test):
+        return supersede(
+            "The drafted fix no longer passes checks",
+            f"OG re-ran the drafted fix for '{problem['title']}' "
+            "in his sandbox just now and the checks did not "
+            "pass, so nothing was shipped. He will draft a "
+            "fresh fix if the problem is still there.")
+    # Stamp executed BEFORE running: exactly once, even on a crash.
+    prop["status"] = "executed"
+    prop["decided_at"] = time.time()
+    _note(problem, "fix_approved")
+    _save_problems(owner, problems)
+    branch = "og/fix-" + _slugify(str(problem.get("slug")
+                                      or path))
+    pending = {
+        "repo_full": repo_full, "owner": owner_login,
+        "repo": repo_name, "branch": branch, "path_hint": "",
+        "thing": str(problem.get("title") or "fix"),
+        "mode": "edit", "path": path,
+        "base_sha": str(info.get("sha") or ""),
+        "base_text": base_text,
+        "default_branch": default_branch, "stage": "verified",
+        "pkg": {"path": path, "content": content,
+                "diff": payload.get("diff"), "test": test,
+                "attempts": payload.get("attempts") or [],
+                "lessons": payload.get("lessons_cited") or []},
+        "py_paths": [], "tree_paths": [],
+    }
+    results = _gh._create_pr(
+        entry, pending, {"path": path, "content": content}, owner)
+    pr_url = ""
+    for r in results or []:
+        if "PR opened" in str(r.get("title", "")):
+            m = re.search(r"https://github\.com/\S+/pull/\d+",
+                          str(r.get("body", "")))
+            pr_url = m.group(0) if m else ""
+            break
+    problems = _problems(owner)
+    problem = problems.get(problem["fingerprint"], problem)
+    prop = problem.get("proposal") or prop
+    if pr_url:
+        problem["status"] = "fixed"
+        prop["outcome"] = "fixed"
+        prop["pr_url"] = pr_url
+        _note(problem, "fix_shipped_pr", pr_url)
+        _save_problems(owner, problems)
+        return (True, f"Fix shipped as a PR: {problem['title']}",
+                f"Approved and done — OG opened a pull request "
+                f"with exactly the drafted, sandbox-verified "
+                f"fix: {pr_url} It merges only when you merge "
+                f"it; OG never merges his own fixes.")
+    problem["status"] = "fix_failed"
+    prop["outcome"] = "fix_failed"
+    _note(problem, "fix_failed", "PR flow stopped")
+    _save_problems(owner, problems)
+    _lesson_fix_failed(problem, prop,
+                       "the pull-request flow stopped before a "
+                       "PR opened")
+    return (True, f"Fix didn't ship: {problem['title']}",
+            "The pull-request flow stopped before a PR opened, "
+            "so nothing was written to the repo. Nothing was "
+            "retried — a second attempt needs a fresh proposal "
+            "and a fresh approval from you.")
+
+
 def decide(uid: str, ident: str, decision: str) -> Tuple[bool, str, str]:
     """The one approval door. Returns (ok, title, body).
     Executes ONLY for the owning uid, ONLY an open unexpired
@@ -764,6 +1087,9 @@ def decide(uid: str, ident: str, decision: str) -> Tuple[bool, str, str]:
         return (True, f"Fix steps: {problem['title']}",
                 "\n".join(lines))
 
+    if prop.get("fix_kind") == "code":
+        return _decide_code(owner, problems, problem, prop)
+
     # server kind: re-verify the problem is still there first.
     if _condition_gone(problem):
         problem["status"] = "resolved"
@@ -806,6 +1132,9 @@ def decide(uid: str, ident: str, decision: str) -> Tuple[bool, str, str]:
     prop["outcome"] = "fix_failed"
     _note(problem, "fix_failed", exec_error or exec_note)
     _save_problems(owner, problems)
+    _lesson_fix_failed(problem, prop,
+                       exec_error or "the re-check still showed "
+                                     "the problem after the fix ran")
     why = (f"The fix itself failed ({exec_error})." if exec_error
            else f"The fix ran ({exec_note}) but the re-check "
                 f"still shows the problem.")
@@ -834,6 +1163,16 @@ def _proposal_view(problem: dict, prop: dict) -> dict:
     }
     if prop.get("fix_kind") == "owner_steps":
         view["steps"] = (prop.get("payload") or {}).get("steps") or []
+    if prop.get("fix_kind") == "code":
+        payload = prop.get("payload") or {}
+        diff = str(payload.get("diff") or "")
+        view["path"] = payload.get("path")
+        view["diff"] = diff[:4000] + (
+            "\n… (diff truncated in this view)"
+            if len(diff) > 4000 else "")
+        view["attempts"] = payload.get("attempts") or []
+        view["lessons"] = payload.get("lessons_cited") or []
+        view["pr_url"] = prop.get("pr_url")
     return view
 
 
