@@ -139,3 +139,13 @@
     }
   }, 1500);
 })();
+
+/* Round 62: message actions + hands-free live in their own
+   asset (static/og_r62.js); the page sits at its push
+   ceiling, so the asset loads from here — the page's last
+   static script — instead of a new page tag. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_r62.js';
+  document.head.appendChild(s);
+})();
