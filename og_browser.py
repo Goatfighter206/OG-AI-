@@ -315,6 +315,18 @@ def _usage_set(key: str, value) -> None:
         _deps["save_usage"](store)
 
 
+def _with_store(fn, save: bool = False):
+    """Run fn(store) under the usage lock over the live store
+    dict, saving afterwards when asked. The store seam injected
+    into og_browser_pending.PendingMap (Round 61 code motion)."""
+    with _deps["usage_lock"]:
+        store = _deps["load_usage"]()
+        out = fn(store)
+        if save:
+            _deps["save_usage"](store)
+    return out
+
+
 def _minutes_used_today(uid: str) -> int:
     entry = _usage_get(f"browser:{uid}")
     if not entry or entry.get("date") != _today():
@@ -365,6 +377,32 @@ def _all_sessions() -> Dict[str, Dict]:
     return out
 
 
+# --- Round 61: the starting marker -------------------------------------------
+# Brent's open order (2026-10-10): the browser comes UP first,
+# then the site opens inside it. The marker logic lives in
+# og_browser_starting.py (code motion, the Round 46 precedent —
+# this file rides the push ceiling); the wrappers below keep
+# the names the suites use.
+
+import og_browser_starting as _starting  # noqa: E402
+
+_STARTING_TTL_S = _starting.STARTING_TTL_S
+
+
+def _set_starting(uid: str, url: str) -> None:
+    _usage_set(_starting.key_for(uid), _starting.stamp_value(url))
+
+
+def _get_starting(uid: str) -> Optional[Dict]:
+    if not uid:
+        return None
+    return _starting.fresh(_usage_get(_starting.key_for(uid)))
+
+
+def _clear_starting(uid: str) -> None:
+    _usage_set(_starting.key_for(uid), None)
+
+
 def _tier_of_uid(uid: str, request=None) -> str:
     try:
         if request is not None and "tier_of" in _deps:
@@ -412,6 +450,7 @@ def _end_session(uid: str, why: str = "") -> Optional[Dict]:
     if not rec:
         return None
     _set_session(uid, None)
+    _clear_starting(uid)
     _clear_pending(uid)
     sid = rec.get("steel_id")
     if sid:
@@ -437,91 +476,25 @@ def _end_session(uid: str, why: str = "") -> Optional[Dict]:
 # post) — _set_pending is the single choke point and refuses a
 # description-less park, so the card can never show a blank one.
 #
-# Round 48: pendings are DURABLE. They used to live only in a
-# process-memory dict while sessions were store-backed, so every
-# redeploy buried parked approvals the visitor's card still
-# showed (the owner's Approve tap after the R47 deploy got
-# "no pending action"). _pending_by_uid is now a dict-shaped
-# view over the SAME usage store the session records use — one
-# "browser_pend:<uid>" record per visitor, via the same
-# load_usage / save_usage / usage_lock deps. The map holds no
-# state of its own: a restart loses nothing, TTL expiry and the
-# orphan sweep still run on every read, and the consume in
-# _execute_gated deletes the durable record, so a replayed
-# approve finds nothing — exactly once, everywhere.
+# Round 48: pendings are DURABLE — a dict-shaped view over the
+# SAME usage store the session records use, so a restart loses
+# nothing and a replayed approve finds nothing (exactly once,
+# everywhere). The map's class lives in og_browser_pending.py
+# (Round 61 code motion); the full rationale is in its
+# docstring.
 
 _pending_lock = threading.Lock()
 
 _PEND_KEY_PREFIX = "browser_pend:"
 
+# Round 61 code motion: the map's class lives in
+# og_browser_pending.py (this file rides the push ceiling —
+# the Round 46 precedent); its store seams are injected here,
+# so behavior is unchanged and the suites' _pending_by_uid
+# pokes land on the same durable records.
+from og_browser_pending import PendingMap as _PendingMap  # noqa: E402
 
-class _PendingMap:
-    """The parked approvals, as a mapping uid -> state dict,
-    backed by the durable usage store (the session records'
-    mechanism). Reads/writes go through _usage_get/_usage_set;
-    __getitem__ returns the store's live entry (diagnostics and
-    suites poke `created` through it) — production reads use
-    _get_pending, which copies and applies TTL + the sweep."""
-
-    def _key(self, uid: str) -> str:
-        return f"{_PEND_KEY_PREFIX}{uid}"
-
-    def get(self, uid: str) -> Optional[Dict]:
-        return _usage_get(self._key(uid))
-
-    def __getitem__(self, uid: str) -> Dict:
-        with _deps["usage_lock"]:
-            store = _deps["load_usage"]()
-        entry = store.get(self._key(uid))
-        if not isinstance(entry, dict):
-            raise KeyError(uid)
-        return entry
-
-    def __setitem__(self, uid: str, state: Dict) -> None:
-        _usage_set(self._key(uid), state)
-
-    def __delitem__(self, uid: str) -> None:
-        _usage_set(self._key(uid), None)
-
-    def __contains__(self, uid: str) -> bool:
-        return _usage_get(self._key(uid)) is not None
-
-    def pop(self, uid: str, default=None):
-        state = _usage_get(self._key(uid))
-        if state is None:
-            return default
-        _usage_set(self._key(uid), None)
-        return state
-
-    def clear(self) -> None:
-        with _deps["usage_lock"]:
-            store = _deps["load_usage"]()
-            for key in [k for k in store
-                        if k.startswith(_PEND_KEY_PREFIX)]:
-                store.pop(key, None)
-            _deps["save_usage"](store)
-
-
-_pending_by_uid = _PendingMap()
-
-
-def _pending_identity(state: Dict) -> tuple:
-    """The identity of a parked approval — desc + site + text,
-    the same triple the approval card shows (and /browser/status
-    serves). Round 38 dedupe compares identities, never object
-    identity, so a re-park of the SAME approval is recognizably
-    the same ask."""
-    site = str(state.get("disp_site") or state.get("post_site")
-               or "")
-    if not site and state.get("page_url"):
-        try:
-            site = urllib.parse.urlparse(
-                state["page_url"]).hostname or ""
-        except Exception:
-            site = ""
-    text = str(state.get("post_text") or state.get("disp_text")
-               or state.get("text") or "")
-    return (str(state.get("desc") or ""), site, text)
+_pending_by_uid = _PendingMap(_usage_get, _usage_set, _with_store)
 
 
 def _set_pending(uid: str, state: Dict) -> bool:
@@ -638,20 +611,6 @@ def _disallow_site(uid: str, host: str) -> bool:
     del hosts[h]
     _usage_set(f"{_ALLOW_KEY_PREFIX}{uid}", {"hosts": hosts})
     return True
-
-
-def _pending_site(pend: Dict) -> str:
-    """The host a parked approval belongs to — the same
-    resolution /browser/status shows the card."""
-    site = str(pend.get("disp_site") or pend.get("post_site")
-               or "")
-    if not site and pend.get("page_url"):
-        try:
-            site = urllib.parse.urlparse(
-                pend["page_url"]).hostname or ""
-        except Exception:
-            site = ""
-    return site
 
 
 def _allow_ran(uid: str, host: str, desc: str,
@@ -902,15 +861,6 @@ def register_profile_hooks(get=None, note=None, gone=None,
 
 def _hook(name: str):
     return _profile_hooks.get(name)
-
-
-def _norm_host(host: str) -> str:
-    h = str(host or "").strip().lower()
-    for pre in ("www.", "m.", "mobile."):
-        if h.startswith(pre):
-            h = h[len(pre):]
-            break
-    return h
 
 
 def _steel_get_session(steel_id: str) -> Optional[Dict]:
@@ -1550,6 +1500,13 @@ def _update_rec_from_snap(uid: str, rec: Dict, snap: Dict) -> None:
             # First REAL page view: only now is the taste spent.
             _mark_taste_used(uid)
             rec["taste_counted"] = True
+    # Round 61: a snapshot that landed on a REAL page means a
+    # real frame exists for this session — /browser/status can
+    # now tell clients to stop holding the loading face.
+    landed_url = str(snap.get("url") or "")
+    if landed_url and not landed_url.startswith(
+            ("about:", "chrome:", "data:")):
+        rec["frame_ready"] = True
     _set_session(uid, rec)
 
 
@@ -1653,6 +1610,8 @@ from og_browser_claim import (  # noqa: F401
     _find_post_button, _gate_reason, _is_bare_mention,
     _is_start_request, _parse_disallow, _parse_post,
     _resolve_site_url,
+    # Round 61 code motion (see og_browser_claim.py).
+    _norm_host, _pending_identity, _pending_site,
 )
 
 
@@ -1888,6 +1847,12 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
                        "deciding: no browser minutes left and the free "
                        "taste is spent. Nothing started, nothing used.")
     budget = int(plan["budget"])
+    # Round 61: stamp the starting marker BEFORE the create —
+    # from this instant /browser/status reports the start, so
+    # the visitor's panel/window is already up, showing where
+    # the browser is heading, while Steel spins the session up.
+    # (Refusals above start nothing and stamp nothing.)
+    _set_starting(uid, pend.get("url") or "")
     # Round 29: run on the visitor's vault profile (Brent's rule —
     # log-ins persist by default). Persistence engages only when
     # og_watch has registered its vault hooks; with no vault
@@ -1940,6 +1905,7 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
             # blind spot). Every create failure names why, now.
             logger.warning(f"Steel session create failed: {e}")
     if sess is None:
+        _clear_starting(uid)
         return _result("OG BROWSER", "OG browser — could not start",
                        "The browser service didn't hand me a session "
                        "just now — nothing started and nothing was "
@@ -1985,6 +1951,10 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
         rec["nav_target"] = pend["url"]
         rec["nav_ts"] = time.time()
     _set_session(uid, rec)
+    # Round 61: the record (with its nav_target stamp) supersedes
+    # the starting marker from here — status now speaks for the
+    # session itself (phase "loading" until a real frame lands).
+    _clear_starting(uid)
     url = pend.get("url") or ""
     if url:
         out = _run_action(uid, rec, {"do": "navigate", "url": url})
@@ -2587,7 +2557,11 @@ def register_browser_routes(app):
                "taste_available": bool(uid) and not _taste_used(uid),
                "active": False, "viewer_url": "", "control": "og",
                "minutes_left": 0, "page_title": "", "page_url": "",
-               "loading_host": ""}
+               "loading_host": "",
+               # Round 61 (additive): the start lifecycle —
+               # "idle" | "starting" | "loading" | "ready", and
+               # whether a real frame exists yet.
+               "phase": "idle", "frame_ready": False}
         rec = _get_session(uid) if uid else None
         if rec:
             if _session_minutes_left(rec) <= 0:
@@ -2608,8 +2582,30 @@ def register_browser_routes(app):
             # The page's one task bubble turns this into
             # "Opening <host>…" and settles back to "Browsing".
             out["loading_host"] = _loading_host(rec)
+            # Round 61 (additive): "loading" until a real frame
+            # exists for the session, then "ready" — clients
+            # hold the loading face on frame_ready instead of
+            # guessing from the frames themselves.
+            out["frame_ready"] = bool(rec.get("frame_ready"))
+            out["phase"] = "ready" if out["frame_ready"] \
+                else "loading"
             # Fresh from Steel on every poll — never stored anywhere.
             out["viewer_url"] = _viewer_url(rec.get("steel_id", ""))
+        if not rec and uid:
+            # Round 61 (additive): a start in flight — the
+            # session record does not exist yet (the Steel
+            # create is still running), but the visitor's
+            # browser window is already coming up. Report the
+            # start itself so every client shows it NOW, with
+            # the destination it is heading to.
+            mark = _get_starting(uid)
+            if mark:
+                out["phase"] = "starting"
+                try:
+                    out["loading_host"] = urllib.parse.urlparse(
+                        mark.get("url") or "").hostname or ""
+                except Exception:
+                    out["loading_host"] = ""
         # Round 27: the approval CARD's data. Only the owner's own
         # pending rides their status (uid cookie scopes it, same
         # as every route); _get_pending enforces the 10-min expiry.
@@ -2669,6 +2665,14 @@ def register_browser_routes(app):
         except _DriveError as e:
             return JSONResponse({"error": f"screenshot failed: {e}"},
                                 status_code=502)
+        if not rec.get("frame_ready"):
+            # Round 61: a frame was just captured — a real frame
+            # provably exists now. (This is also the only
+            # frame_ready producer for a blank-page start, which
+            # never takes a snapshot.) Stamped once.
+            rec = dict(rec)
+            rec["frame_ready"] = True
+            _set_session(uid, rec)
         return Response(content=data, media_type="image/jpeg",
                         headers={"Cache-Control": "no-store"})
 
