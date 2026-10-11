@@ -68,8 +68,11 @@ env vars land.
 """
 
 import hmac
+import logging
 import os
 from datetime import date, datetime, timedelta, timezone
+
+logger = logging.getLogger("og_tiers")
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -716,16 +719,18 @@ def entitlement_tier_for(uid):
     return entitlement_tier(entitled.get(uid))
 
 
-def _stamp_entitlement(uid, tier):
+def _stamp_entitlement(uid, tier, email=""):
     """Persist a /pro/success grant into the entitled store (Round 42).
 
     Mirrors the Stripe webhook's record (app.py _grant_entitlement)
     field-for-field, so tier_of() resolves the tier from the uid alone
     — no ogai_tier cookie needed (e.g. the Unity app client, which
-    never carries one). The success path has no Stripe session or
+    never carries one). A guest landing has no Stripe session or
     customer email, so those fields take _grant_entitlement's own
-    defaults (""). Re-landing refreshes the same record. No-op when
-    there is no uid or no save path is bound.
+    defaults (""); a signed-in landing (Round tierfix2) keys on the
+    account uid and carries the account email, exactly like a webhook
+    record. Re-landing refreshes the same record. No-op when there is
+    no uid or no save path is bound.
     """
     save = _DEPS.get("save_store")
     if not uid or save is None:
@@ -738,7 +743,7 @@ def _stamp_entitlement(uid, tier):
         entitled[uid] = {
             "granted": datetime.now(timezone.utc).isoformat(),
             "session": "",
-            "email": "",
+            "email": email or "",
             "tier": tier if tier in PAID_TIERS else "standard",
         }
         store[_DEPS["entitled_key"]] = entitled
@@ -768,11 +773,97 @@ def migrate_entitlement(old_uid, new_uid, email=""):
         save(store)
 
 
+def reconcile_entitlement(account_uid, email):
+    """Email-keyed self-heal (Round tierfix2).
+
+    An entitlement record can be stranded under a uid the account
+    never presents: a webhook grant keys on the checkout's
+    client_reference_id, a /pro/success stamp on the landing's
+    presented ogai_uid cookie. When the account uid itself holds NO
+    record, find records whose stored email is exactly the account's
+    email and copy the best one onto the account uid. Exact email
+    equality is the ONLY match key (both sides stripped+lowercased —
+    the system's own email identity; og_accounts keys accounts by
+    lowercased email); a record with NO email never matches, an
+    existing account-uid record is never overwritten, and the
+    stranded original is left in place (the webhook path is
+    unchanged). Idempotent. Returns the tier now recorded for the
+    account uid, or None when nothing matched.
+    """
+    save = _DEPS.get("save_store")
+    email = (email or "").strip().lower()
+    if not account_uid or not email or save is None:
+        return None
+    with _DEPS["lock"]:
+        store = _DEPS["load_store"]()
+        entitled = store.get(_DEPS["entitled_key"])
+        if not isinstance(entitled, dict) or account_uid in entitled:
+            return None
+        best = None
+        matches = 0
+        for rec in entitled.values():
+            if not isinstance(rec, dict):
+                continue
+            rec_email = (rec.get("email") or "").strip().lower()
+            if not rec_email or rec_email != email:
+                continue
+            matches += 1
+            tier = entitlement_tier(rec)
+            rank = TIER_ORDER.index(tier) if tier in TIER_ORDER else -1
+            if best is None or rank > best[0]:
+                best = (rank, rec)
+        if best is None:
+            return None
+        entitled[account_uid] = dict(best[1])
+        store[_DEPS["entitled_key"]] = entitled
+        save(store)
+    if matches > 1:
+        logger.info(
+            "Entitlement reconcile: %d records share the account email; "
+            "copied the highest tier onto the account uid", matches)
+    else:
+        logger.info(
+            "Entitlement reconcile: copied a stranded record onto the "
+            "account uid by email match")
+    return entitlement_tier(entitled[account_uid])
+
+
+def reconcile_entitlement_hook(guest_uid, account_uid, email=""):
+    """og_accounts attach hook (login): heal a stranded entitlement
+    onto the account the moment it signs in, before any tier read."""
+    reconcile_entitlement(account_uid, email)
+
+
+def _session_email_for(cookies, uid):
+    """The account email when a live session ties these cookies to
+    the account `uid`, else None. Lazy import + fail-safe, like
+    _buyer_needs_account: the session record is server-issued, so
+    its email is the account's own — never a client-presented value.
+    """
+    try:
+        import og_accounts
+        sess = og_accounts._session_for(
+            (cookies or {}).get(og_accounts.SESSION_COOKIE))
+        if sess and sess.get("uid") == uid:
+            return sess.get("email") or None
+    except Exception:
+        pass
+    return None
+
+
 def tier_of(cookies, uid=""):
     """Resolve a visitor's tier: tier cookie > legacy cookie (standard)
     > webhook entitlement > free."""
-    return tier_from_cookies(cookies, _DEPS.get("pro_token", ""),
-                             entitlement_tier_for(uid) if uid else None)
+    entitled = entitlement_tier_for(uid) if uid else None
+    if entitled is None and uid and _DEPS.get("webhook_enabled"):
+        # Round tierfix2: the account-uid lookup missed — the grant
+        # may be stranded under another uid. If this request's live
+        # session ties it to an account, try the email-keyed heal,
+        # then read the (possibly new) account record.
+        email = _session_email_for(cookies, uid)
+        if email and reconcile_entitlement(uid, email) is not None:
+            entitled = entitlement_tier_for(uid)
+    return tier_from_cookies(cookies, _DEPS.get("pro_token", ""), entitled)
 
 
 def images_left(tier, used):
@@ -797,6 +888,22 @@ def _buyer_needs_account(raw_request) -> bool:
         ) is None
     except Exception:
         return False
+
+
+def _stamp_identity(raw_request):
+    """(uid, email) a /pro/success grant is recorded under: the live
+    session's account uid + the account email when signed in, else
+    the presented ogai_uid cookie with no email (a guest landing).
+    Lazy import + fail-safe, like _buyer_needs_account."""
+    try:
+        import og_accounts
+        sess = og_accounts._session_for(
+            raw_request.cookies.get(og_accounts.SESSION_COOKIE))
+        if sess and sess.get("uid"):
+            return sess["uid"], sess.get("email") or ""
+    except Exception:
+        pass
+    return raw_request.cookies.get("ogai_uid"), ""
 
 
 def commercial_grid() -> dict:
@@ -892,7 +999,13 @@ def register_tier_routes(app):
         # Round 42: stamp the grant onto the account uid as well, so
         # the tier follows the account to clients that never hold the
         # ogai_tier cookie. The cookie flow above/below is unchanged.
-        _stamp_entitlement(raw_request.cookies.get("ogai_uid"), tier)
+        # Round tierfix2: key the stamp on the live session's ACCOUNT
+        # uid when signed in — the presented ogai_uid cookie is only
+        # a visitor id and stranded the owner's grant when it wasn't
+        # the account's — and record the account email, like a
+        # webhook record carries.
+        stamp_uid, stamp_email = _stamp_identity(raw_request)
+        _stamp_entitlement(stamp_uid, tier, stamp_email)
         if _DEPS["webhook_enabled"] and _buyer_needs_account(raw_request):
             # Round 44: a guest buyer — payment confirmed above, but
             # no account session. The grant rides on their visitor
