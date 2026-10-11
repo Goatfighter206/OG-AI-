@@ -307,12 +307,26 @@ def _mark_delivered(uid: str, alert_ids: set):
         # notification center (+ opt-in channels). Fail-safe.
         try:
             import og_notify as _notify
+            # Round 54: deliveries from an mpwatch watch record
+            # the mp_match kind with the mpwatch target shape.
+            kinds_by_id = {w.get("id"): w.get("kind")
+                           for w in _watches(uid)}
             for a in alerts:
                 if a.get("id") in alert_ids and a.get(
                         "kind") in ("match", "drop"):
                     _tgt = {"view": "watch"}
                     if a.get("watch_id"):
                         _tgt["id"] = a["watch_id"]
+                    if kinds_by_id.get(a.get("watch_id")) \
+                            == "mpwatch":
+                        _tgt["kind"] = "mpwatch"
+                        _notify.record(
+                            uid, "mp_match",
+                            "Marketplace price drop"
+                            if a.get("kind") == "drop"
+                            else "Marketplace match",
+                            a.get("text", ""), target=_tgt)
+                        continue
                     _notify.record(
                         uid, "watch_match",
                         "Watch price drop"
@@ -664,7 +678,7 @@ def _fmt_price(value) -> str:
 
 def _create_watch(uid: str, tier: str, item: str,
                   max_price: Optional[float],
-                  place: str) -> List[Dict]:
+                  place: str, kind: str = "fbwatch") -> List[Dict]:
     if not watch_enabled():
         if not B.enabled():
             return B._dark_text()
@@ -708,7 +722,13 @@ def _create_watch(uid: str, tier: str, item: str,
          "cadence_min": _cadence_min(tier), "created": _now_iso(),
          "last_check": None, "next_due": time.time(),
          "status": "active" if has_fb else "waiting_login",
-         "seen": {}, "checks": 0, "login_notice_sent": False}
+         "seen": {}, "checks": 0, "login_notice_sent": False,
+         # Round 54: the watch kind. Legacy records carry no kind
+         # and read as "fbwatch"; kind="mpwatch" records (created
+         # through og_mpwatch's chat claim) additionally keep a
+         # best-deal-ranked matches list (og_mpwatch._diff_mp).
+         "kind": kind, "matches": [], "best_alerted": None,
+         "seq": 0}
     watches.append(w)
     _put_blob(uid, "watches", watches)
     crit = _criteria_text(w)
@@ -762,12 +782,22 @@ def _list_watches(uid: str, tier: str) -> List[Dict]:
         when = ("never yet" if not last else
                 str(last)[:16].replace("T", " ") + " UTC")
         n = by_watch.get(w.get("id") or "", 0)
+        best = ""
+        mp_matches = w.get("matches") or []
+        if mp_matches:
+            priced = [m for m in mp_matches
+                      if m.get("price") is not None]
+            if priced:
+                top = min(priced, key=lambda m: float(m["price"]))
+                best = (f", best match '{top.get('title')}' at "
+                        f"{_fmt_price(top.get('price'))}")
         rows.append(
             f"• {_criteria_text(w)} — "
             f"{status_words.get(w.get('status'), w.get('status'))}, "
             f"checks about every {w.get('cadence_min')} min, "
             f"last check {when}"
-            + (f", {n} match(es) waiting for you" if n else ""))
+            + (f", {n} match(es) waiting for you" if n else "")
+            + best)
     used = _minutes_used(uid)
     cap = int(_tiers.cap(tier, "watch_min"))
     rows.append(
@@ -1042,7 +1072,18 @@ def _check_one(rec: Dict, uid: str, w: Dict, alerts: list,
             info["last_ts"] = time.time()
             v["sites"] = live
             _save_vault(uid, v)
-    _diff_watch(w, listings, alerts)
+    if w.get("kind") == "mpwatch":
+        # Round 54: mpwatch watches diff through og_mpwatch
+        # (best-deal ranking + the hard price rule). Fail-safe:
+        # any problem there falls back to the classic diff.
+        try:
+            import og_mpwatch as _mp
+            _mp._diff_mp(w, listings, alerts)
+        except Exception as e:
+            logger.warning(f"MPWatch diff failed, classic diff: {e}")
+            _diff_watch(w, listings, alerts)
+    else:
+        _diff_watch(w, listings, alerts)
 
 
 def _run_visitor_checks(uid: str, due: list, watches: list) -> int:
@@ -1294,7 +1335,8 @@ def watch_results(job: Dict, uid: str, tier: str) -> List[Dict]:
     if op == "create":
         return _create_watch(uid, tier, job.get("item") or "",
                               job.get("max_price"),
-                              job.get("place") or "")
+                              job.get("place") or "",
+                              job.get("kind") or "fbwatch")
     if op == "list":
         if not B.enabled():
             return B._dark_text()
@@ -1400,6 +1442,15 @@ def install_watch_tools(agent_instance, get_uid, get_tier):
     agent_instance.detect_intent = detect_wrapped
     agent_instance.web_search = search_wrapped
     agent_instance._og_watch_installed = True
+    # Round 54: the Marketplace watch + haggle extension wraps
+    # OUTSIDE this seam (its claims are Marketplace-specific;
+    # everything else delegates back here untouched). Fail-safe:
+    # a problem there can never take the classic Watch down.
+    try:
+        import og_mpwatch as _mp
+        _mp.install_mp_tools(agent_instance, get_uid, get_tier)
+    except Exception as e:
+        logger.warning(f"MPWatch seam skipped: {e}")
 
 
 # --- Routes + scheduler ------------------------------------------------------------
@@ -1451,6 +1502,13 @@ def register_watch_routes(app):
                 "cadence_min": w.get("cadence_min"),
                 "last_check": w.get("last_check"),
                 "checks": w.get("checks", 0),
+                # Round 54 (additive): identity + kind + the
+                # best-deal-ranked matches for mpwatch watches.
+                # Existing consumers read only the fields above;
+                # Unity's WatchItem DTO ignores unknown fields.
+                "id": w.get("id"),
+                "kind": w.get("kind") or "fbwatch",
+                "matches": w.get("matches") or [],
             } for w in watches]
             v = _vault(uid)
             live, _d = _live_sites(v)
