@@ -10,8 +10,9 @@ openBtn = $('menuLibraryBtn'), closeBtn = $('libraryCloseBtn'),
 list = $('libraryList'), empty = $('libraryEmpty'),
 storageLine = $('libraryStorageLine');
 if (!panel || !list) return;
-var ICONS = { video: '🎬', song: '🎵', image: '🖼️',
-              file: '📄', project: '🎮', podcast: '🎙️', book: '📖' };
+var ICONS = { video: '🎬', song: '🎵', image: '🖼️', motion: '🎞️',
+              file: '📄', project: '🎮', podcast: '🎙️', book: '📖',
+              sfx: '🔊' };
 var STATE_LABEL = { queued: 'In line', drawing: 'Drawing',
   voicing: 'Voicing', stitching: 'Stitching',
   generating: 'Writing', paused_caps: 'Paused — weekly cap',
@@ -19,7 +20,8 @@ var STATE_LABEL = { queued: 'In line', drawing: 'Drawing',
   done: 'Done', ready: '' };
 var TAB_LABEL = { video: 'Videos', song: 'Songs', image: 'Images',
                   file: 'Files', project: 'Projects',
-                  podcast: 'Podcasts', book: 'Books' };
+                  podcast: 'Podcasts', book: 'Books', motion: 'Motion',
+                  sfx: 'Sound FX' };
 var items = [], filter = 'all';
 function closeLibrary() {
 if (scrim) scrim.hidden = true;
@@ -165,6 +167,38 @@ bt.type = 'button';
 bt.setAttribute('data-kind', 'book');
 bt.textContent = 'Books';
 anchor.parentNode.insertBefore(bt, anchor.nextSibling);
+}
+})();
+/* Generator 7d: the Motion tab is injected the same way —
+   items of kind "motion" already ride GET /library and show
+   under All; this tab is their filter. */
+(function () {
+var bookTab = panel.querySelector('.og-library-tab[data-kind="book"]');
+var anchor2 = bookTab || panel.querySelector('.og-library-tab[data-kind="podcast"]');
+if (anchor2 && !panel.querySelector('.og-library-tab[data-kind="motion"]')) {
+var mt = document.createElement('button');
+mt.className = 'og-library-tab';
+mt.id = 'libraryTabMotion';
+mt.type = 'button';
+mt.setAttribute('data-kind', 'motion');
+mt.textContent = 'Motion';
+anchor2.parentNode.insertBefore(mt, anchor2.nextSibling);
+}
+})();
+/* Generator 7f: the Sound FX tab is injected the same way —
+   items of kind "sfx" already ride GET /library and show
+   under All; this tab is their filter. */
+(function () {
+var motionTab = panel.querySelector('.og-library-tab[data-kind="motion"]');
+var anchor3 = motionTab || panel.querySelector('.og-library-tab[data-kind="book"]');
+if (anchor3 && !panel.querySelector('.og-library-tab[data-kind="sfx"]')) {
+var st = document.createElement('button');
+st.className = 'og-library-tab';
+st.id = 'libraryTabSfx';
+st.type = 'button';
+st.setAttribute('data-kind', 'sfx');
+st.textContent = 'Sound FX';
+anchor3.parentNode.insertBefore(st, anchor3.nextSibling);
 }
 })();
 var tabs = panel.querySelectorAll('.og-library-tab');
