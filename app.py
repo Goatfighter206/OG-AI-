@@ -374,7 +374,8 @@ def _uid_entitlement_tier(uid: str):
 
 
 def _tier_of(cookies, uid: str = "") -> str:
-    return _og_tiers.tier_of(cookies, uid)
+    # Tier follows the ACCOUNT (round tierfix).
+    return _og_tiers.tier_of(cookies, _og_accounts.session_uid_or(cookies, uid))
 
 
 def _request_tier(raw_request) -> str:
