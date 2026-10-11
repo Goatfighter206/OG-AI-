@@ -1463,6 +1463,15 @@ def install_fixqueue_tools(agent_instance, get_uid):
 
     agent_instance.detect_intent = detect_wrapped
     agent_instance.web_search = search_wrapped
+    # Swearing switch ("swearing on switch off switch"): this
+    # install runs last in app.py's get_agent, so the switch's
+    # prompt-assembly wraps land outermost. Fail-safe — a switch
+    # problem never takes the fixqueue seam (or chat) down.
+    try:
+        import swearing_on_switch_off_switch as _swearing
+        _swearing.install_swearing_switch(agent_instance)
+    except Exception as e:
+        logger.warning(f"Swearing switch install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
