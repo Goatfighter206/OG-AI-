@@ -501,7 +501,7 @@ PUBLIC_PATHS = frozenset({
     "/auth/signup", "/auth/login", "/auth/logout", "/auth/me",
     "/auth/forgot", "/auth/reset",
     "/privacy", "/terms", "/health",
-    "/system/check",
+    "/system/check", "/system/lessons",
     "/stripe/webhook",
     "/avatar/poster.webp",
     "/pro", "/pro/success", "/tiers",
