@@ -429,6 +429,14 @@ def register_library_routes(app):
         _ogwallet.register_wallet_routes(app)
     except Exception as e:
         logger.warning(f"Wallet routes skipped: {e}")
+    # Round 69: the nightly auto-update's operator surface +
+    # scheduler loop ride the same registration (app.py stays
+    # untouched — it is at its push ceiling).
+    try:
+        import og_autoupdate as _ogau
+        _ogau.register_autoupdate_routes(app)
+    except Exception as e:
+        logger.warning(f"Autoupdate routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
