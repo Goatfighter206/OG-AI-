@@ -937,7 +937,7 @@ def _find(uid: str, ident: str):
     return slug_hit
 
 
-def _decide_code(owner, problems, problem, prop):
+def _decide_code(owner, problems, problem, prop, auto=None):
     """Execute an approved CODE proposal under exactly the
     Round 32 discipline: the target file must not have moved
     since the draft, the drafted content must re-pass its
@@ -1025,7 +1025,17 @@ def _decide_code(owner, problems, problem, prop):
     # Stamp executed BEFORE running: exactly once, even on a crash.
     prop["status"] = "executed"
     prop["decided_at"] = time.time()
-    _note(problem, "fix_approved")
+    if auto:
+        # Round 69: the nightly auto-update of OG's OWN system
+        # is the one caller that arrives without a human tap —
+        # the stamp says so, with the rule it ran under.
+        prop["decided_via"] = "nightly_auto_update"
+        prop["auto_rule"] = str(auto.get("rule") or "")
+        prop["auto_night"] = str(auto.get("night") or "")
+        _note(problem, "fix_auto_applied",
+              str(auto.get("rule") or "nightly auto-update"))
+    else:
+        _note(problem, "fix_approved")
     _save_problems(owner, problems)
     branch = "og/fix-" + _slugify(str(problem.get("slug")
                                       or path))
@@ -1107,11 +1117,16 @@ def _decide_code(owner, problems, problem, prop):
             "and a fresh approval from you.")
 
 
-def decide(uid: str, ident: str, decision: str) -> Tuple[bool, str, str]:
+def decide(uid: str, ident: str, decision: str,
+           auto: Optional[dict] = None) -> Tuple[bool, str, str]:
     """The one approval door. Returns (ok, title, body).
     Executes ONLY for the owning uid, ONLY an open unexpired
     proposal, ONLY the prepared payload — then verifies and
-    records the outcome either way."""
+    records the outcome either way. Round 69: `auto` is the
+    nightly auto-update's stamp (rule + night), passed ONLY
+    by og_autoupdate for OG's own system fixes; every human
+    caller leaves it None and nothing about their path
+    changes."""
     found = _find(uid, ident)
     if found is None:
         return (False, "No fix waiting by that name",
@@ -1168,7 +1183,8 @@ def decide(uid: str, ident: str, decision: str) -> Tuple[bool, str, str]:
                 "\n".join(lines))
 
     if prop.get("fix_kind") == "code":
-        return _decide_code(owner, problems, problem, prop)
+        return _decide_code(owner, problems, problem, prop,
+                            auto=auto)
 
     # server kind: re-verify the problem is still there first.
     if _condition_gone(problem):
