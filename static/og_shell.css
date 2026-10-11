@@ -227,3 +227,143 @@ body.og-shell-off #ogSeatScreen { display: none !important; }
     width: min(880px, 100%);
     margin-left: auto; margin-right: auto;
 }
+
+/* --- Round 70 (addition): composer cleanup + full-screen seats --------
+   Brent (2026-10-11, from his screen recording):
+   A. The two status lines under the composer — the
+      "Connected - OG-AI" line (#ogStatusLine) and the plan
+      line under it (#tokenStatus) — go away entirely; the
+      plan's home is the menu's plan card. The elements are
+      the page's own (the page file is never edited), so
+      they are removed from layout here. textContent is
+      untouched, so the page's plan-bar logic that READS
+      the line keeps working exactly as before. With the
+      lines gone, the dock's flex column is just
+      [composer][seat bar] — the composer pill docks
+      directly above the seat bar, nothing between them.
+   B. Goals / Ideas / Feed (and the new Progress seat)
+      open as FULL-SCREEN pages, same pattern as the menu
+      above: the seat screen covers the whole viewport
+      (z 9000, above the dock/top cluster at 7500/7600,
+      below the menu at 9001), opaque black-and-gold, its
+      head + views in the shell's 880px column, the ✕ at
+      the top right closing back to chat. The legacy
+      between-the-bars geometry above stays in the file
+      (older suites read it); these later rules win the
+      cascade. The Approvals panel is raised above the
+      seats (9300/9299) because it opens FROM the Ideas
+      seat. */
+#ogStatusLine, #tokenStatus { display: none !important; }
+
+/* Menu footer line removed (Brent, 2026-10-11, with a
+   screenshot): "I don't want this there." The
+   "🔞 OG AI is an 18+ AI — adults only. · Privacy ·
+   Terms" line is NOT carried into the full-screen menu
+   (.og-menu-foot), and its other signed-in shell
+   rendering — the same line under the composer
+   (.age-footer) — goes too. The /privacy and /terms
+   PAGES stay live at their URLs (store/Google
+   requirements), and the age gate's own notices are
+   untouched; only this shell chrome line is removed. */
+.og-menu-foot, .age-footer { display: none !important; }
+
+#ogSeatScreen {
+    top: 0; bottom: 0; left: 0; transform: none;
+    width: 100%; z-index: 9000;
+    border-top: none; border-bottom: none;
+    background: radial-gradient(120% 90% at 50% 0%, #171307 0%, #0b0b0b 55%);
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+#ogSeatScreen .og-seat-screen-head,
+#ogSeatScreen .og-seat-view {
+    width: min(880px, 100%);
+    margin-left: auto; margin-right: auto;
+}
+#ogSeatScreen .og-seat-notice {
+    width: min(848px, calc(100% - 32px));
+    margin: 0 auto 8px;
+}
+@media (max-width: 768px) {
+    #ogSeatScreen { top: 0; bottom: 0; }
+}
+.og-appr-scrim { z-index: 9299; }
+.og-appr-panel { z-index: 9300; }
+
+/* Progress seat: the live bar exists ONLY on rows the
+   payload marks actively working (pct is a number) —
+   queued / waiting / done rows render no bar at all
+   (Brent, 2026-10-11: "Only tasks that are being worked
+   on will have the live %."). */
+.og-prog-bar {
+    height: 8px; border-radius: 99px; background: #262626;
+    overflow: hidden; margin-top: 8px;
+}
+.og-prog-bar span {
+    display: block; height: 100%;
+    background: linear-gradient(135deg, #ffc107, #ff8f00);
+}
+.og-prog-pct { color: #ffc107; font-weight: 700; }
+
+/* Browser small bar (Round 70 addition, Brent
+   2026-10-11): the browser window's small state is a
+   compact bar in the MIDDLE of the screen carrying
+   exactly the Open browser control + the ✕. The panel
+   and its behavior are the page's own (auto-shows for a
+   live session — including one parked at a login wall —
+   per the existing rules; the ✕ dismisses the window
+   only and NEVER ends the session; End task is still
+   the only session end). This block only reshapes the
+   SMALL state: centered, view/note/actions tucked away,
+   [Open browser] [✕] in one row. The OPEN state
+   (.og-panel-open, in-flow) and the take-control full
+   state (.og-panel-full) are untouched. */
+.og-browser-panel:not(.og-panel-open):not(.og-panel-full) {
+    position: fixed; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(400px, 92vw); min-width: 0; max-width: none;
+    margin: 0; z-index: 8900;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px;
+}
+.og-browser-panel[hidden] { display: none !important; }
+.og-browser-panel:not(.og-panel-open):not(.og-panel-full)
+    .og-browser-view,
+.og-browser-panel:not(.og-panel-open):not(.og-panel-full)
+    .og-browser-note,
+.og-browser-panel:not(.og-panel-open):not(.og-panel-full)
+    .og-browser-actions { display: none !important; }
+.og-browser-panel:not(.og-panel-open):not(.og-panel-full)
+    .og-browser-open {
+    order: 1; flex: 1 1 auto; width: auto; margin: 0;
+}
+.og-browser-panel:not(.og-panel-open):not(.og-panel-full)
+    .og-browser-x {
+    order: 2; position: static; flex: 0 0 auto;
+}
+
+/* The status pill is tappable (Round 70 addition): it
+   routes to the thing it names. */
+.og-task-pill { cursor: pointer; }
+
+/* Approval lock (Round 70 addition): while a formal
+   approval card is unanswered the composer is locked
+   (og_shell.js disables input + send + talk and marks
+   the body) — the pill dims and rings gold so the locked
+   state is visible, and the swapped placeholder carries
+   the instruction in gold. */
+body.og-composer-locked #ogShellDock .input-wrapper {
+    box-shadow: 0 0 0 2px rgba(255,193,7,.65), 0 14px 36px rgba(0,0,0,.6);
+    opacity: .78;
+}
+body.og-composer-locked #messageInput::placeholder { color: #ffc107; }
+
+/* Ideas seat: generated-idea rows carry Ask / Dismiss. */
+.og-idea-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.og-idea-btns button {
+    border-radius: 999px; padding: 8px 16px; font-weight: 700;
+    font-size: .88rem; cursor: pointer; font-family: inherit;
+}
+.og-idea-ask { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
+.og-idea-dismiss { border: 1px solid #3a3a3a; background: transparent; color: #cfcfcf; }
+.og-idea-btns button[disabled] { opacity: .5; cursor: default; }
