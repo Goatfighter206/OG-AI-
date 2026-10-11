@@ -140,6 +140,18 @@
   }, 1500);
 })();
 
+/* Round 70: the shared full-view scaffold + OSM map
+   (static/og_r70.js) that the reshaped og_r65 (Languages
+   page) and og_r66 (Driving / Construction views) build
+   on; same ride-along loader — the page is at its push
+   ceiling. Consumers resolve window.OG70 at tap time, so
+   stub order here is a courtesy, not a dependency. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_r70.js';
+  document.head.appendChild(s);
+})();
+
 /* Round 62: message actions + hands-free live in their own
    asset (static/og_r62.js); the page sits at its push
    ceiling, so the asset loads from here — the page's last
