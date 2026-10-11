@@ -136,6 +136,34 @@ def _podcast_items(uid: str) -> list:
     return out
 
 
+def _book_items(uid: str) -> list:
+    import og_books
+    out = []
+    for rec in og_books.list_jobs_for_owner(uid):
+        view = og_books._book_view(rec)
+        if not view:
+            continue
+        done = view.get("status") == "done"
+        started = int(view.get("chapters_done", 0) or 0) > 0
+        out.append({
+            "kind": "book", "id": view.get("id", ""),
+            "title": view.get("title") or "OG's Book",
+            "created_at": float(rec.get("created", 0) or 0),
+            "status": view.get("status", ""),
+            "action": "Read" if (done or started) else "",
+            "action_url": (f"/books/{view.get('id', '')}/read"
+                           if (done or started) else ""),
+            "meta": {"detail": view.get("detail", ""),
+                     "chapters_done": int(
+                         view.get("chapters_done", 0) or 0),
+                     "chapters_total": int(
+                         view.get("chapters_total", 0) or 0),
+                     "words": int(view.get("words", 0) or 0),
+                     "cover_url": view.get("cover_url", "")},
+        })
+    return out
+
+
 def _project_items(uid: str) -> list:
     import og_unity
     out = []
@@ -197,10 +225,12 @@ def collect_library(uid: str, request: Request):
     contributes nothing and never sinks the shelf."""
     items: list = []
     counts = {"videos": 0, "songs": 0, "images": 0,
-              "files": 0, "projects": 0, "podcasts": 0}
+              "files": 0, "projects": 0, "podcasts": 0,
+              "books": 0}
     for key, fn in (("videos", _video_items),
                     ("songs", _song_items),
                     ("podcasts", _podcast_items),
+                    ("books", _book_items),
                     ("projects", _project_items)):
         try:
             got = fn(uid)
@@ -287,6 +317,14 @@ def register_library_routes(app):
         _ogdes.register_designer_routes(app)
     except Exception as e:
         logger.warning(f"Designer routes skipped: {e}")
+    # Generator 7c: book routes (/books, /books/status,
+    # approve/decline, /books/<id>/read|download|continue)
+    # ride the same registration.
+    try:
+        import og_books as _ogbooks
+        _ogbooks.register_book_routes(app)
+    except Exception as e:
+        logger.warning(f"Book routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
@@ -295,7 +333,8 @@ def register_library_routes(app):
             return {"items": [], "storage": None,
                     "counts": {"videos": 0, "songs": 0,
                                "images": 0, "files": 0,
-                               "projects": 0, "podcasts": 0}}
+                               "projects": 0, "podcasts": 0,
+                               "books": 0}}
         items, storage_line, counts = collect_library(
             uid, request)
         return {"items": items, "storage": storage_line,
