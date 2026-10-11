@@ -336,6 +336,12 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     _step(results, "accounts", accounts)
     _purge_app_stores(uid, results)
 
+    def twofa():
+        import og_2fa as _2fa
+        _2fa.purge_uid(uid)
+
+    _step(results, "twofa", twofa)
+
     import og_notify as _notify
     _step(results, "notify", lambda: _notify.purge_uid(uid))
     import og_watch as _watch
@@ -500,6 +506,18 @@ def register_store_routes(app):
         if not isinstance(acct, dict) or not ok:
             _acct._record_failure(email, ip)
             return _err(_acct.ERR_GENERIC, status=401)
+        # Round 63 step-up: with 2-step on, deleting the
+        # account also needs a current TOTP or recovery code.
+        try:
+            import og_2fa as _2fa
+            if _2fa.twofa_enabled(uid) and not \
+                    _2fa.verify_code_or_recovery(uid, body.get("code")):
+                _acct._record_failure(email, ip)
+                return _err(
+                    "Enter your 2-step code (or a recovery code) "
+                    "to delete your account.", status=403)
+        except Exception as e:
+            logger.warning(f"Delete step-up check skipped: {e}")
         purge_account(email, uid, ip)
         resp = JSONResponse({"ok": True})
         resp.set_cookie(
