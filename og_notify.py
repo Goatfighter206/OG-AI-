@@ -103,7 +103,8 @@ STORAGE_DEDUPE_SECONDS = 24 * 60 * 60
 TITLE_CAP = 160
 BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
-         "song_done", "podcast_done", "storage_warning", "notice",
+         "song_done", "podcast_done", "book_done",
+         "storage_warning", "notice",
          "approval_needed", "signin_needed", "system_check",
          "fix_needed",
          # Round 54: Marketplace watch matches (og_mpwatch via
