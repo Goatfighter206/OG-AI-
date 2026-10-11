@@ -218,6 +218,13 @@ def register_library_routes(app):
         _ogresp.register_respond_routes(app)
     except Exception as e:
         logger.warning(f"Respond routes skipped: {e}")
+    # Round 63: 2-step verification routes ride the same
+    # registration (app.py ceiling — see og_reactions above).
+    try:
+        import og_2fa as _og2fa
+        _og2fa.register_2fa_routes(app)
+    except Exception as e:
+        logger.warning(f"2FA routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
