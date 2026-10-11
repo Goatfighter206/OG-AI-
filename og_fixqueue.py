@@ -1472,6 +1472,15 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _swearing.install_swearing_switch(agent_instance)
     except Exception as e:
         logger.warning(f"Swearing switch install skipped: {e}")
+    # Round 65: language + retaliation-comeback directives ride
+    # the same last install, AFTER the swearing switch (so the
+    # combined R65 prompt wraps land outermost). Fail-safe — a
+    # problem here never takes the fixqueue seam (or chat) down.
+    try:
+        import og_language as _oglang
+        _oglang.install_language_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"R65 language/comeback install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
