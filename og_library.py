@@ -225,6 +225,13 @@ def register_library_routes(app):
         _og2fa.register_2fa_routes(app)
     except Exception as e:
         logger.warning(f"2FA routes skipped: {e}")
+    # Round 54: Marketplace watch approval routes ride the same
+    # registration (app.py ceiling — see above).
+    try:
+        import og_mpwatch as _ogmp
+        _ogmp.register_mp_routes(app)
+    except Exception as e:
+        logger.warning(f"MPWatch routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
