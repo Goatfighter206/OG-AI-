@@ -25,6 +25,7 @@ shellRoot.innerHTML =
 '<button class="og-seat" id="ogSeatGoals" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg><span class="og-seat-label">Goals</span></button>' +
 '<button class="og-seat" id="ogSeatIdeas" type="button"><svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.8.7 1 1.5 1 2.5h6c0-1 .2-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg><span class="og-seat-label">Ideas</span><span id="ogSeatIdeasDot" class="og-seat-dot" hidden></span></button>' +
 '<button class="og-seat" id="ogSeatFeed" type="button"><svg viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/></svg><span class="og-seat-label">Feed</span><span id="ogSeatFeedDot" class="og-seat-dot" hidden></span></button>' +
+'<button class="og-seat" id="ogSeatProgress" type="button"><svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M2 20h20"/></svg><span class="og-seat-label">Progress</span></button>' +
 '</nav>' +
 '</div>' +
 '<section id="ogSeatScreen" hidden aria-label="OG section">' +
@@ -44,6 +45,8 @@ shellRoot.innerHTML =
 '<p id="ogIdeasApprDesc" class="og-approve-desc"></p>' +
 '<div class="og-approve-btns"><button id="ogIdeasApprBtn" type="button">Open approvals</button></div>' +
 '</div>' +
+'<h3 class="og-appr-sec" id="ogIdeasGenSec" hidden>Ideas for you</h3>' +
+'<div id="ogIdeasGenList"></div>' +
 '<h3 class="og-appr-sec" id="ogIdeasFixSec" hidden>Fixes waiting</h3>' +
 '<div id="ogIdeasFixList"></div>' +
 '<h3 class="og-appr-sec" id="ogIdeasOfferSec" hidden>OG\'s system check</h3>' +
@@ -51,19 +54,14 @@ shellRoot.innerHTML =
 '<p id="ogIdeasEmpty" class="og-appr-empty" hidden>Nothing waiting on you — when OG has a fix ready or a system upgrade to offer, it lands here.</p>' +
 '</div>' +
 '<div id="ogFeedView" class="og-seat-view" hidden>' +
-'<div id="ogFeedTabs" class="og-feed-tabs">' +
-'<button class="og-feed-tab is-on" id="ogFeedTabAll" type="button">All</button>' +
-'<button class="og-feed-tab" id="ogFeedTabVideo" type="button">Videos</button>' +
-'<button class="og-feed-tab" id="ogFeedTabSong" type="button">Songs</button>' +
-'<button class="og-feed-tab" id="ogFeedTabPodcast" type="button">Podcasts</button>' +
-'<button class="og-feed-tab" id="ogFeedTabBook" type="button">Books</button>' +
-'<button class="og-feed-tab" id="ogFeedTabImage" type="button">Images</button>' +
-'<button class="og-feed-tab" id="ogFeedTabFile" type="button">Files</button>' +
-'<button class="og-feed-tab" id="ogFeedTabProject" type="button">Projects</button>' +
-'</div>' +
 '<p id="ogFeedStorage" class="og-seat-summary" hidden></p>' +
 '<div id="ogFeedList"></div>' +
 '<p id="ogFeedEmpty" class="og-appr-empty" hidden>Nothing here yet — what OG makes for you, and what he notices, lands here.</p>' +
+'</div>' +
+'<div id="ogProgressView" class="og-seat-view" hidden>' +
+'<p id="ogProgressSummary" class="og-seat-summary">Loading…</p>' +
+'<div id="ogProgressList"></div>' +
+'<p id="ogProgressEmpty" class="og-appr-empty" hidden>Nothing is being worked on right now — when OG is making something, browsing, or checking a watch for you, it shows up here while it runs.</p>' +
 '</div>' +
 '</section>' +
 '<div id="ogApprovalsScrim" class="og-appr-scrim" hidden></div>' +
@@ -108,9 +106,10 @@ syncGate();
 /* --- 3. Seats ---------------------------------------------------------- */
 var seats = {
   chat: $('ogSeatChat'), goals: $('ogSeatGoals'),
-  ideas: $('ogSeatIdeas'), feed: $('ogSeatFeed')
+  ideas: $('ogSeatIdeas'), feed: $('ogSeatFeed'),
+  progress: $('ogSeatProgress')
 };
-var SEAT_TITLES = { goals: '🎯 Goals — what OG is working on', ideas: '💡 Ideas — OG\'s proposals', feed: '📰 Feed' };
+var SEAT_TITLES = { goals: '🎯 Goals — what OG is working on', ideas: '💡 Ideas — OG\'s proposals', feed: '📰 Feed', progress: '📈 Progress — what OG is working on' };
 var activeSeat = 'chat';
 var ideasDot = $('ogSeatIdeasDot'), feedDot = $('ogSeatFeedDot');
 
@@ -181,13 +180,16 @@ function gotoSeat(name) {
     if (scr) scr.hidden = false;
     var t = $('ogSeatScreenTitle');
     if (t) t.textContent = SEAT_TITLES[name] || name;
-    var gv = $('ogGoalsView'), iv = $('ogIdeasView'), fv = $('ogFeedView');
+    var gv = $('ogGoalsView'), iv = $('ogIdeasView'), fv = $('ogFeedView'),
+        pv = $('ogProgressView');
     if (gv) gv.hidden = name !== 'goals';
     if (iv) iv.hidden = name !== 'ideas';
     if (fv) fv.hidden = name !== 'feed';
+    if (pv) pv.hidden = name !== 'progress';
     if (name === 'goals') refreshGoals();
-    if (name === 'ideas') { renderIdeas(); refreshFixes(); refreshOffers(); }
+    if (name === 'ideas') { renderIdeas(); refreshFixes(); refreshOffers(); refreshGenIdeas(); }
     if (name === 'feed') refreshFeed();
+    if (name === 'progress') refreshProgress();
   }
   paintSeats();
 }
@@ -196,6 +198,7 @@ if (seats.chat) seats.chat.addEventListener('click', function () { gotoSeat('cha
 if (seats.goals) seats.goals.addEventListener('click', function () { gotoSeat('goals'); });
 if (seats.ideas) seats.ideas.addEventListener('click', function () { gotoSeat('ideas'); });
 if (seats.feed) seats.feed.addEventListener('click', function () { gotoSeat('feed'); });
+if (seats.progress) seats.progress.addEventListener('click', function () { gotoSeat('progress'); });
 var scrClose = $('ogSeatScreenClose');
 if (scrClose) scrClose.addEventListener('click', function () { gotoSeat('chat'); });
 var apprClose = $('ogApprCloseBtn');
@@ -285,11 +288,165 @@ function getJSON(url) {
     .catch(function () { return null; });
 }
 
+/* --- 4b. Approval lock + pill (Round 70 addition) ------------------------
+   Brent (2026-10-11): "make the approval card pop up in
+   chat and you can't send anything until you answer the
+   card; you will see in the bubble underneath 'OG needs
+   approval' until you click one."
+   The card itself already lives IN the chat stream — the
+   page's own #approveCard renders the SAME pending_action
+   this panel mirrors, with working Approve / Decline /
+   Always-allow buttons (one live card; nothing here
+   duplicates it). What this section adds is the lock and
+   the pill:
+   - While `pending` (the formal pending store's one
+     parked approval — browser commits, ordering-flow
+     commits, GitHub PR approvals; all park through
+     og_browser._set_pending and all render on that card
+     with an answer path) is unanswered, the composer is
+     locked: input + send + talk disabled, placeholder
+     swapped, dock marked. Answering on the card OR in
+     this panel clears the pending on the next poll and
+     unlocks immediately.
+   - DEADLOCK GUARD: the lock keys ONLY on pending_action.
+     Conversational questions are not pendings and never
+     lock; the video/song spend cards are a separate
+     system with their own in-chat cards and never lock.
+   - The status pills (#ogTaskPillTop + #ogTaskPillProfile,
+     one page updater writing both) read exactly
+     "OG needs approval" while locked — asserted here on
+     the shell's own polls, restored from the last browser
+     status on unlock (the page's updater self-heals on
+     its next state change regardless).
+   - The page's sendMessage is wrapped (lazily, at first
+     lock) so a programmatic send — voice auto-send, an
+     Ideas Ask tap — cannot slip past the lock either.
+   Round 70 (pill surface): the pill is the live-action +
+   notification surface (Brent, 2026-10-11) — needs-user
+   states surface there too, OUTRANKING the activity
+   states the page's updater paints. The page's updater
+   remains the ONE activity updater (Thinking… / Making
+   your video / Browsing <host> / Online & Ready); this
+   layer only ever writes a needs-user text, in this
+   priority: approval > sign-in needed > browser needed,
+   and restores the activity text when the last needs-
+   user state clears. Both pill instances are always
+   written together. Tapping the pill routes to the
+   thing it names (see pillTap). */
+var composerLocked = false, lastBrowserStatus = null, sendWrapped = false;
+var signinNeeded = false, browserNeeded = false, pillNeedsActive = false;
+function wrapSend() {
+  if (sendWrapped || typeof window.sendMessage !== 'function') return;
+  var orig = window.sendMessage;
+  window.sendMessage = function () {
+    if (composerLocked) return;
+    return orig.apply(this, arguments);
+  };
+  sendWrapped = true;
+}
+function needsPillText() {
+  if (pending) return 'OG needs approval';
+  if (signinNeeded) return 'OG needs you to sign in';
+  if (browserNeeded) return 'OG needs you in the browser';
+  return null;
+}
+function assertApprovalPill() {
+  var t = needsPillText();
+  if (!t) return;
+  pillNeedsActive = true;
+  ['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
+    var p = $(id); if (p) p.textContent = t;
+  });
+}
+function updateNeedsPill() {
+  if (needsPillText()) { assertApprovalPill(); return; }
+  if (pillNeedsActive) {
+    pillNeedsActive = false;
+    restorePill();
+  }
+}
+function pillTap() {
+  if (pending) {
+    gotoSeat('chat');
+    var card = $('approveCard');
+    if (card && card.scrollIntoView) {
+      try { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      catch (e) { card.scrollIntoView(); }
+    }
+    return;
+  }
+  if (signinNeeded || browserNeeded) {
+    gotoSeat('chat');
+    var mb = $('menuBrowserBtn');
+    if (mb) { mb.click(); return; }
+    routeTarget({ view: 'browser' });
+    return;
+  }
+  /* activity / idle: no-op */
+}
+['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
+  var p = $(id);
+  if (!p) return;
+  if (p.style) p.style.cursor = 'pointer';
+  p.addEventListener('click', pillTap);
+});
+function restorePill() {
+  var st = lastBrowserStatus, t = 'Online & Ready';
+  if (st && st.enabled) {
+    if (st.loading_host) t = 'Opening ' + st.loading_host + '…';
+    else if (st.active) {
+      var host = '';
+      if (st.page_url) { try { host = new URL(st.page_url).hostname || ''; } catch (e) { } }
+      t = host ? 'Browsing ' + host : 'Browsing';
+    }
+  }
+  ['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
+    var p = $(id); if (p) p.textContent = t;
+  });
+}
+function applyComposerLock() {
+  var locked = !!pending;
+  if (locked === composerLocked) {
+    if (locked) assertApprovalPill();
+    return;
+  }
+  composerLocked = locked;
+  var input = $('messageInput'), send = $('sendBtn'), voice = $('voiceBtn');
+  if (locked) {
+    wrapSend();
+    if (input) {
+      input.disabled = true;
+      if (!input.getAttribute('data-og-ph')) {
+        input.setAttribute('data-og-ph', input.placeholder || 'Ask OG…');
+      }
+      input.placeholder = 'Answer the card above to keep going';
+    }
+    if (send) send.disabled = true;
+    if (voice) voice.disabled = true;
+    document.body.classList.add('og-composer-locked');
+    assertApprovalPill();
+  } else {
+    if (input) {
+      input.disabled = false;
+      input.placeholder = input.getAttribute('data-og-ph') || 'Ask OG…';
+    }
+    if (send) send.disabled = false;
+    if (voice) voice.disabled = false;
+    document.body.classList.remove('og-composer-locked');
+    /* A lower-priority needs-user state may still be up
+       (sign-in, browser) — it owns the pill now; only a
+       fully clear board restores the activity text. */
+    if (needsPillText()) assertApprovalPill();
+    else { pillNeedsActive = false; restorePill(); }
+  }
+}
+
 function renderPending() {
   var card = $('ogApprCard'), desc = $('ogApprDesc'), text = $('ogApprText'),
       exp = $('ogApprExp'), always = $('ogApprAlwaysBtn'), out = $('ogApprOutcome'),
       empty = $('ogApprEmpty');
   updateDot();
+  applyComposerLock();
   renderIdeasAppr();
   if (!card) return;
   if (Date.now() < outcomeUntil) { card.hidden = false; return; }
@@ -351,6 +508,7 @@ function refreshPending() {
   fetch('/browser/status')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (st) {
+      lastBrowserStatus = st;
       pending = (st && st.enabled && st.pending_action) ? st.pending_action : null;
       renderPending();
     })
@@ -363,8 +521,17 @@ function refreshRecents() {
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (d && typeof d.unread === 'number') { feedUnread = d.unread; paintFeedDot(); }
+      /* Pill surface signals (Round 70): an unread
+         sign-in-needed notification is a needs-user
+         state; watch checkpoints are learned alongside
+         (below) — both feed updateNeedsPill. */
+      var allItems = (d && d.items) || [];
+      signinNeeded = allItems.some(function (it) {
+        return it && it.kind === 'signin_needed' && !it.read;
+      });
+      updateNeedsPill();
       if (!list) return;
-      var items = ((d && d.items) || []).filter(function (it) { return it && it.kind === 'approval_needed'; }).slice(0, 5);
+      var items = allItems.filter(function (it) { return it && it.kind === 'approval_needed'; }).slice(0, 5);
       recentsCount = items.length;
       list.innerHTML = '';
       if (sec) sec.hidden = items.length === 0;
@@ -388,6 +555,18 @@ function refreshRecents() {
       renderPending();
     })
     .catch(function () { });
+  /* The watch family's needs-user states (a watch stuck
+     at a sign-in or an identity checkpoint) ride the same
+     15 s cadence — they are standing states, not
+     momentary ones. */
+  getJSON('/watch/status').then(function (wst) {
+    var ws = (wst && wst.watches) || [];
+    browserNeeded = ws.some(function (w) {
+      return w && (w.status === 'waiting_login'
+                   || w.status === 'paused_checkpoint');
+    });
+    updateNeedsPill();
+  });
 }
 
 /* --- 5. Fixes waiting (Round 53 fix-approval pipeline) ------------------
@@ -579,7 +758,8 @@ if (ideasApprBtn) ideasApprBtn.addEventListener('click', function () { openAppro
 function renderIdeasEmpty() {
   var empty = $('ogIdeasEmpty');
   if (!empty) return;
-  var nothing = !pending && openFixCount === 0 && offers.length === 0;
+  var nothing = !pending && openFixCount === 0 && offers.length === 0
+    && genIdeas.length === 0;
   empty.hidden = !nothing;
   if (nothing && activeSeat === 'ideas' && !isHidden($('ogSeatScreen'))) {
     seatNotice('ideas', 'Nothing waiting on you.');
@@ -613,14 +793,79 @@ function refreshOffers() {
   });
 }
 
+/* --- 7b. Ideas for you (Round 70 addition) ------------------------------
+   OG-generated ideas from the caller's own signals (GET
+   /ideas — og_ideas.py derives them by rule from the
+   caller's watches, notifications, books, locker, and
+   generator history; rules only, nothing executes).
+   Tapping Ask drops the idea's ask into the composer and
+   sends it through the page's own send path — the same
+   seeded-open pattern as the browser rows. Dismiss parks
+   the idea server-side for 30 days. */
+var genIdeas = [];
+function askInChat(text) {
+  gotoSeat('chat');
+  var input = $('messageInput');
+  if (input) { input.value = text; input.focus(); }
+  /* While an approval card is unanswered the composer is
+     locked — the ask stays composed, unsent, and the card
+     in the stream is the thing to answer first. */
+  if (composerLocked) return;
+  if (typeof window.sendMessage === 'function') window.sendMessage(true);
+}
+function renderGenIdeas() {
+  var list = $('ogIdeasGenList'), sec = $('ogIdeasGenSec');
+  if (!list) return;
+  list.innerHTML = '';
+  if (sec) sec.hidden = genIdeas.length === 0;
+  genIdeas.forEach(function (idea) {
+    if (!idea) return;
+    var row = seatRow('💡', idea.title || 'Idea', idea.body || '');
+    var btns = document.createElement('div');
+    btns.className = 'og-idea-btns';
+    var ask = document.createElement('button');
+    ask.type = 'button'; ask.className = 'og-idea-ask';
+    ask.textContent = 'Ask OG';
+    ask.addEventListener('click', function () { askInChat(idea.ask || idea.title || ''); });
+    var dis = document.createElement('button');
+    dis.type = 'button'; dis.className = 'og-idea-dismiss';
+    dis.textContent = 'Dismiss';
+    dis.addEventListener('click', function () {
+      ask.disabled = true; dis.disabled = true;
+      fetch('/ideas/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: idea.id })
+      }).then(function () { refreshGenIdeas(); })
+        .catch(function () { refreshGenIdeas(); });
+    });
+    btns.appendChild(ask); btns.appendChild(dis);
+    row.querySelector('.og-appr-main').appendChild(btns);
+    list.appendChild(row);
+  });
+  renderIdeasEmpty();
+}
+function refreshGenIdeas() {
+  getJSON('/ideas').then(function (d) {
+    genIdeas = (d && d.ideas) || [];
+    renderGenIdeas();
+  });
+}
+
 /* --- 8. Feed seat: OG's stream ------------------------------------------
-   Library items (GET /library — its tabs ride at the top) merged
-   with notifications (GET /notifications), newest first. Library
-   rows keep their action (Play/Open/Download); notification rows
-   route per Item A. Kind tabs filter the library portion;
-   notifications ride the All tab. */
-var FEED_KINDS = ['all', 'video', 'song', 'podcast', 'book', 'motion', 'sfx', 'image', 'file', 'project'];
-var feedTab = 'all', feedRows = [], feedLibIds = {};
+   Round 70 (addition): the filter chips are GONE (Brent's
+   order) and the ordering moved server-side — GET /feed
+   merges the caller's library items (/library's sources)
+   with their notifications and returns the rows in the
+   feed algorithm's order (og_library.feed_rows is the one
+   ordering function); this client renders payload order
+   verbatim, no client sort, no filtering. Library rows
+   keep their action (Play/Open/Download); notification
+   rows route per Item A. setFeedTab survives as a
+   render-only shim: notification tap-through still calls
+   it (with a kind that no longer filters anything) before
+   the routed-item flash renders. */
+var feedRows = [], feedLibIds = {};
 var LIB_ICONS = { video: '🎬', song: '🎵', image: '🖼', file: '📄', project: '🧩', podcast: '🎙️', book: '📖', motion: '🎞️', sfx: '🔊' };
 var KIND_LABELS = { video: 'Video', song: 'Song', image: 'Image', file: 'File', project: 'Project', podcast: 'Podcast', book: 'Book', motion: 'Motion', sfx: 'Sound FX' };
 var NOTIF_ICONS = {
@@ -631,17 +876,11 @@ var NOTIF_ICONS = {
   signin_needed: '🔑', system_check: '🩺', fix_needed: '🔧'
 };
 function setFeedTab(kind) {
-  feedTab = FEED_KINDS.indexOf(kind) !== -1 ? kind : 'all';
-  FEED_KINDS.forEach(function (k) {
-    var b = $('ogFeedTab' + k.charAt(0).toUpperCase() + k.slice(1));
-    if (b) b.classList.toggle('is-on', k === feedTab);
-  });
+  /* Chips removed in Round 70 — the kind is accepted (the
+     notification router passes one) and ignored; the feed
+     shows everything in the server's order. */
   renderFeed();
 }
-FEED_KINDS.forEach(function (k) {
-  var b = $('ogFeedTab' + k.charAt(0).toUpperCase() + k.slice(1));
-  if (b) b.addEventListener('click', function () { setFeedTab(k); });
-});
 
 function markNotifRead(it, row) {
   if (it.read) return;
@@ -661,8 +900,6 @@ function renderFeed() {
   list.innerHTML = '';
   var shown = 0, flashed = false;
   feedRows.forEach(function (r) {
-    if (feedTab !== 'all' && r.src !== 'lib') return;
-    if (feedTab !== 'all' && r.kind !== feedTab) return;
     shown++;
     var row = document.createElement('div');
     row.className = 'og-appr-item og-feed-row' + (r.src === 'ntf' && !r.read ? ' unread' : '');
@@ -705,36 +942,21 @@ function renderFeed() {
 }
 
 function refreshFeed() {
-  Promise.all([getJSON('/library'), getJSON('/notifications')])
-    .then(function (res) {
-      var lib = res[0] || {}, ntf = res[1] || {};
-      if (typeof ntf.unread === 'number') { feedUnread = ntf.unread; paintFeedDot(); }
-      var rows = [];
+  getJSON('/feed')
+    .then(function (d) {
+      d = d || {};
+      if (typeof d.unread === 'number') { feedUnread = d.unread; paintFeedDot(); }
       feedLibIds = {};
-      (lib.items || []).forEach(function (it) {
-        if (!it) return;
-        feedLibIds[it.id] = true;
-        rows.push({
-          src: 'lib', id: it.id, kind: it.kind, title: it.title,
-          sub: (KIND_LABELS[it.kind] || 'Item') + (it.status === 'working' ? ' · making…' : ''),
-          ts: it.created_at || 0, action: it.action,
-          action_url: it.action_url, status: it.status
-        });
-      });
-      (ntf.items || []).forEach(function (it) {
-        if (!it) return;
-        rows.push({
-          src: 'ntf', id: it.id, kind: it.kind, title: it.title,
-          sub: it.body || '', ts: it.ts || 0, read: !!it.read,
-          target: it.target || null, raw: it
-        });
-      });
-      rows.sort(function (a, b2) { return (b2.ts || 0) - (a.ts || 0); });
-      feedRows = rows;
+      feedRows = (d.rows || []).map(function (r) {
+        if (!r) return null;
+        if (r.src === 'lib') feedLibIds[r.id] = true;
+        if (r.src === 'ntf') r.raw = r.raw || r;
+        return r;
+      }).filter(function (r) { return !!r; });
       var st = $('ogFeedStorage');
       if (st) {
-        st.hidden = !lib.storage_line;
-        if (lib.storage_line) st.textContent = lib.storage_line;
+        st.hidden = !d.storage_line;
+        if (d.storage_line) st.textContent = d.storage_line;
       }
       /* The routed-item flash is consumed HERE, on the fresh
          render — a tab-switch render may paint it with stale rows
@@ -749,6 +971,93 @@ function refreshFeed() {
     .catch(function () { });
 }
 
+/* --- 8b. Progress seat (Round 70 addition) ------------------------------
+   Everything being worked on for the signed-in user, from
+   the ONE aggregate endpoint GET /progress (og_progress.py
+   reads the existing job stores — nothing is recomputed or
+   invented here). The live % renders ONLY when the payload
+   carries a number, and the server sends a number only for
+   a task in an actively-working state with real progress
+   counts (Brent, 2026-10-11: "Only tasks that are being
+   worked on will have the live %."). Queued / waiting /
+   done rows show their state words and no bar. The seat
+   polls every 4 s while it is open so a working % moves
+   until the item lands as done. */
+var PROG_SECTIONS = [
+  ['making', 'Making'], ['browser', 'Browser'],
+  ['queries', 'Queries running'], ['watching', 'Watching'],
+  ['fixes', 'Fixes waiting']
+];
+function progressRow(r) {
+  var row = seatRow(r.icon || '•', r.title || '', '');
+  var main = row.querySelector('.og-appr-main');
+  var b = document.createElement('div');
+  b.className = 'og-appr-item-body';
+  var stateTxt = r.state_label || r.state || '';
+  if (typeof r.pct === 'number') {
+    b.innerHTML = '';
+    var s1 = document.createElement('span');
+    s1.textContent = stateTxt + ' — ';
+    var s2 = document.createElement('span');
+    s2.className = 'og-prog-pct';
+    s2.textContent = Math.round(r.pct) + '%';
+    b.appendChild(s1); b.appendChild(s2);
+    if (r.sub) {
+      var s3 = document.createElement('span');
+      s3.textContent = ' · ' + r.sub;
+      b.appendChild(s3);
+    }
+    var bar = document.createElement('div');
+    bar.className = 'og-prog-bar';
+    var fill = document.createElement('span');
+    fill.style.width = Math.max(0, Math.min(100, r.pct)) + '%';
+    bar.appendChild(fill);
+    main.appendChild(b); main.appendChild(bar);
+  } else {
+    b.textContent = stateTxt + (r.sub ? ' · ' + r.sub : '');
+    main.appendChild(b);
+  }
+  return row;
+}
+function refreshProgress() {
+  var sum = $('ogProgressSummary'), list = $('ogProgressList'),
+      empty = $('ogProgressEmpty');
+  if (!list) return;
+  getJSON('/progress').then(function (d) {
+    d = d || {};
+    var rows = d.rows || [];
+    list.innerHTML = '';
+    var lastSec = null;
+    rows.forEach(function (r) {
+      if (!r) return;
+      if (r.section !== lastSec) {
+        lastSec = r.section;
+        var label = lastSec;
+        PROG_SECTIONS.forEach(function (p) { if (p[0] === lastSec) label = p[1]; });
+        var h = document.createElement('h3');
+        h.className = 'og-appr-sec'; h.textContent = label;
+        list.appendChild(h);
+      }
+      list.appendChild(progressRow(r));
+    });
+    if (d.auto_update) {
+      var au = d.auto_update;
+      var h2 = document.createElement('h3');
+      h2.className = 'og-appr-sec'; h2.textContent = 'OG self-update';
+      list.appendChild(h2);
+      list.appendChild(seatRow('🌙', au.title || 'Nightly auto-update', au.sub || ''));
+    }
+    var working = rows.filter(function (r) { return r && r.working; }).length;
+    if (sum) sum.textContent = rows.length === 0
+      ? 'Nothing in flight.'
+      : rows.length + (rows.length === 1 ? ' thing' : ' things') + ' on the board' +
+        (working > 0 ? ' · ' + working + ' actively working' : '');
+    if (empty) empty.hidden = rows.length !== 0 || !!d.auto_update;
+  }).catch(function () {
+    if (sum) sum.textContent = 'Couldn\'t load right now — try again in a moment.';
+  });
+}
+
 /* --- 9. Boot + polls ------------------------------------------------------ */
 refreshPending();
 refreshFixes();
@@ -759,9 +1068,16 @@ setInterval(refreshRecents, 15000);
 setInterval(function () {
   if (isHidden($('ogSeatScreen'))) return;
   if (activeSeat === 'goals') refreshGoals();
-  if (activeSeat === 'ideas') { refreshFixes(); refreshOffers(); }
+  if (activeSeat === 'ideas') { refreshFixes(); refreshOffers(); refreshGenIdeas(); }
   if (activeSeat === 'feed') refreshFeed();
 }, 20000);
-setInterval(paintSeats, 900);
+setInterval(function () {
+  if (isHidden($('ogSeatScreen'))) return;
+  if (activeSeat === 'progress') refreshProgress();
+}, 4000);
+setInterval(function () {
+  paintSeats();
+  updateNeedsPill();
+}, 900);
 paintSeats();
 })();
