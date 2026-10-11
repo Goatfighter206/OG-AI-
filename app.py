@@ -331,6 +331,7 @@ import og_library as _og_library
 import og_store_ready as _ogs
 import og_selfcheck as _og_selfcheck
 import og_fixqueue as _og_fixqueue
+import og_lessons as _og_lessons
 import og_tokenpacks as _og_tokenpacks  # Round 56
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
@@ -2579,6 +2580,8 @@ _ogs.register_store_routes(app)
 _og_selfcheck.bind_app({"load_usage": _load_usage_store, "save_usage": _save_usage_store, "usage_lock": _usage_lock})
 _og_selfcheck.register_selfcheck_routes(app)
 _og_fixqueue.register_fixqueue_routes(app)
+_og_lessons.bind_app({"load_usage": _load_usage_store, "save_usage": _save_usage_store, "usage_lock": _usage_lock})
+_og_lessons.register_lessons_routes(app)
 _og_tokenpacks.bind_app({"load_usage": _load_usage_store, "save_usage": _save_usage_store, "usage_lock": _usage_lock, "tier_of": lambda uid, req: _tier_of(req.cookies, uid)})  # R56
 _og_tokenpacks.register_token_routes(app)
 
