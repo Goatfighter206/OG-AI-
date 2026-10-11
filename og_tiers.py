@@ -851,9 +851,37 @@ def _session_email_for(cookies, uid):
     return None
 
 
+def _owner_session_tier(cookies, uid):
+    """Round tierfix3: the owner's own account is Blackout by rule.
+
+    When a live session ties this request to the account whose email
+    matches OG_OWNER_EMAIL, resolution returns "blackout" — no
+    entitlement record, cookie, or stamp involved, and it outranks
+    any stored record. The email comes from the server-issued
+    session record (via _session_email_for, which requires the
+    session's uid to equal the uid being resolved), never from a
+    client-presented value, so there is no spoofing path: no
+    session -> no override, and OG_OWNER_EMAIL unset/empty ->
+    no override (legacy resolution byte-identical in both cases).
+    Not gated on the webhook flag, so the override also holds
+    during deliberate flag-off windows.
+    """
+    owner = (os.environ.get("OG_OWNER_EMAIL") or "").strip().lower()
+    if not owner or not uid:
+        return None
+    email = _session_email_for(cookies, uid)
+    if email and email.strip().lower() == owner:
+        return "blackout"
+    return None
+
+
 def tier_of(cookies, uid=""):
-    """Resolve a visitor's tier: tier cookie > legacy cookie (standard)
-    > webhook entitlement > free."""
+    """Resolve a visitor's tier: owner session > tier cookie >
+    legacy cookie (standard) > webhook entitlement > free."""
+    if uid:
+        owner_tier = _owner_session_tier(cookies, uid)
+        if owner_tier is not None:
+            return owner_tier
     entitled = entitlement_tier_for(uid) if uid else None
     if entitled is None and uid and _DEPS.get("webhook_enabled"):
         # Round tierfix2: the account-uid lookup missed — the grant
