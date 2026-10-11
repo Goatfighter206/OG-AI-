@@ -13,6 +13,9 @@ menu needs:
     POST /gps/points/delete   {id}
     POST /gps/points/update   {id, name?, note?}
     GET  /gps/points/export   -> CSV download (name,lat,lon,note)
+    POST /gps/points/import   {csv} -> {ok, added, skipped}:
+         the export format read back in (rows add_point refuses
+         count as skipped; no dedupe — the store's own rules)
 
   MATH — pure stdlib, the SINGLE SOURCE every client (web +
   app) shares, so a stakeout number on the phone is the number
@@ -59,6 +62,7 @@ logger = logging.getLogger(__name__)
 UID_COOKIE = "ogai_uid"
 STORE_FILE = os.getenv("OG_GPS_STORE", "gps_store.json")
 MAX_POINTS = 500
+MAX_CSV_CHARS = 2000000
 NAME_CAP = 120
 NOTE_CAP = 500
 
@@ -273,6 +277,52 @@ def points_csv(uid: str) -> str:
     for pt in points_for(uid):
         w.writerow([pt["name"], pt["lat"], pt["lon"], pt["note"]])
     return buf.getvalue()
+
+
+def import_points_csv(uid: str, csv_text):
+    """Import points from CSV text in points_csv()'s format
+    (header name,lat,lon,note). Returns {"added", "skipped"},
+    or None when the input is not usable CSV text at all (no
+    uid, not a string, oversized, unparsable). Every data row
+    goes through add_point, so validation, the name/note caps
+    and the per-uid store stay the single source; a row
+    add_point refuses (bad name / coords out of range) — and
+    any row whose column count is not the export's 3-or-4 —
+    counts as skipped. Blank lines are ignored, not counted.
+    A first row matching the export header is the header, not
+    a point; a file with no header imports from row one.
+    Nothing is deduplicated: importing the same file twice
+    adds the points twice, exactly like adding them by hand."""
+    if not uid or not isinstance(csv_text, str):
+        return None
+    if len(csv_text) > MAX_CSV_CHARS:
+        return None
+    try:
+        rows = list(csv.reader(io.StringIO(csv_text)))
+    except Exception as e:
+        logger.warning(f"GPS CSV import parse failed: {e}")
+        return None
+    added = 0
+    skipped = 0
+    first = True
+    for row in rows:
+        if not row or all(not (c or "").strip() for c in row):
+            continue
+        if first:
+            first = False
+            if [c.strip().lower() for c in row] == \
+                    ["name", "lat", "lon", "note"]:
+                continue
+        if len(row) not in (3, 4):
+            skipped += 1
+            continue
+        note = row[3] if len(row) == 4 else ""
+        pt = add_point(uid, row[0], row[1], row[2], note)
+        if pt is None:
+            skipped += 1
+        else:
+            added += 1
+    return {"added": added, "skipped": skipped}
 
 
 # ===========================================================================
@@ -689,6 +739,22 @@ def register_gps_routes(app):
             media_type="text/csv",
             headers={"Content-Disposition":
                      "attachment; filename=og-gps-points.csv"})
+
+    @app.post("/gps/points/import")
+    async def gps_points_import(request: Request):
+        uid = _uid_of(request)
+        if not uid:
+            return _bad("no visitor id")
+        body = await _json_body(request)
+        result = import_points_csv(uid, body.get("csv"))
+        if result is None:
+            detail = ("csv must be CSV text in the export format "
+                      "(name,lat,lon,note)")
+            return JSONResponse({"ok": False, "detail": detail,
+                                 "error": detail},
+                                status_code=400)
+        return {"ok": True, "added": result["added"],
+                "skipped": result["skipped"]}
 
     @app.get("/gps/convert")
     async def gps_convert(request: Request):
