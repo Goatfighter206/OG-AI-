@@ -360,6 +360,14 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     _step(results, "designer", lambda: _designer.purge_owner(uid))
     import og_books as _books
     _step(results, "books", lambda: _books.purge_owner(uid))
+    import og_motion as _motion
+    _step(results, "motion", lambda: _motion.purge_owner(uid))
+    import og_models3d as _models3d
+    _step(results, "models3d", lambda: _models3d.purge_owner(uid))
+    import og_voice_lab as _voice_lab
+    _step(results, "voice_lab", lambda: _voice_lab.purge_owner(uid))
+    import og_wallet as _wallet
+    _step(results, "wallet", lambda: _wallet.purge_owner(uid))
 
     def storage():
         import og_storage as _st
