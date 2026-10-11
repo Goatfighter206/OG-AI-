@@ -26,7 +26,7 @@ What a connected visitor can now ask about THEIR OWN Google data:
     created. (Google has no separate consumer Reminders API anymore
     — Tasks is the surface OG writes to.)
 
-Scopes (drive.readonly, tasks.readonly, tasks) ride the SAME Round
+Scopes (drive.readonly, tasks.readonly) ride the SAME Round
 3 connect flow, but only when OG_GOOGLE_DRIVE_ENABLED=true (default
 OFF, independent of OG_GOOGLE_HANDS_ENABLED): with the flag off, the
 connect flow's requested scopes are exactly what Round 12 left and
@@ -67,7 +67,12 @@ DRIVE_ENABLED = os.getenv(
 DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 TASKS_READ_SCOPE = "https://www.googleapis.com/auth/tasks.readonly"
 TASKS_SCOPE = "https://www.googleapis.com/auth/tasks"
-DRIVE_SCOPES = f"{DRIVE_SCOPE} {TASKS_READ_SCOPE} {TASKS_SCOPE}"
+# Scope trim (2026-10-10, owner decision ahead of Google verification):
+# the connect flow requests tasks.readonly ONLY — the full tasks scope
+# is no longer requested. TASKS_SCOPE stays for reading STORED grants:
+# connections made before the trim may hold it, and their task reads
+# keep working off the stored grant exactly as before.
+DRIVE_SCOPES = f"{DRIVE_SCOPE} {TASKS_READ_SCOPE}"
 
 _DRIVE_BASE = "https://www.googleapis.com/drive/v3"
 _TASKS_BASE = "https://tasks.googleapis.com/tasks/v1"
