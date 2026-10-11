@@ -354,6 +354,8 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     _step(results, "songs", lambda: _songs.purge_owner(uid))
     import og_video as _video
     _step(results, "video", lambda: _video.purge_owner(uid))
+    import og_podcast as _podcast
+    _step(results, "podcast", lambda: _podcast.purge_owner(uid))
 
     def storage():
         import og_storage as _st
