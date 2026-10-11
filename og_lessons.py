@@ -356,3 +356,14 @@ def register_lessons_routes(app):
                                 status_code=401)
         items = latest_lessons(50)
         return {"ok": True, "lessons": items, "count": len(items)}
+
+    # Round 60: the conventions notebook rides this registration
+    # (app.py already calls register_lessons_routes; app.py is at
+    # its push ceiling, so the sibling module registers from
+    # here). Fail-safe: a conventions import problem can never
+    # take the lessons route down with it.
+    try:
+        import og_conventions as _conv
+        _conv.register_conventions_routes(app)
+    except Exception as e:
+        logger.warning(f"Conventions routes skipped: {e}")
