@@ -10,6 +10,29 @@
 #browserPanel.og-r43-full{border:none;border-radius:0}
 body.og-r43-lock{overflow:hidden}
 
+/* Round 61 forensic fix (Brent's 2026-10-10 photo: the full-
+   screen bar carried ONLY "End task"): the full state is
+   entered on the Take control CLICK (the page's CSS hides Take
+   control instantly), but Hand back's visibility is written by
+   the page script from its server-CONFIRMED driving flag — so
+   any confirmation that is late, lost, or never lands leaves
+   a permanent one-button bar with no way back. In the full
+   state Hand back is the bar's exit and must ALWAYS be there:
+   this rule (author !important, two ids) outranks the page's
+   own [hidden] rule exactly while the panel is full; outside
+   the full state the attribute governs as before. */
+#browserPanel.og-panel-full #browserHandBtn{
+  display:inline-block!important}
+
+/* Round 61 forensic fix, the letterbox half of the photo: the
+   still is a 1280x800 frame; object-fit:contain inside the
+   tall phone viewport paints it as a mid-screen band with
+   black above and below. In the full state the still COVERS
+   (crops the sides, fills the screen); the pointer mapper in
+   og_browser_input.js reads the computed fit, so its
+   coordinate math follows. The docked panel keeps contain. */
+#browserPanel.og-panel-full #browserShot{object-fit:cover}
+
 /* The two toggle icons: small, icon-only. Dim = off; gold = on. */
 #browserActions .og-icon-btn{font-size:19px;line-height:1;
   min-width:42px;padding:7px 0;text-align:center}
