@@ -39,6 +39,19 @@ menu needs:
   OSRM unreachable / no route -> 502 with an honest detail;
   NO route is ever invented.
 
+  ACTIVE ROUTE (Round 68) — the last route computed for an
+  account is also stored as its ACTIVE route, in this same
+  store under "gpsroute:"+uid: the /gps/route answer plus its
+  resolved ends and a stored-at stamp:
+    {distance_m, duration_s, steps,
+     from: {lat, lon, label}, to: {lat, lon, label}, created}
+    GET  /gps/route/active -> {"ok", "route": <stored|null>}
+  POST /gps/route stores it (signed-in callers) and carries it
+  on the answer additively as "route"; og_maps' chat seam
+  stores it too when a directions ask is answered, so telling
+  OG a place loads the same route object the map reads. There
+  is exactly ONE active-route shape and ONE store for it.
+
 GATE. None of these paths is in og_accounts.PUBLIC_PATHS, so
 the Round 44 sign-in gate covers them by construction. A
 request with no uid cookie reads/writes nothing.
@@ -62,6 +75,7 @@ logger = logging.getLogger(__name__)
 UID_COOKIE = "ogai_uid"
 STORE_FILE = os.getenv("OG_GPS_STORE", "gps_store.json")
 MAX_POINTS = 500
+MAX_ROUTE_STEPS = 200
 MAX_CSV_CHARS = 2000000
 NAME_CAP = 120
 NOTE_CAP = 500
@@ -149,9 +163,11 @@ def _put(key: str, value):
 
 
 def purge_uid(uid: str):
-    """Account deletion helper: drop this uid's points only."""
+    """Account deletion helper: drop this uid's points and
+    its stored active route."""
     if uid:
         _put("gps:" + uid, {"points": []})
+        _put("gpsroute:" + uid, None)
 
 
 # ===========================================================================
@@ -566,20 +582,36 @@ def geocode_place(place):
     return og_maps.geocode(place)
 
 
-def _resolve_endpoint(raw):
-    """A route endpoint: {lat, lon} direct, or {place} geocoded.
-    Returns (lat, lon) or None."""
+def _resolve_endpoint_labeled(raw, label_hint=""):
+    """A route endpoint -> (lat, lon, label) or None: coords
+    direct (the label is the caller's hint — e.g. "your
+    location" for a shared-position start), or {place}
+    geocoded (the label is the geocoder's own label, the
+    place words as fallback)."""
     if not isinstance(raw, dict):
         return None
     coords = _coords_of(raw)
     if coords is not None:
-        return coords
+        return (coords[0], coords[1], str(label_hint or ""))
     place = raw.get("place")
     if isinstance(place, str) and place.strip():
         hit = geocode_place(place.strip())
         if hit:
-            return valid_latlon(hit.get("lat"), hit.get("lon"))
+            coords = valid_latlon(hit.get("lat"), hit.get("lon"))
+            if coords is not None:
+                label = str(hit.get("label") or "").strip() \
+                    or place.strip()
+                return (coords[0], coords[1], label)
     return None
+
+
+def _resolve_endpoint(raw):
+    """A route endpoint: {lat, lon} direct, or {place} geocoded.
+    Returns (lat, lon) or None."""
+    labeled = _resolve_endpoint_labeled(raw)
+    if labeled is None:
+        return None
+    return (labeled[0], labeled[1])
 
 
 _MANEUVER_TEXT = {
@@ -660,6 +692,96 @@ def route_driving(from_raw, to_raw):
     except Exception as e:
         logger.warning(f"GPS OSRM parse failed: {e}")
         return None
+
+
+# ===========================================================================
+# Active route (Round 68) — one stored route per account
+# ===========================================================================
+
+
+def _clean_route(raw):
+    """A stored active route -> the clean dict or None.
+    Mirrors _clean_point: totals must be non-negative
+    numbers, every step keeps the /gps/route step shape,
+    both ends must carry in-range coords. Anything else
+    reads as NO route — a corrupt blob can never surface
+    as a route on a map."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        distance_m = float(raw.get("distance_m"))
+        duration_s = float(raw.get("duration_s"))
+        created = float(raw.get("created") or 0)
+    except (TypeError, ValueError):
+        return None
+    if distance_m < 0 or duration_s < 0:
+        return None
+    steps_raw = raw.get("steps")
+    if not isinstance(steps_raw, list):
+        return None
+    steps = []
+    for s in steps_raw[:MAX_ROUTE_STEPS]:
+        if not isinstance(s, dict):
+            return None
+        try:
+            sd = float(s.get("distance_m") or 0)
+        except (TypeError, ValueError):
+            return None
+        steps.append({
+            "instruction": str(s.get("instruction") or "")[:NOTE_CAP],
+            "distance_m": round(sd, 1),
+            "name": str(s.get("name") or "")[:NAME_CAP],
+        })
+    ends = {}
+    for key in ("from", "to"):
+        end = raw.get(key)
+        coords = _coords_of(end) if isinstance(end, dict) else None
+        if coords is None:
+            return None
+        ends[key] = {"lat": coords[0], "lon": coords[1],
+                     "label": str(end.get("label") or "")[:NAME_CAP]}
+    return {"distance_m": round(distance_m, 1),
+            "duration_s": round(duration_s, 1),
+            "steps": steps,
+            "from": ends["from"], "to": ends["to"],
+            "created": created}
+
+
+def active_route_for(uid: str):
+    """The account's stored active route — the last route
+    /gps/route computed for it or a chat directions ask
+    loaded — or None."""
+    if not uid:
+        return None
+    return _clean_route(_get("gpsroute:" + uid))
+
+
+def store_route(uid, route, from_raw, to_raw,
+                from_label="", to_label=""):
+    """Store a computed route (route_driving's answer) as
+    the account's active route, its ends resolved to
+    coords + labels so a map can plot them. Returns the
+    stored route, or None when there is no uid, the route
+    is not a route, or either end cannot be resolved —
+    nothing partial is ever stored."""
+    if not uid or not isinstance(route, dict):
+        return None
+    a = _resolve_endpoint_labeled(from_raw, from_label)
+    b = _resolve_endpoint_labeled(to_raw, to_label)
+    if a is None or b is None:
+        return None
+    stored = _clean_route({
+        "distance_m": route.get("distance_m"),
+        "duration_s": route.get("duration_s"),
+        "steps": route.get("steps"),
+        "from": {"lat": a[0], "lon": a[1], "label": a[2]},
+        "to": {"lat": b[0], "lon": b[1], "label": b[2]},
+        "created": time.time(),
+    })
+    if stored is None:
+        return None
+    _put("gpsroute:" + uid, stored)
+    return stored
 
 
 # ===========================================================================
@@ -825,4 +947,23 @@ def register_gps_routes(app):
                            "could not be reached or found no route; "
                            "nothing was made up"},
                 status_code=502)
-        return route
+        out = dict(route)
+        uid = _uid_of(request)
+        if uid:
+            # Round 68: the computed route also becomes the
+            # account's ACTIVE route — the one the GPS map
+            # loads — and rides the answer additively as
+            # "route". An unresolvable end (impossible here:
+            # the route just computed from these ends) simply
+            # stores nothing; the answer stands either way.
+            stored = store_route(uid, route, body.get("from"),
+                                 body.get("to"))
+            if stored is not None:
+                out["route"] = stored
+        return out
+
+    @app.get("/gps/route/active")
+    async def gps_route_active(request: Request):
+        uid = _uid_of(request)
+        return {"ok": True,
+                "route": active_route_for(uid) if uid else None}
