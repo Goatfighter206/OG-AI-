@@ -208,3 +208,22 @@ body.og-shell-off #ogSeatScreen { display: none !important; }
         bottom: calc(186px + env(safe-area-inset-bottom));
     }
 }
+
+/* --- Round 70: the menu is a full-screen page --------------------------
+   Brent (2026-10-11): "the 3 bar menu when you go to the menu needs to
+   go full screen." The menu's own rules live inline in the page (a
+   320px left panel); this sheet is linked AFTER that block, so these
+   rules win the cascade and the page file stays untouched. The panel
+   becomes the whole viewport — the same black-and-gold full page as
+   the app's menu — carrying everything it carried before (header,
+   plan + token cards, grouped rows, footer) in the shell's own 880px
+   column. Open/close behavior is unchanged: the ✕ at the top right
+   (and the scrim) still return the user to exactly where they were. */
+.og-menu {
+    width: 100%; max-width: none;
+    border-right: none; box-shadow: none;
+}
+.og-menu-head, .og-menu-body, .og-menu-foot {
+    width: min(880px, 100%);
+    margin-left: auto; margin-right: auto;
+}
