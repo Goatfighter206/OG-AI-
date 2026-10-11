@@ -188,7 +188,7 @@ def purge_uid(uid: str):
     usuals + the last handed-off order this uid owns."""
     if not uid:
         return
-    for kind in ("usuals", "last"):
+    for kind in ("usuals", "last", "flow_usuals", "flow_last"):
         _del_blob(uid, kind)
 
 
@@ -1151,3 +1151,11 @@ def install_ordering_tools(agent_instance, get_uid):
     agent_instance.detect_intent = detect_wrapped
     agent_instance.web_search = search_wrapped
     agent_instance._og_ordering_installed = True
+    # Round 64: the named DoorDash / Uber Eats / Uber flows
+    # piggyback on this seam (fail-safe — a flows import
+    # problem can never take generic ordering down with it).
+    try:
+        import og_ordering_flows as _og_flows
+        _og_flows.install_flow_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Ordering flows seam skipped: {e}")
