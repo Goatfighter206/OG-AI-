@@ -112,6 +112,30 @@ def _song_items(uid: str) -> list:
     return out
 
 
+def _podcast_items(uid: str) -> list:
+    import og_podcast
+    out = []
+    for rec in og_podcast.list_jobs_for_owner(uid):
+        view = og_podcast._job_view(rec)
+        if not view:
+            continue
+        done = view.get("state") == "done"
+        out.append({
+            "kind": "podcast", "id": view.get("id", ""),
+            "title": view.get("title") or "OG's Podcast",
+            "created_at": float(rec.get("created", 0) or 0),
+            "status": view.get("state", ""),
+            "action": "Play" if done else "",
+            "action_url": view.get("podcast_url", "") if done else "",
+            "meta": {"detail": view.get("detail", ""),
+                     "size": int(view.get("size", 0) or 0),
+                     "duration": float(view.get("duration", 0) or 0),
+                     "voices": view.get("voices", []),
+                     "tts_calls": int(view.get("tts_calls", 0) or 0)},
+        })
+    return out
+
+
 def _project_items(uid: str) -> list:
     import og_unity
     out = []
@@ -173,9 +197,10 @@ def collect_library(uid: str, request: Request):
     contributes nothing and never sinks the shelf."""
     items: list = []
     counts = {"videos": 0, "songs": 0, "images": 0,
-              "files": 0, "projects": 0}
+              "files": 0, "projects": 0, "podcasts": 0}
     for key, fn in (("videos", _video_items),
                     ("songs", _song_items),
+                    ("podcasts", _podcast_items),
                     ("projects", _project_items)):
         try:
             got = fn(uid)
@@ -246,6 +271,13 @@ def register_library_routes(app):
         _oggps.register_gps_routes(app)
     except Exception as e:
         logger.warning(f"GPS routes skipped: {e}")
+    # Generator 7a: podcast routes (/podcast/status, approve,
+    # decline, download, save) ride the same registration.
+    try:
+        import og_podcast as _ogpod
+        _ogpod.register_podcast_routes(app)
+    except Exception as e:
+        logger.warning(f"Podcast routes skipped: {e}")
 
     @app.get("/library")
     async def library_list(request: Request):
@@ -254,7 +286,7 @@ def register_library_routes(app):
             return {"items": [], "storage": None,
                     "counts": {"videos": 0, "songs": 0,
                                "images": 0, "files": 0,
-                               "projects": 0}}
+                               "projects": 0, "podcasts": 0}}
         items, storage_line, counts = collect_library(
             uid, request)
         return {"items": items, "storage": storage_line,
