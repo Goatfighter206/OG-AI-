@@ -175,6 +175,18 @@ function openDeleteView() {
   pw.type = 'password';
   pw.autocomplete = 'current-password';
   panel.appendChild(pw);
+  // Round 63 step-up: a 2-step code field (the server only
+  // requires it when 2-step is on for the account).
+  var codeLabel = document.createElement('label');
+  codeLabel.className = 'og-delete-label';
+  codeLabel.textContent = '2-step code (only if 2-step is on)';
+  panel.appendChild(codeLabel);
+  var code = document.createElement('input');
+  code.className = 'og-delete-input';
+  code.type = 'text';
+  code.inputMode = 'numeric';
+  code.autocomplete = 'one-time-code';
+  panel.appendChild(code);
   var err = document.createElement('p');
   err.className = 'og-delete-error';
   err.hidden = true;
@@ -202,7 +214,7 @@ function openDeleteView() {
     fetch('/auth/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pw.value })
+      body: JSON.stringify({ password: pw.value, code: code.value })
     }).then(function (r) {
       return r.json().then(function (d) { return { ok: r.ok, d: d }; });
     }).then(function (res) {
