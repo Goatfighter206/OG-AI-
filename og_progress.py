@@ -331,6 +331,61 @@ def _crew_rows(uid: str) -> List[Dict]:
     return rows
 
 
+def _pm_rows(uid: str) -> List[Dict]:
+    """Round 109: the Project Manager's projects (og_pm's own
+    store — the board reads the owner's seam, duplicating no
+    state). ONE row per project: title + the step states in
+    the sub line. THE % RULE applies as everywhere: a project
+    carries real counts (steps done / total), so it earns a
+    pct ONLY while a step is actively being worked —
+    waiting / queued / done projects are state words only."""
+    rows: List[Dict] = []
+    try:
+        import og_pm
+        og_pm._advance(uid)
+        for p in og_pm.projects_for(uid):
+            state = p.get("state") or ""
+            if state == "cancelled":
+                continue
+            updated = float(p.get("updated", 0) or 0)
+            if state == "done" and updated \
+                    and time.time() - updated > LINGER_S:
+                continue
+            steps = p.get("steps") or []
+            front = next(
+                (s for s in steps if s.get("state") != "done"),
+                None)
+            crew_live = any(
+                s.get("state") == "working" for s in steps)
+            if state == "done":
+                row_state, label = "done", "Done"
+            elif state == "waiting":
+                row_state, label = "waiting", "Waiting on you"
+            elif crew_live:
+                row_state, label = "working", "Working"
+            else:
+                row_state, label = "queued", "Queued"
+            working = row_state == "working"
+            pct = _pct(p.get("done_count"), p.get("total")) \
+                if working else None
+            sub = (f"{p.get('done_count', 0)} of "
+                   f"{p.get('total', 0)} steps done")
+            if front is not None and state != "done":
+                sub += f" · now: {front.get('title', '')}"
+            rows.append({
+                "section": "projects", "icon": "📋",
+                "title": f"Project: {p.get('title') or 'Untitled'}",
+                "state": row_state, "state_label": label,
+                "working": working,
+                "pct": pct,
+                "sub": sub[:140],
+                "ts": float(p.get("created", 0) or 0),
+            })
+    except Exception as e:
+        logger.warning(f"Progress projects section failed: {e}")
+    return rows
+
+
 def _auto_update_block(uid: str,
                        request: Request) -> Optional[Dict]:
     """Owner only — the tierfix3 rule: the caller's
@@ -398,6 +453,7 @@ def collect_progress(uid: str, request: Request) -> Dict:
     rows.extend(_watch_rows(uid))
     rows.extend(_fix_rows(uid))
     rows.extend(_crew_rows(uid))
+    rows.extend(_pm_rows(uid))
     return {"rows": rows,
             "auto_update": _auto_update_block(uid, request)}
 
