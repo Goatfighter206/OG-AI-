@@ -72,3 +72,15 @@ body.og-r43-lock{overflow:hidden}
 #ogTaskPillTop.og-r43-pill{position:absolute;top:56px;left:50%;
   transform:translateX(-50%);z-index:6;margin:0;pointer-events:none;
   box-shadow:0 4px 18px rgba(0,0,0,.55)}
+/* --- Round 79: the still zooms; the chrome never does -------
+   In the full (driving) state the still's zoom is an app
+   transform on #browserShot alone (og_browser_input.js):
+   the view clips the transformed still and owns every
+   touch (touch-action:none hands pinches/pans to the JS
+   handlers instead of the browser's page zoom, which used
+   to scale and clip the whole control bar). The bar
+   itself stays ordinary, untransformed layout —
+   manipulation only, so buttons never double-tap-zoom. */
+#browserPanel.og-panel-full #browserView{overflow:hidden;touch-action:none}
+#browserPanel.og-panel-full #browserShot{transform-origin:50% 50%}
+#browserPanel.og-panel-full #browserActions{touch-action:manipulation}
