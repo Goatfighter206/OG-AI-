@@ -1706,6 +1706,16 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogvoice.install_voice_lab_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Voice lab install skipped: {e}")
+    # Round 81: the crew seam rides the same last install,
+    # AFTER 7f (so crew wraps land outermost; its claims
+    # require an explicit crew/researcher/runner frame or a
+    # sentence-initial research verb, so bare YES/NO and
+    # every other seam's asks are never eaten). Fail-safe.
+    try:
+        import og_crew as _ogcrew
+        _ogcrew.install_crew_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Crew install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
