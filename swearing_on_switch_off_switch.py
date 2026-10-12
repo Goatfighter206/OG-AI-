@@ -103,17 +103,38 @@ def _base_prompt(prompt: str) -> str:
     return prompt
 
 
-def effective_system_prompt(base) -> str:
+def effective_system_prompt(base, uid=None) -> str:
     """The system prompt for one chat call. ON/unset: `base`
     returned unchanged (the same object). OFF: base + the clean
-    directive, exactly once, however many times this is applied."""
+    directive, exactly once, however many times this is applied.
+
+    Round 84: OFF also when the resolved account's own
+    shit-talking switch is OFF (og_shittalk). `uid` None ->
+    og_shittalk's noted current uid; no uid resolvable ->
+    the master gate alone decides, exactly the original
+    behavior (the same object back when ON)."""
     base = base or ""
-    if swearing_on():
+    if swearing_on() and not _user_off(uid):
         return _base_prompt(base) if CLEAN_DIRECTIVE in base else base
     base = _base_prompt(base)
     if not base:
         return CLEAN_DIRECTIVE
     return base + "\n\n" + CLEAN_DIRECTIVE
+
+
+def _user_off(uid=None) -> bool:
+    """True only when a uid resolves AND that account stored
+    its shit-talking switch OFF. Fail-open: any problem at
+    all reads as not-off (OG's shipped default is ON)."""
+    try:
+        import og_shittalk as _st
+        if uid is None:
+            uid = _st.current_uid()
+        if not uid:
+            return False
+        return not _st.on_for(uid)
+    except Exception:
+        return False
 
 
 def install_swearing_switch(agent_instance) -> bool:
