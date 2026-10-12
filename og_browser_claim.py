@@ -19,6 +19,8 @@ import re
 import urllib.parse
 from typing import Dict, List, Optional
 
+import og_garble
+
 # --- Chat parsing ---------------------------------------------------------------
 
 _APPROVE_RE = re.compile(
@@ -311,6 +313,119 @@ def _is_start_request(message: str, low: str) -> bool:
     return True
 
 
+
+
+# --- Garble tolerance (Round 75) ---------------------------------------------
+# The exact parsers above get first crack at every message, in
+# og_browser._claim_job as before. Only when they all say no does
+# this second chance run: og_garble.repair rewrites tokens that
+# are one small typo from THIS seam's vocabulary (site names, nav
+# verbs, post verbs, the content-veto words, and the blocked
+# money/password names — a typo must not dodge a refusal), then
+# the EXACT parsers re-run on the repaired text. Payload — the
+# words of a post, a click target — is never in the vocabulary,
+# so it survives verbatim. A claim made this way carries the
+# fixes under "garble" so browser_results can read the reading
+# back. The approval YES/NO regexes are NOT part of this: they
+# stay exact, always.
+
+_GARBLE_VOCAB = (
+    list(_SITE_NAMES)
+    + ["capital one", "cash app",
+       "open", "visit", "browse", "navigate", "load", "pull",
+       "bring", "show", "display", "start", "launch", "fire",
+       "use", "get", "hop", "take", "head", "jump", "swing",
+       "put", "go", "to", "me", "my", "on", "onto", "via",
+       "check", "browser", "site", "website",
+       "post", "publish", "share",
+       "headlines", "headline", "news", "articles", "article",
+       "weather", "forecast", "scores", "score", "prices",
+       "price", "story", "stories", "lyrics", "song", "recipes",
+       "recipe", "directions", "traffic",
+       "bank", "banking", "chase", "wells", "fargo", "capital",
+       "paypal", "venmo", "fidelity", "vanguard", "schwab",
+       "brokerage", "password", "manager", "vault", "lastpass",
+       "bitwarden", "dashlane", "credit", "union"]
+)
+_GARBLE_HOMOPHONES = {"too": "to"}
+
+
+def _resolve_site_url_fuzzy(low: str):
+    """(url, fixes): the exact site resolution, then — only when
+    it found nothing — the garble repair's reading. Used where a
+    site NAME is the whole payload of an ask that already parsed
+    (the always-allow removal), so a typo'd name still resolves
+    to the site the visitor plainly meant."""
+    url = _resolve_site_url(low)
+    if url:
+        return url, []
+    repaired, fixes = og_garble.repair(
+        low, _GARBLE_VOCAB, _GARBLE_HOMOPHONES)
+    if not fixes:
+        return "", []
+    return _resolve_site_url(
+        " ".join(repaired.lower().split())), fixes
+
+
+def _garble_claim(raw: str, low: str, in_session: bool):
+    """A start / post / navigate job claimed ONLY through the
+    garble repair, in the same shapes _claim_job builds, plus a
+    "garble" stamp — or None. Mirrors _claim_job's step order:
+    a posting ask first, then a start (or, in a live session, a
+    navigation). The url-less blocked-name start keeps the
+    REPAIRED text as its goal so _do_start's blocklist refusal
+    fires on the name the visitor meant."""
+    repaired, info = og_garble.repair_info(
+        raw, _GARBLE_VOCAB, _GARBLE_HOMOPHONES)
+    if info is None:
+        return None
+    rlow = " ".join(repaired.lower().split())
+    if in_session:
+        post = _parse_post(repaired, rlow)
+        if post is not None:
+            return {"op": "post", "url": post["url"],
+                    "text": post["text"], "goal": raw,
+                    "garble": info}
+        url = _extract_url(repaired) or _resolve_site_url(rlow)
+        if url and (_NAV_VERB_RE.search(rlow)
+                    or repaired.strip().rstrip(".,!?)\"'")
+                    == url):
+            return {"op": "act", "verb": "navigate", "url": url,
+                    "garble": info}
+        return None
+    post = _parse_post(repaired, rlow)
+    if post is not None:
+        return {"op": "start", "url": post["url"], "goal": raw,
+                "post": post, "garble": info}
+    if _is_start_request(repaired, rlow):
+        url = _extract_url(repaired) or _resolve_site_url(rlow)
+        goal = raw
+        if not url and _BLOCKED_TARGET_RE.search(rlow):
+            goal = repaired
+        return {"op": "start", "url": url, "goal": goal,
+                "garble": info}
+    return None
+
+
+def _dark_text() -> List[Dict]:
+    """Round 75 code motion (the R46/R49 maneuver): this pure
+    builder moved out of og_browser.py — its push payload is at
+    the wrapper's argv ceiling — and og_browser imports it back,
+    so callers (including og_watch's B._dark_text) see the same
+    attribute. Output is byte-identical to the og_browser._result
+    call it replaces."""
+    return [{
+        "title": "OG browser — not switched on",
+        "body": "[OG BROWSER] " + (
+            "Real talk: my web browser ain't switched on yet. "
+            "The build is done and sitting dark — it lights up "
+            "the moment the owner hooks up the browser service "
+            "(a Steel account + two switches on his end). Until "
+            "then I can't open pages or run web errands live, "
+            "and I won't fake like I did. My regular web lookup "
+            "still works for quick facts."),
+        "href": "",
+    }]
 
 
 # --- The approval gate + element matching (Round 49 move) ----------------
