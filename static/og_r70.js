@@ -77,7 +77,11 @@
     root.setAttribute('aria-modal', 'true');
     root.setAttribute('aria-label', opts.title || '');
     var top = el('div', 'og70-top' + (opts.wide ? ' wide' : ''));
-    var closeBtn = el('button', 'og-circle-btn og70-close', '✕');
+    var closeBtn = el('button', 'og-circle-btn og70-close');
+    // Round 87: the glyph is the canonical inline SVG (the
+    // seat screens' 21px drawing), not a text '✕' — every
+    // ✕ on the web face is the same button now.
+    closeBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
     closeBtn.type = 'button';
     closeBtn.setAttribute('aria-label', 'Close');
     top.appendChild(el('h2', '', opts.title || ''));
