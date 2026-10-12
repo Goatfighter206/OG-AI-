@@ -475,6 +475,59 @@ def _notify(operator: str, title: str, body: str):
         logger.warning(f"Autoupdate notify failed: {e}")
 
 
+def _released_updates_line(operator: str) -> str:
+    """Round 71: the one plain line for tonight's owner
+    notification — how many UPDATE proposals (the fix
+    queue's 11pm hold, og_fixqueue) have been released and
+    are still waiting on the owner's approval in Ideas.
+    Each counted problem is stamped hold_announced in the
+    queue, so a later notifying night never re-announces
+    the same wait; a release on a night whose run sends no
+    notification simply stays unannounced until a night
+    that does. Returns "" when there is nothing to say.
+    Never raises."""
+    try:
+        import og_fixqueue as _fq
+        now = time.time()
+        total = 0
+        for owner in _fq._owner_keys_for(operator):
+            problems = _fq._problems(owner)
+            changed = False
+            for prob in problems.values():
+                if not isinstance(prob, dict):
+                    continue
+                if not _fq._is_update_problem(prob):
+                    continue
+                if prob.get("status") != "open":
+                    continue
+                prop = prob.get("proposal")
+                if not isinstance(prop, dict) \
+                        or prop.get("status") != "open":
+                    continue
+                if now > float(prop.get("expires") or 0):
+                    continue
+                hold = prob.get("hold_until")
+                if not isinstance(hold, (int, float)) \
+                        or now < float(hold):
+                    continue  # not released yet
+                if prob.get("hold_announced"):
+                    continue  # an earlier night already said it
+                prob["hold_announced"] = now
+                changed = True
+                total += 1
+            if changed:
+                _fq._save_problems(owner, problems)
+        if total == 1:
+            return ("1 update is waiting for your approval "
+                    "in Ideas.")
+        if total > 1:
+            return (f"{total} updates are waiting for your "
+                    f"approval in Ideas.")
+    except Exception as e:
+        logger.warning(f"Autoupdate updates line failed: {e}")
+    return ""
+
+
 # --- Stage 1: check + apply -------------------------------------------------------
 
 
@@ -691,6 +744,10 @@ def _verify_stage() -> dict:
                      "buttons, and the full test battery "
                      "matches the pre-update run — no new "
                      "failures.")
+        extra = _released_updates_line(
+            str(pv.get("operator") or ""))
+        if extra:
+            lines.append(extra)
         state = _state()
         state["pending_verify"] = None
         state["consec_rollbacks"] = 0
@@ -891,6 +948,9 @@ def _rollback_stage(pv: dict, failures: List[str]) -> dict:
                      "auto-update is now OFF until you turn "
                      "it back on (POST "
                      "/system/autoupdate/reenable).")
+    extra = _released_updates_line(operator)
+    if extra:
+        lines.append(extra)
     _notify(operator,
             "Auto-update rolled back: "
             + (", ".join(reverted) or "update"),
