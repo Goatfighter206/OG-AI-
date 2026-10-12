@@ -1753,6 +1753,19 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _swearing.install_swearing_switch(agent_instance)
     except Exception as e:
         logger.warning(f"Swearing switch install skipped: {e}")
+    # Round 89: the one-best-answer reinforcement rides the
+    # same last install, AFTER the swearing switch and
+    # BEFORE R65 — installed here, its prompt wraps sit
+    # inside R65's, so at assembly time its directive block
+    # is appended after the R65 block and lands LAST in the
+    # system prompt (the persona law, restated as the final
+    # word). Fail-safe — a problem here never takes the
+    # fixqueue seam (or chat) down.
+    try:
+        import og_oneanswer as _ogone
+        _ogone.install_oneanswer_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"R89 one-answer install skipped: {e}")
     # Round 65: language + retaliation-comeback directives ride
     # the same last install, AFTER the swearing switch (so the
     # combined R65 prompt wraps land outermost). Fail-safe — a
