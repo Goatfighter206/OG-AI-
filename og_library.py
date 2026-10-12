@@ -598,3 +598,12 @@ def register_library_routes(app):
         _ogshit.register_shittalk_routes(app)
     except Exception as e:
         logger.warning(f"Shittalk routes skipped: {e}")
+    # Round 90: the Permissions folder's routes
+    # (GET/POST /permissions — the one per-account store
+    # for everything OG runs on the user's phone) ride
+    # the same registration.
+    try:
+        import og_permissions as _ogperm
+        _ogperm.register_permissions_routes(app)
+    except Exception as e:
+        logger.warning(f"Permissions routes skipped: {e}")
