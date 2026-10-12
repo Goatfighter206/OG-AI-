@@ -57,6 +57,8 @@ import urllib.parse
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+import og_garble
+
 logger = logging.getLogger(__name__)
 
 ORDER_STORE_FILE = "ordering_store.json"
@@ -504,7 +506,25 @@ def _usual_store_from(message: str, usuals: Dict) -> Optional[Dict]:
     return None
 
 
-def _claim_job(message: str, uid: str) -> Optional[Dict]:
+# Round 75: this seam's garble vocabulary — the order verbs,
+# the usual words, and the known-store table. The ITEMS in an
+# order are payload: never in the vocabulary, verbatim always.
+_GARBLE_VOCAB = (
+    ["order", "build", "place", "get", "grab", "want", "like",
+     "usual", "usuals", "save", "from", "at", "my", "the",
+     "for", "me", "us", "an"]
+    + list(_KNOWN_STORES)
+)
+# The only job kinds a repaired reading may produce: a fresh
+# ask or a usuals job — both are drafts that still need the
+# visitor's YES downstream. Approval / decline / pay / revise
+# kinds can NEVER come out of the garble path.
+_GARBLE_KINDS = ("ask", "usual_list", "usual_save",
+                 "usual_redraft", "usual_none")
+
+
+def _claim_job(message: str, uid: str,
+               _repaired: bool = False) -> Optional[Dict]:
     """What this message means for ordering, given the visitor's
     pending draft. Approvals/declines only count against a live
     pending order; revisions only claim with change language, so
@@ -565,6 +585,18 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
     if fresh:
         return {"kind": "ask", "store": fresh.get("store"),
                 "items": fresh.get("items", [])}
+    if not _repaired:
+        # Round 75: the garble second chance — repair, then let
+        # the EXACT claim logic read the reading; only a fresh
+        # ask or a usuals job may come back (see _GARBLE_KINDS).
+        repaired, info = og_garble.repair_info(text, _GARBLE_VOCAB)
+        if info is not None:
+            job = _claim_job(repaired, uid, _repaired=True)
+            if job is not None \
+                    and job.get("kind") in _GARBLE_KINDS:
+                job = dict(job)
+                job["_garble"] = info
+                return job
     return None
 
 
@@ -1041,6 +1073,21 @@ def _usual_list(uid) -> list:
 
 
 def ordering_results(job, message, uid, consume_order, order_left,
+                      lookup) -> Optional[list]:
+    """Run one claimed ordering job; (Round 75) a job claimed
+    through the garble repair carries its fixes, and the answer
+    names the reading that was acted on. Clean jobs run
+    byte-identically."""
+    garble = job.pop("_garble", None) \
+        if isinstance(job, dict) else None
+    results = _ordering_results(job, message, uid, consume_order,
+                                order_left, lookup)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _ordering_results(job, message, uid, consume_order, order_left,
                       lookup) -> Optional[list]:
     """Run one claimed ordering job. Returns web_search-shaped
     results, or None on a true miss so the caller falls through
