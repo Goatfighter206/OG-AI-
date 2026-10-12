@@ -86,3 +86,32 @@ def save_history(uid: str, history: list,
     except Exception as e:
         logger.warning(f"Keyed memory save failed, using legacy: {e}")
         return False
+
+
+def load_history_entry(uid: str):
+    """One visitor's stored memory entry, read KEYED by uid:
+    {"updated": ..., "history": [...]} — or {} when the
+    visitor has no row. The read twin of save_history (R80
+    shipped the keyed WRITE and deferred this load; Round
+    135 lands it for the chat history path — the load the
+    browser-claim turn rides — which used to pull the WHOLE
+    table to read one visitor's thread).
+
+    Fail-soft, this module's posture since R80: returns
+    None when no DB backend is configured or the read
+    fails, so the caller takes its legacy path."""
+    if not (MEMORY_DB_URL and psycopg is not None):
+        return None
+    try:
+        with _db_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT updated, history FROM og_visitor_memory "
+                    "WHERE uid = %s", (uid,))
+                row = cur.fetchone()
+        if row is None:
+            return {}
+        return {"updated": row[0], "history": row[1]}
+    except Exception as e:
+        logger.warning(f"Keyed memory load failed, using legacy: {e}")
+        return None
