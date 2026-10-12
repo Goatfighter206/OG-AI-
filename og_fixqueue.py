@@ -1928,6 +1928,18 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogpm.install_pm_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"PM install skipped: {e}")
+    # Round 110: the Project Filing seam rides the same last
+    # install, AFTER the PM (so filing wraps land outermost;
+    # its claims require an explicit file frame tied to a
+    # project — the word 'project' or a project name that
+    # resolves — and it claims a bare YES/NO only while its
+    # own suggestion is pending and no other flow owns the
+    # answer). Fail-safe.
+    try:
+        import og_filing as _ogfiling
+        _ogfiling.install_filing_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Filing install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
