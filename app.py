@@ -326,6 +326,7 @@ import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
 import og_accounts as _og_accounts
+import og_memory_io as _og_memory_io
 import og_notify as _og_notify
 import og_library as _og_library
 import og_store_ready as _ogs
@@ -1641,11 +1642,11 @@ def _load_visitor_history_locked(uid: str) -> List[Dict]:
 
 def _save_visitor_history_locked(uid: str, history: List[Dict]):
     """Persist this visitor's thread, trimmed, pruning the stalest threads."""
+    trimmed = list(history)[-MEMORY_MAX_MESSAGES:]
+    if MEMORY_DB_URL and _og_memory_io.save_history(uid, trimmed, MEMORY_MAX_VISITORS):
+        return
     store = _load_memory_store()
-    store[uid] = {
-        "updated": datetime.now(timezone.utc).isoformat(),
-        "history": list(history)[-MEMORY_MAX_MESSAGES:],
-    }
+    store[uid] = {"updated": datetime.now(timezone.utc).isoformat(), "history": trimmed}
     if len(store) > MEMORY_MAX_VISITORS:
         ordered = sorted(
             store.items(),
@@ -2223,56 +2224,8 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
 
     return _sse_streaming_response(event_gen(), http_response, entitled)
 
-@app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
-async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
-    """Send a message to the AI agent (weekly token pool, R55; {"stream": true} = SSE)."""
-    if not request.message or not request.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty")
-
-    agent_instance = get_agent()
-
-    # Visitor identity: hand out an `ogai_uid` cookie to new visitors.
-    uid = raw_request.cookies.get("ogai_uid")
-    if not uid:
-        uid = uuid.uuid4().hex
-        http_response.set_cookie(
-            "ogai_uid", uid,
-            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
-        )
-
-    # Freemium gate (Round 7): paid tiers skip the token cap.
-    tier = _tier_of(raw_request.cookies, uid)
-    is_pro = tier != "free"
-    entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
-        raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
-
-    # R55 weekly pool; R56: pack balance takes over when dry.
-    _pool_hit = _og_tiers.chat_pool_hit(tier, _week_used(uid, "token_days", "tokens"))
-    token_funded = bool(_pool_hit) and _og_tokenpacks.balance(uid) > 0
-    cap_payload = None
-    if _pool_hit and not token_funded:
-        _bump_stat("cap_hits")
-        cap_payload = _og_tiers.weekly_chat_payload(tier, agent_instance.name)
-    if cap_payload is not None:
-        if request.stream:
-            async def cap_events():
-                yield f"event: chunk\ndata: {json.dumps({'text': cap_payload['response']})}\n\n"
-                yield f"event: done\ndata: {json.dumps(cap_payload)}\n\n"
-            return _sse_streaming_response(cap_events(), http_response, entitled)
-        return cap_payload
-
-    if request.stream:
-        return _stream_chat_response(
-            agent_instance, uid, request, http_response, entitled,
-            meter=not is_pro, tier=tier, token_funded=token_funded)
-
-    if entitled:
-        http_response.set_cookie(
-            "ogai_tier", _og_tiers.cookie_value(
-                _uid_entitlement_tier(uid) or "standard", PRO_TOKEN),
-            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
-        )
-
+def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
+    """One non-streaming /chat exchange, awaited via to_thread (Round 80)."""
     _memory_lock.acquire()
     agent_instance.conversation_history = _load_visitor_history_locked(uid)
     _current_uid["uid"] = uid
@@ -2342,6 +2295,58 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
                 uid, list(getattr(agent_instance, "conversation_history", []) or []))
         finally:
             _memory_lock.release()
+
+@app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
+async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
+    """Send a message to the AI agent (weekly token pool, R55; {"stream": true} = SSE)."""
+    if not request.message or not request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    agent_instance = get_agent()
+
+    # Visitor identity: hand out an `ogai_uid` cookie to new visitors.
+    uid = raw_request.cookies.get("ogai_uid")
+    if not uid:
+        uid = uuid.uuid4().hex
+        http_response.set_cookie(
+            "ogai_uid", uid,
+            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
+        )
+
+    # Freemium gate (Round 7): paid tiers skip the token cap.
+    tier = _tier_of(raw_request.cookies, uid)
+    is_pro = tier != "free"
+    entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
+        raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
+
+    # R55 weekly pool; R56: pack balance takes over when dry.
+    _pool_hit = _og_tiers.chat_pool_hit(tier, _week_used(uid, "token_days", "tokens"))
+    token_funded = bool(_pool_hit) and _og_tokenpacks.balance(uid) > 0
+    cap_payload = None
+    if _pool_hit and not token_funded:
+        _bump_stat("cap_hits")
+        cap_payload = _og_tiers.weekly_chat_payload(tier, agent_instance.name)
+    if cap_payload is not None:
+        if request.stream:
+            async def cap_events():
+                yield f"event: chunk\ndata: {json.dumps({'text': cap_payload['response']})}\n\n"
+                yield f"event: done\ndata: {json.dumps(cap_payload)}\n\n"
+            return _sse_streaming_response(cap_events(), http_response, entitled)
+        return cap_payload
+
+    if request.stream:
+        return _stream_chat_response(
+            agent_instance, uid, request, http_response, entitled,
+            meter=not is_pro, tier=tier, token_funded=token_funded)
+
+    if entitled:
+        http_response.set_cookie(
+            "ogai_tier", _og_tiers.cookie_value(
+                _uid_entitlement_tier(uid) or "standard", PRO_TOKEN),
+            max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
+        )
+
+    return await asyncio.to_thread(_chat_once, agent_instance, uid, request, tier, is_pro, token_funded)
 
 @app.post("/tts")
 async def text_to_speech(raw_request: Request):
@@ -2766,7 +2771,7 @@ async def get_intelligence():
         logger.error(f"Error getting intelligence report: {str(e)}")
         return {
             "status": "error",
-            "message": str(e),
+            "message": str(e) if DEVELOPMENT_MODE else "Report failed",
             "intelligence_level": 1.0
         }
 
@@ -2795,7 +2800,7 @@ async def manual_improvement():
             }
     except Exception as e:
         logger.error(f"Error during improvement: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e) if DEVELOPMENT_MODE else "Improvement failed")
 
 @app.post("/clear", response_model=StatusResponse)
 async def clear_history(raw_request: Request):
