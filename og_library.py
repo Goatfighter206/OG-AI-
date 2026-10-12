@@ -731,6 +731,15 @@ def register_library_routes(app):
         _ogvoicestyle.register_voice_routes(app)
     except Exception as e:
         logger.warning(f"Voice routes skipped: {e}")
+    # Round 108: the Reboot routes (GET /reboot/status,
+    # POST /reboot — the per-account soft reboot;
+    # POST /reboot/server — the owner-only server
+    # restart) ride the same registration.
+    try:
+        import og_reboot as _ogreboot
+        _ogreboot.register_reboot_routes(app)
+    except Exception as e:
+        logger.warning(f"Reboot routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
