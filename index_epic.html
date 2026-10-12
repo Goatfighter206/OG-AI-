@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OG-AI Agent - The Realest AI in the Game 🔥</title>
-<link rel="stylesheet" href="/static/styles.css?v=91">
+<link rel="stylesheet" href="/static/styles.css?v=92">
 <link href="https://fonts.googleapis.com/css2?family=Rubik+Spray+Paint&family=Permanent+Marker&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -452,46 +452,18 @@ if (state === 'win') setTimeout(() => document.body.classList.remove('og-mood-wi
 }
 let isProcessing = false;
 let recognition = null;
-let synthesis = window.speechSynthesis;
-let voiceMode = 'text';
-let currentVoice = null;
 let voiceChatOn = false;
 let speakingNow = false;
 let speechGen = 0;
 let currentAudio = null;
-let aiVoiceOk = null;
 document.addEventListener('DOMContentLoaded', () => {
 initVoice();
 checkServerStatus();
 createEffects();
-initSpeech();
 setInterval(createFireParticle, 200);
 setInterval(createSmokeParticle, 1000);
 document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
 });
-function primeSpeech() {
-if (!synthesis) return;
-try {
-const u = new SpeechSynthesisUtterance(' ');
-u.volume = 0;
-synthesis.speak(u);
-} catch (e) {  }
-}
-function initSpeech() {
-if (!synthesis) return;
-const pick = () => {
-const voices = synthesis.getVoices();
-if (voices.length > 0) {
-currentVoice =
-voices.find(v => /enhanced|premium/i.test(v.name) && v.lang.startsWith('en')) ||
-voices.find(v => v.name === 'Google US English') ||
-voices.find(v => v.lang.startsWith('en-')) ||
-voices[0];
-}
-};
-pick();
-synthesis.onvoiceschanged = pick;
-}
 function initVoice() {
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
 try {
@@ -550,8 +522,8 @@ if (voiceChatOn) setTimeout(startListening, 350);
 }
 function stopSpeaking() {
 speechGen++;
-if (synthesis) synthesis.cancel();
 if (currentAudio) { try { currentAudio.pause(); } catch (e) {} currentAudio = null; }
+if (window.ogWaveMeter) ogWaveMeter.stop();
 speakingNow = false;
 document.getElementById('voiceBtn').classList.remove('speaking');
 setMood('');
@@ -563,12 +535,10 @@ voiceChatOn = true;
 unlockAudio();
 if (!recognition) {
 btn.classList.add('recording');
-primeSpeech();
 updateStatus('Voice replies ON — OG talks back out loud. (This browser can\'t hear you — type your messages.)');
 return;
 }
 btn.classList.add('recording');
-primeSpeech();
 updateStatus('Voice chat ON — just talk. Tap Talk again to stop.');
 startListening();
 } else {
@@ -749,11 +719,12 @@ cur += s;
 if (cur.trim()) out.push(cur.trim());
 return out.filter(Boolean);
 }
+const OG_TTS_VOICE = 'onyx';
 function fetchTTSPromise(text) {
 return fetch(`${API_URL}/tts`, {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ text: text })
+body: JSON.stringify({ text: text, voice: OG_TTS_VOICE })
 }).then(r => { if (!r.ok) throw new Error('tts ' + r.status); return r.blob(); });
 }
 let ogAudioEl = null;
@@ -776,56 +747,35 @@ const a = ogAudio();
 currentAudio = a;
 let settled = false;
 const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
-a.onended = () => { URL.revokeObjectURL(url); done(true); };
-a.onerror = () => { URL.revokeObjectURL(url); done(false); };
+a.onended = () => { URL.revokeObjectURL(url); if (window.ogWaveMeter) ogWaveMeter.stop(); done(true); };
+a.onerror = () => { URL.revokeObjectURL(url); if (window.ogWaveMeter) ogWaveMeter.stop(); done(false); };
 try { a.src = url; } catch (e) { done(false); return; }
+if (window.ogWaveMeter) ogWaveMeter.start(a);
 const p = a.play();
-if (p && p.catch) p.catch(() => done(false));
+if (p && p.catch) p.catch(() => { if (window.ogWaveMeter) ogWaveMeter.stop(); done(false); });
 });
 currentAudio = null;
 return heard;
-}
-function playChunkBrowser(chunk) {
-return new Promise((resolve) => {
-if (!synthesis) { resolve(); return; }
-const watchdog = setTimeout(resolve, Math.min(20000, 1500 + chunk.length * 95));
-const done = () => { clearTimeout(watchdog); resolve(); };
-synthesis.resume();
-const utterance = new SpeechSynthesisUtterance(chunk);
-if (currentVoice) utterance.voice = currentVoice;
-utterance.rate = 1.02;
-utterance.pitch = 0.85;
-utterance.volume = 1.0;
-utterance.onend = done;
-utterance.onerror = done;
-synthesis.speak(utterance);
-});
 }
 async function speakReply(text) {
 const clean = cleanForSpeech(text);
 if (!clean) { maybeResumeListening(); return; }
 const passages = speechPassages(clean);
-if (synthesis) synthesis.cancel();
 speakingNow = true;
 const gen = speechGen;
 document.getElementById('voiceBtn').classList.add('speaking');
 updateStatus('OG is talking...');
 setMood('talking');
-let nextFetch = (aiVoiceOk !== false && passages.length) ? fetchTTSPromise(passages[0]) : null;
+let nextFetch = passages.length ? fetchTTSPromise(passages[0]) : null;
 let speakBlocked = false;
 for (let i = 0; i < passages.length; i++) {
 if (gen !== speechGen) break;
-let played = false;
-if (aiVoiceOk !== false) {
 try {
 const blob = await (nextFetch || fetchTTSPromise(passages[i]));
 nextFetch = (i + 1 < passages.length) ? fetchTTSPromise(passages[i + 1]) : null;
 const heard = await playBlob(blob);
-if (heard) { aiVoiceOk = true; played = true; }
-else { speakBlocked = true; }
-} catch (e) { aiVoiceOk = false; nextFetch = null; }
-}
-if (!played && gen === speechGen) await playChunkBrowser(passages[i]);
+if (!heard) { speakBlocked = true; break; }
+} catch (e) { speakBlocked = true; break; }
 }
 speakingNow = false;
 document.getElementById('voiceBtn').classList.remove('speaking');
@@ -2086,21 +2036,21 @@ paint();
 </div>
 </section>
 
-<link rel="stylesheet" href="/static/og_notify.css?v=91">
-<link rel="stylesheet" href="/static/og_connections.css?v=91">
-<link rel="stylesheet" href="/static/og_library.css?v=91">
-<link rel="stylesheet" href="/static/og_store.css?v=91">
-<link rel="stylesheet" href="/static/og_notification_settings.css?v=91">
-<link rel="stylesheet" href="/static/og_browser_input.css?v=91">
-<link rel="stylesheet" href="/static/og_shell.css?v=91">
-<link rel="stylesheet" href="/static/og_tokens.css?v=91">
-<script src="/static/og_notify.js?v=91"></script>
-<script src="/static/og_connections.js?v=91"></script>
-<script src="/static/og_library.js?v=91"></script>
-<script src="/static/og_store.js?v=91"></script>
-<script src="/static/og_notification_settings.js?v=91"></script>
-<script src="/static/og_browser_input.js?v=91"></script>
-<script src="/static/og_shell.js?v=91"></script>
-<script src="/static/og_tokens.js?v=91"></script>
+<link rel="stylesheet" href="/static/og_notify.css?v=92">
+<link rel="stylesheet" href="/static/og_connections.css?v=92">
+<link rel="stylesheet" href="/static/og_library.css?v=92">
+<link rel="stylesheet" href="/static/og_store.css?v=92">
+<link rel="stylesheet" href="/static/og_notification_settings.css?v=92">
+<link rel="stylesheet" href="/static/og_browser_input.css?v=92">
+<link rel="stylesheet" href="/static/og_shell.css?v=92">
+<link rel="stylesheet" href="/static/og_tokens.css?v=92">
+<script src="/static/og_notify.js?v=92"></script>
+<script src="/static/og_connections.js?v=92"></script>
+<script src="/static/og_library.js?v=92"></script>
+<script src="/static/og_store.js?v=92"></script>
+<script src="/static/og_notification_settings.js?v=92"></script>
+<script src="/static/og_browser_input.js?v=92"></script>
+<script src="/static/og_shell.js?v=92"></script>
+<script src="/static/og_tokens.js?v=92"></script>
 </body>
 </html>
