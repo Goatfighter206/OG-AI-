@@ -79,6 +79,7 @@ from typing import Dict, List, Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+import og_garble
 import og_watch as W
 
 logger = logging.getLogger(__name__)
@@ -587,11 +588,25 @@ def _pick_match(uid: str, words: str):
     return None, None
 
 
-def _claim_job(message: str, uid: str) -> Optional[Dict]:
+# Round 75: this seam's garble vocabulary — the claim verbs and
+# the marketplace words only; listing words and $ amounts are
+# payload and never in it.
+_GARBLE_VOCAB = (
+    "message", "seller", "haggle", "watch", "marketplace",
+    "facebook", "keep", "eye", "on", "for", "under", "max",
+    "below", "near", "offer", "ceiling", "this", "the",
+)
+
+
+def _claim_job(message: str, uid: str,
+               _repaired: bool = False) -> Optional[Dict]:
     raw = str(message or "")
     if not uid:
         return None
-    m = _DECIDE_RE.search(raw)
+    # The decide branch IS an approval (approve/decline a parked
+    # marketplace message/haggle/deal): exact-only, never reached
+    # on a repaired reading.
+    m = _DECIDE_RE.search(raw) if not _repaired else None
     if m:
         pend = pending_approvals(uid, m.group(2).lower())
         if pend:
@@ -627,10 +642,35 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
         job = dict(job)
         job["kind"] = KIND
         return job
+    if not _repaired:
+        # Round 75: the garble second chance — repair, then let
+        # the EXACT claim logic read the reading (the approval
+        # branch above stays closed in repaired mode).
+        repaired, info = og_garble.repair_info(raw, _GARBLE_VOCAB)
+        if info is not None:
+            job = _claim_job(repaired, uid, _repaired=True)
+            if job is not None:
+                job = dict(job)
+                job["_garble"] = info
+                return job
     return None
 
 
 def mp_results(job: Dict, uid: str, tier: str) -> List[Dict]:
+    """Run one marketplace job; (Round 75) a job claimed through
+    the garble repair carries its fixes, and the answer names the
+    reading that was acted on. Clean jobs run byte-identically.
+    (The stamp is popped here, so the create branch's delegation
+    to og_watch.watch_results does not annotate twice.)"""
+    garble = job.pop("_garble", None) \
+        if isinstance(job, dict) else None
+    results = _mp_results(job, uid, tier)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _mp_results(job: Dict, uid: str, tier: str) -> List[Dict]:
     op = job.get("op")
     if op == "create":
         return W.watch_results(job, uid, tier)
