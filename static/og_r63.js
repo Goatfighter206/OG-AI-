@@ -30,6 +30,14 @@
  *    (password + code), and Add passkey when the browser
  *    supports WebAuthn. Push approval is labelled honestly:
  *    it comes in a later round.
+ *    Round 76 adds the section's last two controls: Change
+ *    password (current + new password -> POST
+ *    /auth/password/change; every other session is signed
+ *    out, this one stays) and Your passkeys (GET
+ *    /auth/2fa/passkey/list shows each passkey's added date
+ *    only; Remove asks for the account password -> POST
+ *    /auth/2fa/passkey/remove, and warns first when the
+ *    passkey is the account's only 2-step method).
  */
 (function () {
   'use strict';
@@ -241,7 +249,9 @@
       }).catch(function () { /* signed out — section stays hidden */ });
   }
 
+  var lastStatus = null;
   function buildActions(d) {
+    lastStatus = d;
     boxEl.innerHTML = '';
     if (!d.methods.totp) {
       boxEl.appendChild(btn('Set up code app', startSetup));
@@ -251,7 +261,9 @@
     if (d.methods.passkey !== 'unavailable'
         && window.PublicKeyCredential && navigator.credentials) {
       boxEl.appendChild(btn('Add a passkey', addPasskey));
+      boxEl.appendChild(btn('Your passkeys', showPasskeys));
     }
+    boxEl.appendChild(btn('Change password', startChangePassword));
   }
 
   function startSetup() {
@@ -314,6 +326,88 @@
           }
         });
     }));
+  }
+
+  function startChangePassword() {
+    boxEl.innerHTML = '';
+    var cur = document.createElement('input');
+    cur.type = 'password'; cur.placeholder = 'Current password';
+    cur.autocomplete = 'current-password';
+    var nw = document.createElement('input');
+    nw.type = 'password';
+    nw.placeholder = 'New password (8+ characters)';
+    nw.autocomplete = 'new-password';
+    boxEl.appendChild(cur);
+    boxEl.appendChild(nw);
+    boxEl.appendChild(btn('Change password', function () {
+      post('/auth/password/change', {
+        current_password: cur.value, new_password: nw.value
+      }).then(function (res) {
+        if (res.d && res.d.ok) {
+          msg('Password changed. Every other device was signed '
+            + 'out \u2014 this one stays signed in.');
+          refreshStatusSoft();
+        } else {
+          msg((res.d && res.d.error)
+            || "That didn't work \u2014 try again.", true);
+        }
+      });
+    }));
+  }
+
+  function showPasskeys() {
+    fetch('/auth/2fa/passkey/list').then(function (r) { return r.json(); })
+      .then(function (d) {
+        boxEl.innerHTML = '';
+        var keys = (d && d.passkeys) || [];
+        if (!keys.length) {
+          boxEl.appendChild(el('p', '',
+            'No passkeys on this account yet.'));
+          return;
+        }
+        keys.forEach(function (k, i) {
+          var when = k.created
+            ? new Date(k.created * 1000).toLocaleDateString() : '';
+          boxEl.appendChild(el('p', '', 'Passkey ' + (i + 1)
+            + (when ? ' \u00b7 added ' + when : '')));
+          boxEl.appendChild(btn('Remove this passkey', function () {
+            startRemovePasskey(k, keys.length);
+          }));
+        });
+      }).catch(function () {
+        msg('Connection hiccup \u2014 try that again.', true);
+      });
+  }
+
+  function startRemovePasskey(k, total) {
+    boxEl.innerHTML = '';
+    var only = total === 1 && lastStatus && !lastStatus.methods.totp;
+    if (only) {
+      boxEl.appendChild(el('p', 'og2fa-err',
+        'This passkey is your only 2-step method \u2014 removing '
+        + 'it turns 2-step OFF for your account.'));
+    }
+    boxEl.appendChild(el('p', '',
+      'Enter your account password to remove this passkey:'));
+    var pw = document.createElement('input');
+    pw.type = 'password'; pw.placeholder = 'Your password';
+    pw.autocomplete = 'current-password';
+    boxEl.appendChild(pw);
+    boxEl.appendChild(btn('Remove passkey', function () {
+      post('/auth/2fa/passkey/remove', {
+        credential_id: k.id, password: pw.value
+      }).then(function (res) {
+        if (res.d && res.d.ok) {
+          msg(res.d.enabled ? 'Passkey removed.'
+            : 'Passkey removed \u2014 2-step is now off.');
+          refreshStatusSoft();
+        } else {
+          msg((res.d && res.d.error)
+            || "That didn't work \u2014 try again.", true);
+        }
+      });
+    }));
+    boxEl.appendChild(btn('Keep it', showPasskeys));
   }
 
   function addPasskey() {
