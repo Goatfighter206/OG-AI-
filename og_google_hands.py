@@ -60,6 +60,8 @@ from email.utils import parsedate_to_datetime
 from typing import Dict, Optional
 from zoneinfo import ZoneInfo
 
+import og_garble
+
 logger = logging.getLogger(__name__)
 
 # --- Config -------------------------------------------------------------------
@@ -648,6 +650,70 @@ def parse_google_intent(message: str, tz=None, now: datetime = None
     return None
 
 
+# --- Garble tolerance (Round 75) -------------------------------------------------
+# This seam's vocabulary: the mail/calendar hint words, the
+# arrival/time words, the read/search/add verbs, the event nouns
+# and the calendar's own day/month words. Sender names, search
+# terms and event titles are payload — never in it, so they pass
+# through the repair verbatim. No homophone table: "male" is
+# deliberately NOT read as "mail" (round-75/NOTES.md).
+
+_GARBLE_VOCAB = (
+    "email", "emails", "mail", "gmail", "inbox", "message",
+    "messages", "today", "yesterday", "tomorrow", "tonight",
+    "latest", "newest", "recent", "last", "new", "check",
+    "search", "find", "look", "read", "open", "what", "does",
+    "say", "from", "about", "regarding", "mentioning",
+    "containing", "who", "did", "get", "have", "receive",
+    "came", "arrived", "calendar", "schedule", "meetings",
+    "meeting", "events", "event", "appointments", "appointment",
+    "anything", "something", "scheduled", "planned", "free",
+    "next", "when", "add", "put", "book", "create", "called",
+    "haircut", "dentist", "doctor", "checkup", "visit",
+    "interview", "lunch", "dinner", "breakfast", "call",
+    "class", "lesson", "party", "birthday", "workout",
+    "monday", "tuesday", "wednesday", "thursday", "friday",
+    "saturday", "sunday", "january", "february", "march",
+    "april", "may", "june", "july", "august", "september",
+    "october", "november", "december", "noon", "midday",
+    "midnight", "week", "day", "after", "my", "on", "in", "the",
+)
+
+
+def parse_google_intent_garbled(message: str, tz=None,
+                                now: datetime = None
+                                ) -> Optional[Dict]:
+    """parse_google_intent plus the Round 75 second chance.
+    Exact first; the repair runs only when the exact parse
+    claimed nothing, or claimed only an INCOMPLETE calendar add
+    (whose clarifying ask stands unless the reading completes
+    it). A job claimed this way carries "_garble" (the fixes)
+    and "_garble_msg" (the reading) — google_hands_results
+    re-parses adds from the reading, in its real timezone, and
+    the answer carries the read-back. Clean jobs are the exact
+    parser's own dicts, untouched."""
+    job = parse_google_intent(message, tz, now)
+    if job is not None and not (
+            job.get("kind") == "cal_add"
+            and not job.get("complete")):
+        return job
+    repaired, info = og_garble.repair_info(
+        str(message), _GARBLE_VOCAB)
+    if info is None:
+        return job
+    job2 = parse_google_intent(repaired, tz, now)
+    if job2 is None:
+        return job
+    if job is not None and job.get("kind") == "cal_add" \
+            and job2.get("kind") == "cal_add" \
+            and not job2.get("complete"):
+        return job  # still incomplete: the original ask stands
+    job2 = dict(job2)
+    job2["_garble"] = info
+    job2["_garble_msg"] = repaired
+    return job2
+
+
 # --- Gmail reads -----------------------------------------------------------------
 
 def _header_map(meta: Dict) -> Dict:
@@ -1023,6 +1089,20 @@ def _cal_add_answer(job: Dict, message: str, token: str, who: str,
 
 
 def google_hands_results(job, message, uid, consume_lookup):
+    """Run one parsed hands job; (Round 75) a job claimed
+    through the garble repair carries its fixes, and the answer
+    names the reading that was acted on. Clean jobs run
+    byte-identically (the stamp is popped here either way)."""
+    garble = job.pop("_garble", None) \
+        if isinstance(job, dict) else None
+    results = _google_hands_results(job, message, uid,
+                                    consume_lookup)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _google_hands_results(job, message, uid, consume_lookup):
     """Run one parsed hands job for this visitor. Returns
     web_search-shaped results on a hit (real data, grounded empty
     answers, connect/reconnect guidance, add confirmations), or None
@@ -1055,11 +1135,16 @@ def google_hands_results(job, message, uid, consume_lookup):
     if kind.startswith("gmail"):
         return _gmail_answer(job, token, who, consume_lookup, uid)
     if kind == "cal_read":
-        return _cal_read_answer(job, message, token, who,
-                                consume_lookup, uid)
+        # Round 75: calendar answers re-derive their window /
+        # event from the message — for a garble-claimed job that
+        # is the READING, not the garbled original.
+        return _cal_read_answer(
+            job, job.get("_garble_msg") or message, token, who,
+            consume_lookup, uid)
     if kind == "cal_add":
-        return _cal_add_answer(job, message, token, who,
-                               consume_lookup, uid)
+        return _cal_add_answer(
+            job, job.get("_garble_msg") or message, token, who,
+            consume_lookup, uid)
     return None
 
 
@@ -1104,8 +1189,8 @@ def install_google_hands(agent_instance, get_uid, consume_lookup,
                 # Parsing is cheap and connection-independent at
                 # detect time; the search hook decides what the job
                 # is worth (data, guidance, or a plain miss).
-                job = parse_google_intent(str(message)) if uid \
-                    else None
+                job = parse_google_intent_garbled(
+                    str(message)) if uid else None
                 if job:
                     _pending["job"] = job
                     _pending["message"] = str(message)
