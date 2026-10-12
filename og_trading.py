@@ -93,6 +93,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
+import og_garble
+
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 
@@ -797,7 +799,31 @@ def _missing(ask: Dict) -> list:
     return out
 
 
-def _claim_job(message: str, uid: str) -> Optional[Dict]:
+# Round 75: this seam's garble vocabulary — the side verbs, the
+# broker names, the trading nouns, and the forbidden/policy
+# trigger words (a typo must not dodge a refusal either).
+# Assets, tickers, company names and AMOUNTS are payload: never
+# in the vocabulary, read exactly as written. The homophones
+# by/bye -> buy and cell -> sell are deliberately NOT mapped
+# anywhere (round-75/NOTES.md).
+_GARBLE_VOCAB = (
+    ["buy", "buying", "purchase", "purchasing", "sell",
+     "selling", "invest", "investing", "investment", "trade",
+     "trading", "position", "stock", "stocks", "share", "shares",
+     "crypto", "coin", "coins", "short", "shorting", "shorts",
+     "leverage", "leveraged", "margin", "futures", "options",
+     "option", "automatically", "automatic", "auto"]
+    + list(_BROKERS) + ["etrade"]
+)
+# The only kinds a repaired reading may produce: a fresh ask
+# (still a draft that needs a YES) and the two refusal/info
+# kinds. Approval / decline / collect kinds can NEVER come out
+# of the garble path.
+_GARBLE_KINDS = ("ask", "forbidden", "policy")
+
+
+def _claim_job(message: str, uid: str,
+               _repaired: bool = False) -> Optional[Dict]:
     """What this message means for trading, given the visitor's
     pending draft. Forbidden-instrument and auto-trade-policy asks
     always claim; approvals/declines only count against a live
@@ -836,6 +862,18 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
     fresh = _parse_trade_ask(text)
     if fresh:
         return {"kind": "ask", **fresh}
+    if not _repaired:
+        # Round 75: the garble second chance — repair, then let
+        # the EXACT claim logic read the reading; only a fresh
+        # ask / forbidden / policy kind may come back.
+        repaired, info = og_garble.repair_info(text, _GARBLE_VOCAB)
+        if info is not None:
+            job = _claim_job(repaired, uid, _repaired=True)
+            if job is not None \
+                    and job.get("kind") in _GARBLE_KINDS:
+                job = dict(job)
+                job["_garble"] = info
+                return job
     return None
 
 
@@ -1337,6 +1375,19 @@ def _preview_approve(uid: str, lookup) -> Optional[list]:
 
 
 def trading_results(job, message, uid, lookup) -> Optional[list]:
+    """Run one claimed trading job; (Round 75) a job claimed
+    through the garble repair carries its fixes, and the answer
+    names the reading that was acted on. Clean jobs run
+    byte-identically."""
+    garble = job.pop("_garble", None) \
+        if isinstance(job, dict) else None
+    results = _trading_results(job, message, uid, lookup)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _trading_results(job, message, uid, lookup) -> Optional[list]:
     """Run one claimed trading job. Returns web_search-shaped
     results, or None on a true miss so the caller falls through to
     the previous search untouched. Only an approved execution or
