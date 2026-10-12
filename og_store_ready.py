@@ -29,7 +29,10 @@ tier entitlement, Google connection, notifications + prefs
 + push subscriptions, watch records + the browser vault
 (the Steel profile is DELETED through og_watch's own
 forget path first), monitor + ordering records, song and
-video jobs (records + build dirs), Unity packages, locker
+video jobs (records + build dirs), Unity packages, GPS
+points + the stored active route and location switch
+(Round 74 — the chain never called og_gps.purge_uid
+before), locker
 files (objects + metadata, through og_storage's own delete
 path), the Round 6 temp upload, every connect token
 (Spotify / GitHub + its check watches / Discord / Twitch /
@@ -368,6 +371,8 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     _step(results, "voice_lab", lambda: _voice_lab.purge_owner(uid))
     import og_wallet as _wallet
     _step(results, "wallet", lambda: _wallet.purge_owner(uid))
+    import og_gps as _gps
+    _step(results, "gps", lambda: _gps.purge_uid(uid))
 
     def storage():
         import og_storage as _st
@@ -396,11 +401,17 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
         _rd._drop_entry(uid)
         import og_github as _gh
         _gh._drop_entry(uid)
-        with _gh._checks_lock:
-            checks = _gh._load_checks_store()
+        # Round 74: the Actions checks store moved to
+        # og_codemore in Round 60 — this block named
+        # og_github until now, so it raised on every
+        # deletion, the step reported False, and the
+        # Plaid + Coinbase drops below never ran.
+        import og_codemore as _cm
+        with _cm._checks_lock:
+            checks = _cm._load_checks_store()
             if uid in checks:
                 del checks[uid]
-                _gh._save_checks_store(checks)
+                _cm._save_checks_store(checks)
         import og_plaid as _pl
         _pl._drop_entry(uid)
         import og_trading as _tr
