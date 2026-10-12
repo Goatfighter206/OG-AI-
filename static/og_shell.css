@@ -457,3 +457,46 @@ body.og-auth-reconnecting #ageGate { display: none !important; }
 .og-library-top .og-circle-btn { order: 2; margin-left: auto; }
 .og-connections-top .og-circle-btn { order: 2; margin-left: auto; }
 #profileCloseBtn { order: 2; }
+
+
+/* --- Round 106: one clean typing bar + keyboard-up rules --------------
+   Brent (2026-10-12): "the keyboard need to look like
+   you keyboard" — clarified: "The typing bar where I
+   talk to OG"; "There extra stuff on the keyboard";
+   "And the bar that's underneath need to stay down
+   there out of site when I keyboard up."
+   Part 2 (LOOK ONLY): the dock's composer becomes ONE
+   clean rounded bar — the text field takes the width,
+   compact round buttons (40px) at the ends — in OG's
+   black-and-gold skin. Every control keeps its id, job
+   and wiring (the page's own restyle block is untouched;
+   these dock-scoped rules win on specificity). K1: with
+   the keyboard up, only the typing bar sits above it —
+   the attach chip, the Add sheet, the picture preview
+   and the generator cards clear out (visual only; their
+   state is untouched and they return as they were). K2:
+   the seat bar stays DOWN — out of sight — while the
+   keyboard is up and returns when it closes. The
+   body.og-kb-up class is driven by og_shell.js §8c off
+   the real iOS visualViewport signal; with the keyboard
+   down, no rule in this block applies and the shell is
+   byte-for-byte the old behavior. */
+#ogShellDock .input-wrapper {
+    border-radius: 26px; border: 1px solid #333;
+    padding: 6px; gap: 2px; align-items: center;
+    background: rgba(20,20,20,.97);
+    box-shadow: 0 14px 36px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.5);
+}
+#ogShellDock #messageInput { padding: 8px 6px; font-size: 16px; }
+#ogShellDock .og-plus-btn { width: 40px; height: 40px; }
+#ogShellDock .input-wrapper #voiceBtn {
+    width: 40px; height: 40px; border: none; background: transparent;
+}
+#ogShellDock .input-wrapper #sendBtn { width: 40px; height: 40px; }
+body.og-kb-up #ogSeatBar { display: none !important; }
+body.og-kb-up #fileChip,
+body.og-kb-up #plusSheet,
+body.og-kb-up #attachPreview { display: none !important; }
+body.og-kb-up #ogPodcastCard,
+body.og-kb-up #ogMotionCard,
+body.og-kb-up #ogVoiceCard { display: none !important; }
