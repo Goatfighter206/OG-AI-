@@ -1,37 +1,14 @@
 /* Round 66: GPS (web). Round 70 reshape (Brent's folder
- * rule): GPS leaves the side menu's cramped tabs and gets
- * the app's shape — two menu rows, "Driving" and
- * "Construction", each opening its own full view.
+ * rule): GPS gets the app's shape — a menu row opening its
+ * own full view.
  *
  * One asset, zero page edits beyond the loader stub in
  * static/og_tokens.js (the R62/R63/R65 pattern; the page
- * sits at its push ceiling). The rows are injected into
- * the side menu right after the Account card, under a
- * "GPS" section header, and show only while signed in
- * (the R63/R65 visibility sync).
+ * sits at its push ceiling). The row is injected into the
+ * side menu right after the Account card, under a "GPS"
+ * section header, and shows only while signed in (the
+ * R63/R65 visibility sync).
  *
- *   Driving — its own full view: the account's ACTIVE
- *             route (GET /gps/route/active — the same
- *             route chat and the app use) as a summary —
- *             ends, totals, steps — plus saved points, the
- *             from/to form (POST /gps/route) for a fresh
- *             route, and an "Open in Maps" handoff that
- *             sends the route to the phone's own maps app
- *             (Apple Maps on Apple devices, Google Maps
- *             otherwise). Round 82 removed the built-in
- *             OSM map (Brent's phone-first rule: the phone
- *             already has a maps app — OG works out the
- *             route, the phone navigates it; this page is
- *             a summary + handoff, not a navigator).
- *             Round 73 adds the ACCOUNT location switch
- *             to this view: a toggle button bound to GET/
- *             POST /gps/location — the same one switch the
- *             app flips and chat flips ("turn my location
- *             on"). The button paints only the server's
- *             answer, never its own guess; the position
- *             watch runs only while the switch is on; the
- *             browser's own permission stays the device's
- *             gate underneath it, and the view says so.
  *   Construction — the job-site folder: the caller's
  *             saved points (GET /gps/points) with add
  *             (manual or "Drop at my location"), Convert
@@ -48,6 +25,18 @@
  *             Procore / Bluebeam rows that open those
  *             sites in OG's browser via the seeded chat
  *             ask — the same machinery as typing it.
+ *
+ * Round 90 (Brent's phone-first order): the Driving view
+ * that used to live here — the route summary page, the
+ * from/to form, the "Open in Maps" button, and the
+ * Round 73 account location switch the view carried —
+ * is DELETED whole. Driving is asked in chat now: OG
+ * works out the route (the server flow is unchanged)
+ * and the chat answer itself carries the Open in Maps
+ * handoff (og_r90.js), while the location switch's
+ * home moved to the Permissions folder (also og_r90.js).
+ * This file is Construction only; nothing in the
+ * Construction section changed in this round.
  *
  * All math comes from the server (og_gps) so the web and
  * the app agree digit for digit.
@@ -118,17 +107,6 @@
     if (ft < 500) return Math.round(ft) + ' ft';
     return (m / 1609.344).toFixed(2) + ' mi';
   }
-  function fmtDur(s) {
-    var mins = Math.round(s / 60);
-    if (mins < 60) return mins + ' min';
-    return Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min';
-  }
-  // A field holds either a place name or "lat, lon".
-  function endpoint(text) {
-    var m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(text || '');
-    if (m) return { lat: parseFloat(m[1]), lon: parseFloat(m[2]) };
-    return { place: (text || '').trim() };
-  }
 
   /* OG70 loads through the same stub chain; resolve it at
    * tap time so dynamic-script order can never break us. */
@@ -153,294 +131,6 @@
   var points = [];
   var stakeWatch = null;
   var stakeTarget = null;
-
-  /* ---------------- Driving ---------------- */
-  function renderSteps(stepsEl, d) {
-    stepsEl.innerHTML = '';
-    (d.steps || []).forEach(function (s) {
-      var row = el('div', 'og66-step', s.instruction);
-      row.appendChild(el('b', '', fmtDist(s.distance_m)));
-      stepsEl.appendChild(row);
-    });
-  }
-
-  function renderDrivingPoints(box) {
-    box.innerHTML = '';
-    if (!points.length) {
-      box.appendChild(el('p', 'og66-note', 'No points saved yet.'));
-      return;
-    }
-    points.forEach(function (pt) {
-      var row = el('div', 'og66-pt');
-      row.appendChild(el('b', 'name', pt.name));
-      row.appendChild(el('div', 'og66-small',
-        pt.lat.toFixed(6) + ', ' + pt.lon.toFixed(6)
-        + (pt.note ? ' · ' + pt.note : '')));
-      box.appendChild(row);
-    });
-  }
-
-  /* Round 82: the "Open in Maps" handoff. The phone
-   * already has a maps app — OG works out the route and
-   * the phone navigates it (Brent's phone-first rule).
-   * Apple devices get maps.apple.com, everything else
-   * gets the Google Maps universal link. Coords ride
-   * raw (numbers are URL-safe); place text is encoded. */
-  function isAppleDevice() {
-    return /iPhone|iPad|iPod|Macintosh|Mac OS X/.test(
-      navigator.userAgent || '');
-  }
-  function mapsEnc(s) {
-    // encode, but keep commas readable — both maps apps
-    // take "lat,lon" and "City, ST" in plain form.
-    return encodeURIComponent(s).replace(/%2C/g, ',');
-  }
-  function mapsUrl(origin, dest) {
-    if (!dest) return '';
-    if (isAppleDevice()) {
-      var a = 'https://maps.apple.com/?daddr=' + mapsEnc(dest);
-      if (origin) a += '&saddr=' + mapsEnc(origin);
-      return a;
-    }
-    var g = 'https://www.google.com/maps/dir/?api=1&destination='
-      + mapsEnc(dest);
-    if (origin) g += '&origin=' + mapsEnc(origin);
-    return g;
-  }
-  function coordText(end) {
-    if (!end || end.lat == null || end.lon == null) return '';
-    return end.lat + ',' + end.lon;
-  }
-
-  function buildDriving(body, view) {
-    var wrap = el('div', 'og66-body');
-    body.appendChild(wrap);
-    var chip = el('span', 'og66-chip', 'Location: …');
-    chip.id = 'og66LocChip';
-    wrap.appendChild(chip);
-    /* Round 73: the account location switch (GET/POST
-     * /gps/location) — the same switch the app and chat
-     * flip. It paints only what the server answers. */
-    var locBtn = el('button', 'og66-btn dim', 'OG location: …');
-    locBtn.type = 'button';
-    locBtn.id = 'og66LocBtn';
-    wrap.appendChild(locBtn);
-    wrap.appendChild(el('p', 'og66-note',
-      'That button is OG\'s location switch. It stays how you '
-      + 'leave it — on every device signed into your account — '
-      + 'until you tap it again or ask OG to change it. Your '
-      + 'browser still has its own location permission '
-      + 'underneath it; "Use my location" below needs both on.'));
-    var here = el('p', 'og66-note', 'You are here: (location not shared yet)');
-    here.id = 'og66Here';
-    var ends = el('p', 'og66-note', ''); ends.id = 'og66Ends';
-    var totals = el('p', 'og66-note', ''); totals.id = 'og66Totals';
-    var stepsBox = el('div'); stepsBox.id = 'og66Steps';
-    var mapsLink = el('a', 'og66-btn dim', 'Open in Maps');
-    mapsLink.id = 'og66OpenMaps';
-    mapsLink.target = '_blank';
-    mapsLink.rel = 'noopener';
-    var from = el('input'); from.id = 'og66From'; from.placeholder = 'From — place, or lat, lon';
-    var to = el('input'); to.id = 'og66To'; to.placeholder = 'To — place, or lat, lon';
-    var useMine = el('button', 'og66-btn dim', 'Use my location');
-    useMine.type = 'button';
-    useMine.addEventListener('click', function () {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(function (p) {
-        from.value = p.coords.latitude.toFixed(6) + ', ' + p.coords.longitude.toFixed(6);
-        updateMapsLink();
-      });
-    });
-    var go = el('button', 'og66-btn', 'Get route');
-    go.type = 'button';
-    wrap.appendChild(here);
-    wrap.appendChild(ends);
-    wrap.appendChild(totals);
-    wrap.appendChild(stepsBox);
-    wrap.appendChild(mapsLink);
-    wrap.appendChild(from); wrap.appendChild(to);
-    wrap.appendChild(useMine); wrap.appendChild(go);
-    wrap.appendChild(el('h3', 'og66-sec', 'Saved points'));
-    var ptsBox = el('div'); ptsBox.id = 'og66DrivePts';
-    wrap.appendChild(ptsBox);
-    wrap.appendChild(el('p', 'og66-note',
-      'OG works out the route here. For live turn-by-turn '
-      + 'while you drive, tap Open in Maps — your phone\'s '
-      + 'maps app takes it from there.'));
-
-    var alive = true;
-    view.track(function () { alive = false; });
-    var myPos = null;        // the live fix, while the switch is on
-    var currentRoute = null; // the loaded route's ends {from, to}
-
-    /* The handoff link re-arms itself whenever anything
-     * it is built from changes: the route, the fields,
-     * or the live fix. Destination: the route's end,
-     * else the To field. Origin: the route's start,
-     * else the From field, else the live fix, else the
-     * maps app's own current-location default. */
-    function updateMapsLink() {
-      var dest = '', origin = '';
-      if (currentRoute && currentRoute.to) {
-        dest = coordText(currentRoute.to);
-        origin = coordText(currentRoute.from);
-      } else if ((to.value || '').trim()) {
-        dest = (to.value || '').trim();
-        origin = (from.value || '').trim();
-      }
-      if (!origin && myPos) {
-        origin = myPos.lat + ',' + myPos.lon;
-      }
-      var url = mapsUrl(origin, dest);
-      if (url) {
-        mapsLink.setAttribute('href', url);
-        mapsLink.className = 'og66-btn';
-      } else {
-        mapsLink.removeAttribute('href');
-        mapsLink.className = 'og66-btn dim';
-      }
-    }
-    from.addEventListener('input', function () {
-      currentRoute = null;
-      updateMapsLink();
-    });
-    to.addEventListener('input', function () {
-      currentRoute = null;
-      updateMapsLink();
-    });
-
-    function showRoute(d, stored) {
-      if (stored && stored.from && stored.to) {
-        ends.textContent = (stored.from.label || 'Start') + ' → '
-          + (stored.to.label || 'Destination');
-        currentRoute = stored;
-      }
-      totals.textContent = 'Total: ' + fmtDist(d.distance_m)
-        + ' · ' + fmtDur(d.duration_s);
-      renderSteps(stepsBox, d);
-      updateMapsLink();
-    }
-
-    // The account's active route — the same one chat and
-    // the app load (Round 68).
-    api('/gps/route/active').then(function (res) {
-      if (!alive) return;
-      var r = res.d && res.d.route;
-      if (r && r.steps) showRoute(r, r);
-    }).catch(function () { /* form below still works */ });
-    api('/gps/points').then(function (res) {
-      if (!alive) return;
-      points = (res.d && res.d.points) || [];
-      renderDrivingPoints(ptsBox);
-    }).catch(function () { /* list stays as-is */ });
-    renderDrivingPoints(ptsBox);
-    updateMapsLink();
-
-    /* The position watch runs only while the ACCOUNT
-     * switch is on (Round 73). The chip below it reports
-     * this browser's own position state — the device gate
-     * under the switch. The fix also arms the handoff's
-     * origin when no route start is known. */
-    var watchId = null;
-    function stopWatch() {
-      if (watchId !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-      watchId = null;
-    }
-    function startWatch() {
-      if (watchId !== null || !navigator.geolocation) return;
-      watchId = navigator.geolocation.watchPosition(function (p) {
-        myPos = { lat: p.coords.latitude, lon: p.coords.longitude };
-        chip.textContent = 'Location: On';
-        chip.className = 'og66-chip on';
-        var h = $('og66Here');
-        if (h) h.textContent = 'You are here: ' + myPos.lat.toFixed(5)
-          + ', ' + myPos.lon.toFixed(5)
-          + ' (±' + Math.round(p.coords.accuracy || 0) + ' m)';
-        updateMapsLink();
-      }, function () {
-        chip.textContent = 'Location: Off — this browser is not '
-          + 'sharing its position. Your route and points '
-          + 'still load.';
-      }, { enableHighAccuracy: true });
-    }
-    view.track(stopWatch);
-
-    var locOn = null;   // null until the server answers
-    function paintLocBtn() {
-      if (locOn === null) {
-        locBtn.textContent = 'OG location: …';
-        locBtn.className = 'og66-btn dim';
-        return;
-      }
-      locBtn.textContent = locOn
-        ? 'OG location: On — tap to turn off'
-        : 'OG location: Off — tap to turn on';
-      locBtn.className = locOn ? 'og66-btn' : 'og66-btn dim';
-    }
-    function applyLocState(on) {
-      locOn = !!on;
-      paintLocBtn();
-      if (locOn) {
-        startWatch();
-      } else {
-        stopWatch();
-        myPos = null;
-        chip.textContent = 'Location: Off — OG\'s location switch '
-          + 'is off. Your route and points still load.';
-        chip.className = 'og66-chip';
-        var h = $('og66Here');
-        if (h) h.textContent = 'You are here: (location not shared yet)';
-        updateMapsLink();
-      }
-    }
-    api('/gps/location').then(function (res) {
-      if (!alive) return;
-      if (res.d && typeof res.d.on === 'boolean') {
-        applyLocState(res.d.on);
-      }
-    }).catch(function () { /* button keeps its … state */ });
-    locBtn.addEventListener('click', function () {
-      if (locOn === null) return;
-      locBtn.textContent = 'OG location: …';
-      post('/gps/location', { on: !locOn }).then(function (res) {
-        if (!alive) return;
-        if (res.d && typeof res.d.on === 'boolean') {
-          applyLocState(res.d.on);
-        } else {
-          paintLocBtn();
-        }
-      }).catch(function () {
-        if (alive) paintLocBtn();
-      });
-    });
-
-    if (!navigator.geolocation) {
-      chip.textContent = 'Location: Off — this browser has no GPS.';
-    }
-
-    go.addEventListener('click', function () {
-      stepsBox.innerHTML = '';
-      totals.textContent = 'Routing…';
-      post('/gps/route', { from: endpoint(from.value), to: endpoint(to.value) })
-        .then(function (res) {
-          if (!res.ok || !res.d || !res.d.steps) {
-            totals.textContent = (res.d && res.d.detail)
-              || 'Route unavailable — nothing was made up.';
-            return;
-          }
-          showRoute(res.d, res.d.route);
-        })
-        .catch(function () {
-          totals.textContent = 'Route unavailable — nothing was made up.';
-        });
-    });
-  }
-
-  function openDriving() {
-    openView({ title: 'Driving', wide: true, onOpen: buildDriving });
-  }
 
   /* ---------------- Construction: job sites ---------------- */
   function refreshPoints() {
@@ -749,13 +439,6 @@
     head = el('h3', 'og-menu-sec', 'GPS');
     sec = el('nav', 'og-menu-card', '');
     sec.id = 'ogGpsCard';
-    var dRow = el('button', 'og-menu-item', '');
-    dRow.type = 'button'; dRow.id = 'og66DrivingRow';
-    var dIco = el('span', 'og-mi', '');
-    dIco.innerHTML = '<svg><use href="#i-pin"/></svg>';
-    dRow.appendChild(dIco);
-    dRow.appendChild(el('span', '', 'Driving'));
-    dRow.addEventListener('click', openDriving);
     var cRow = el('button', 'og-menu-item', '');
     cRow.type = 'button'; cRow.id = 'og66ConstructionRow';
     var cIco = el('span', 'og-mi', '');
@@ -763,7 +446,7 @@
     cRow.appendChild(cIco);
     cRow.appendChild(el('span', '', 'Construction'));
     cRow.addEventListener('click', openConstruction);
-    sec.appendChild(dRow); sec.appendChild(cRow);
+    sec.appendChild(cRow);
     card.parentNode.insertBefore(head, card.nextSibling);
     card.parentNode.insertBefore(sec, head.nextSibling);
     sec.hidden = true;
