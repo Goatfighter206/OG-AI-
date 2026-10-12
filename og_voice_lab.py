@@ -445,6 +445,7 @@ def _read_samples(uid: str, metas: List[Dict]):
 # --- Voices store (per-uid {voice_id, name, created} only) ------
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
 try:
     import psycopg
 except Exception:
@@ -468,7 +469,7 @@ def _vstore_load(uid: str) -> Dict:
                 "clone_state": dict(rec.get("clone_state") or {})}
     if MEMORY_DB_URL and psycopg is not None:
         try:
-            conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+            conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
             with conn:
                 with conn.cursor() as cur:
                     cur.execute(
@@ -512,7 +513,7 @@ def _vstore_save(uid: str, data: Dict) -> None:
         _vstore_mem[owner] = rec
     if MEMORY_DB_URL and psycopg is not None:
         try:
-            conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+            conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
             with conn:
                 with conn.cursor() as cur:
                     cur.execute(
@@ -595,7 +596,7 @@ def _json_store_path() -> str:
 
 
 def _db_connect():
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_voice_jobs ("
@@ -788,7 +789,8 @@ def purge_owner(uid: str):
             logger.warning(f"Voice lab DB purge failed: {e}")
         try:
             conn = psycopg.connect(MEMORY_DB_URL,
-                                   connect_timeout=5)
+                                   connect_timeout=_DB_CT,
+                                   options=_DB_OPTS)
             with conn:
                 with conn.cursor() as cur:
                     cur.execute(
