@@ -721,6 +721,92 @@ def message_needs_maps(message):
 
 
 # ---------------------------------------------------------------------------
+# Location-switch asks (Round 73): "turn my location on" / "location off"
+# ---------------------------------------------------------------------------
+# The switch itself lives in og_gps (gpsloc:<uid>) — the same one
+# GET/POST /gps/location serves and both clients read. These asks
+# are matched STRICTLY: after trimming a short polite lead/trail,
+# the WHOLE message must be the ask, so a phrase that merely
+# MENTIONS location — "weather at my location", "directions from
+# my location to ..." — never flips anything. OG never turns the
+# switch on by himself: the only way here is the visitor's own
+# words, in the shapes below.
+
+_LOC_LEAD = re.compile(
+    r"^(hey og|okay og|ok og|og|please)[\s,]+", re.IGNORECASE)
+_LOC_TOGGLE = re.compile(
+    r"^(?:"
+    r"(?:turn|switch|flip|set)\s+(?:my\s+|the\s+)?location\s+(on|off)"
+    r"|(?:turn|switch)\s+(on|off)\s+(?:my\s+|the\s+)?location"
+    r"|(?:my\s+)?location\s+(on|off)"
+    r"|location\s+sharing\s+(on|off)"
+    r"|(enable|disable)\s+(?:my\s+|the\s+)?location"
+    r"|(start|stop)\s+sharing\s+(?:my\s+)?location"
+    r")$",
+    re.IGNORECASE)
+
+
+def parse_location_toggle(message):
+    """'on' / 'off' when the message IS a location-switch ask,
+    else None. Whole-message match only (see above)."""
+    if not message:
+        return None
+    low = " ".join(str(message).lower().split()).strip(" .!?")
+    for _ in range(2):
+        trimmed = _LOC_LEAD.sub("", low).strip(" ,")
+        if trimmed == low:
+            break
+        low = trimmed
+    low = re.sub(r"[\s,]+please$", "", low).strip(" ,")
+    m = _LOC_TOGGLE.match(low)
+    if not m:
+        return None
+    for group in m.groups():
+        if group:
+            return "on" if group.lower() in ("on", "enable",
+                                             "start") else "off"
+    return None
+
+
+def _location_toggle_results(uid, want):
+    """Flip the account's location switch (og_gps) and hand OG a
+    grounded note to confirm from — the Round 68 note pattern, so
+    the confirmation rides the normal reply/register path. The
+    flip has already happened server-side when the note is
+    written; the note reports the state actually stored. No uid
+    (or a store failure) -> None, and the ask falls through to
+    normal chat with nothing flipped."""
+    if not uid:
+        return None
+    try:
+        import og_gps
+        on = og_gps.set_location_on(uid, want == "on")
+    except Exception as e:
+        logger.warning(f"Location switch flip failed: {e}")
+        return None
+    if on:
+        body = (
+            "(Location note for OG: the visitor just asked you "
+            "to turn their location ON, and it is DONE — their "
+            "account location switch is ON now and stays on "
+            "until they turn it off. Confirm it plainly in your "
+            "own voice: location is on. This switch is OG's "
+            "permission to use their location; their phone or "
+            "browser still has its own location permission "
+            "prompt, which is separate — do NOT claim you "
+            "changed the device's own settings.)")
+    else:
+        body = (
+            "(Location note for OG: the visitor just asked you "
+            "to turn their location OFF, and it is DONE — their "
+            "account location switch is OFF now and stays off "
+            "until they turn it on. Confirm it plainly in your "
+            "own voice: location is off, and you will not use "
+            "their location while it is off.)")
+    return [{"title": "Location switch", "body": body, "href": ""}]
+
+
+# ---------------------------------------------------------------------------
 # Result building (rides the web_search seam, {title, body, href})
 # ---------------------------------------------------------------------------
 
@@ -1072,7 +1158,9 @@ def maps_search_results(parsed, uid, consume_lookup, coords=None):
 # The maps job parsed for the exchange currently being processed.
 # All chat processing is serialized under app.py's _memory_lock, so a
 # single slot is safe — the same reasoning as app.py's own slots.
-_pending = {"parsed": None}
+# "loctoggle" (Round 73) rides the same slot discipline: the
+# location-switch ask parsed for this exchange, if any.
+_pending = {"parsed": None, "loctoggle": None}
 
 
 def install_maps_tools(agent_instance, get_uid, consume_lookup):
@@ -1093,19 +1181,37 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
     def detect_wrapped(message):
         intent = prev_detect(message)
         _pending["parsed"] = None
+        _pending["loctoggle"] = None
         try:
-            parsed = parse_maps_intent(str(message))
-            if parsed:
-                _pending["parsed"] = parsed
-                if isinstance(intent, dict) \
-                        and not intent.get("needs_web_search"):
-                    intent["needs_web_search"] = True
-                    intent["search_query"] = str(message).strip()
+            toggle = parse_location_toggle(str(message))
+            if toggle:
+                # A location-switch ask wins the exchange: it
+                # is a settings flip, not a maps question.
+                _pending["loctoggle"] = toggle
+            else:
+                parsed = parse_maps_intent(str(message))
+                if parsed:
+                    _pending["parsed"] = parsed
+            if (toggle or _pending["parsed"]) \
+                    and isinstance(intent, dict) \
+                    and not intent.get("needs_web_search"):
+                intent["needs_web_search"] = True
+                intent["search_query"] = str(message).strip()
         except Exception as e:
             logger.warning(f"Maps trigger check failed: {e}")
         return intent
 
     def search_wrapped(query, num_results=5):
+        toggle = _pending.get("loctoggle")
+        _pending["loctoggle"] = None
+        if toggle:
+            try:
+                results = _location_toggle_results(get_uid(), toggle)
+            except Exception as e:
+                logger.warning(f"Location toggle failed: {e}")
+                results = None
+            if results:
+                return results[: max(1, num_results)]
         parsed = _pending.get("parsed")
         _pending["parsed"] = None
         if parsed:
