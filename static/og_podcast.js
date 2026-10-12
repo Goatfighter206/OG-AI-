@@ -33,7 +33,24 @@
     "display:grid;place-items:center;cursor:pointer;padding:0}" +
     "#ogPodcastCard .ogpc-x svg{width:21px;height:21px}" +
     "#ogPodcastCard .ogpc-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}" +
-    "#ogPodcastCard .ogpc-err{color:#ff9c9c;font-size:12.5px}";
+    "#ogPodcastCard .ogpc-err{color:#ff9c9c;font-size:12.5px}" +
+    /* Round 106: the locker save is an icon at the card's
+       top right, left of the canonical x (Brent: icon only,
+       next to the corner controls). */
+    "#ogPodcastCard button.ogpc-save{position:absolute;top:8px;right:58px;" +
+    "width:42px;height:42px;border-radius:50%;background:#1b1b1b;" +
+    "border:1px solid #333;color:#e8e8e8;display:grid;place-items:center;" +
+    "cursor:pointer;padding:0}" +
+    "#ogPodcastCard .ogpc-save svg{width:21px;height:21px;fill:none;" +
+    "stroke:currentColor;stroke-width:2;stroke-linecap:round;" +
+    "stroke-linejoin:round}" +
+    "#ogPodcastCard button.ogpc-save:hover{border-color:rgba(255,193,7,.7);" +
+    "color:#ffc107}" +
+    "#ogPodcastCard button.ogpc-save.is-saved{background:linear-gradient(" +
+    "135deg,#ffc107,#ff8f00);color:#151515;border-color:transparent}" +
+    "#ogPodcastCard button.ogpc-save.is-saved svg{fill:currentColor}" +
+    "#ogPodcastCard .ogpc-savenote{color:#ff9c9c;font-size:12.5px;" +
+    "align-self:center}";
   document.head.appendChild(css);
 
   var card = document.createElement("section");
@@ -126,18 +143,38 @@
       var dl = el("a", "ogpc-dl", "⬇ Download");
       dl.href = audio.src; dl.setAttribute("download", "");
       btns.appendChild(dl);
-      var save = el("button", "ogpc-no", j.saved ? "Saved ✓" : "Save to locker");
-      save.disabled = !!j.saved;
+      var snote = el("span", "ogpc-savenote", "");
+      btns.appendChild(snote);
+      card.appendChild(btns);
+      /* Round 106: the save rides the same POST, but it is
+         an icon now — the folder glyph at the card's top
+         right, left of the x. Saved = the glyph fills gold
+         (the old "Saved ✓" state); a failure keeps the old
+         words, on the note line + the icon's label, and the
+         icon re-arms exactly like the old button did. */
+      var save = el("button", "ogpc-save");
+      save.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + FOLDER + '"/></svg>';
+      save.setAttribute("aria-label", j.saved ? "Saved" : "Save to locker");
+      save.setAttribute("title", j.saved ? "Saved" : "Save to locker");
+      if (j.saved) { save.classList.add("is-saved"); save.disabled = true; }
       save.addEventListener("click", function () {
         save.disabled = true;
         post("/podcast/save/" + j.id).then(function (d) {
-          save.textContent = d && d.ok ? "Saved ✓"
-            : (d && d.error ? "Save — " + d.error : "Save failed");
-          if (!(d && d.ok)) save.disabled = false;
+          if (d && d.ok) {
+            save.classList.add("is-saved");
+            save.setAttribute("aria-label", "Saved");
+            save.setAttribute("title", "Saved");
+          } else {
+            var msg = d && d.error ? "Save — " + d.error : "Save failed";
+            snote.textContent = msg;
+            save.setAttribute("aria-label", msg);
+            save.setAttribute("title", msg);
+            save.disabled = false;
+          }
         });
       });
-      btns.appendChild(save);
-      card.appendChild(btns);
+      card.appendChild(save);
+      card.querySelector("h3").style.marginRight = "108px";
       card.hidden = false;
       return;
     }
