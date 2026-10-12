@@ -232,7 +232,15 @@ def language_directive(uid: str) -> str:
 def round65_directives(uid: str, message) -> list:
     """All Round 65 directives for one turn, in order:
     language first, then the retaliation comeback (which
-    og_comebacks itself gates on the detector + swearing_on())."""
+    og_comebacks itself gates on the detector + swearing_on()).
+
+    Round 84: the account's own shit-talking switch gates
+    what rides here — OFF for this user drops the comeback
+    (its own master gate already ran inside og_comebacks)
+    and silences the new bank; ON + an explicit shit-talk
+    invite + no comeback this turn appends og_shittalk's
+    bank directive (one quoted line per turn, retaliation
+    owns its turn)."""
     out = []
     try:
         directive = language_directive(uid)
@@ -240,13 +248,28 @@ def round65_directives(uid: str, message) -> list:
             out.append(directive)
     except Exception as e:  # assembly never eats a turn
         logger.warning(f"Language directive failed: {e}")
+    user_on = True
+    try:
+        import og_shittalk as _st
+        user_on = _st.on_for(uid)
+    except Exception as e:
+        logger.warning(f"Shittalk gate failed: {e}")
+    comeback = ""
     try:
         import og_comebacks as _cb
-        directive = _cb.comeback_directive(message)
-        if directive:
-            out.append(directive)
+        comeback = _cb.comeback_directive(message)
+        if comeback and user_on:
+            out.append(comeback)
     except Exception as e:
         logger.warning(f"Comeback directive failed: {e}")
+    if user_on and not comeback:
+        try:
+            import og_shittalk as _st
+            directive = _st.shittalk_directive(uid, message)
+            if directive:
+                out.append(directive)
+        except Exception as e:
+            logger.warning(f"Shittalk directive failed: {e}")
     return out
 
 
