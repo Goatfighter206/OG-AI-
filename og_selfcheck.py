@@ -2,9 +2,20 @@
 "Have OG auto check system two times a day, make sure everything
 run good, he will check all of his system."
 
-WHAT THIS IS. Twice a day (a background loop wakes hourly and runs
-the check when the durable store says >=12h since the last one),
-OG examines his own systems and files ONE report:
+WHAT THIS IS. Once a night, in the 23:00 owner-time window
+(Round 72; Brent's activation diet, 2026-10-11: "don't have
+everything running in OG — only the stuff he needs"), OG
+examines his own systems and files ONE report. The battery
+used to run twice a day on a due-loop; the daytime auto-run
+is RETIRED — the check now runs inside the same 23:00
+window as the nightly auto-update, feeding it (the fix
+queue ingest below is where its findings become proposals),
+and the operator's manual POST /system/check still runs
+one on demand. The owner system_check notification —
+including the overload alerting — is emitted by this
+battery, so it now evaluates once a night too (and
+immediately on a manual run); there is no separate daytime
+alert evaluation.
 
 1. BUTTONS. A curated census maps the controls a visitor can see
    to the route behind each one, and every route is probed
@@ -857,6 +868,40 @@ def due(now: Optional[float] = None) -> bool:
     return (now - float(last)) >= RUN_EVERY_SECONDS
 
 
+def run_nightly_if_due(now: Optional[float] = None) -> Optional[str]:
+    """Round 72: the battery's ONE scheduled run — inside
+    the 23:00 owner-local window (og_autoupdate's own night
+    arithmetic: 23:00 through the 03:59 catch-up tail), once
+    per night, stamped in this module's durable state
+    BEFORE running so a deploy restart inside the window
+    can neither double-run the night nor hot-loop it.
+    Returns the night (YYYY-MM-DD) when a check ran, else
+    None. Deliberately NOT gated by OG_AUTO_UPDATE_ENABLED:
+    the gate governs auto-APPLYING fixes; diagnosis and the
+    owner's overload alert belong to the window itself.
+    Called by the autoupdate loop (sequenced before its
+    tick, so tonight's findings feed tonight's collect) and
+    by this module's own loop as a second caller. Fail-safe:
+    never raises."""
+    try:
+        if not enabled():
+            return None
+        import og_autoupdate as _au
+        night = _au._night_for(_au._owner_now(now))
+        if night is None:
+            return None
+        state = _state()
+        if state.get("last_night_run") == night:
+            return None
+        state["last_night_run"] = night
+        _put("state", state)
+        run_check("nightly")
+        return night
+    except Exception as e:
+        logger.warning(f"Nightly self-check failed: {e}")
+        return None
+
+
 # --- Chat seam (mirror of the house pattern; installed last) -------------------------
 
 _pending: Dict = {"job": None}
@@ -993,8 +1038,14 @@ def register_selfcheck_routes(app):
             while True:
                 await asyncio.sleep(max(30, POLL_SECONDS))
                 try:
-                    if due():
-                        await asyncio.to_thread(run_check, "scheduled")
+                    # Round 72: the daytime due-loop is
+                    # retired. This loop only wakes the ONE
+                    # nightly run inside the 23:00 window
+                    # (the autoupdate loop calls the same
+                    # entry, sequenced before its tick; the
+                    # durable stamp makes the two callers
+                    # exactly-once together).
+                    await asyncio.to_thread(run_nightly_if_due)
                 except Exception as e:
                     logger.warning(f"Selfcheck cycle failed: {e}")
 
