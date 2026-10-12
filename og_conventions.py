@@ -59,7 +59,7 @@ _KEY_CAP = 120
 STORE_FILE = os.getenv("OG_CONVENTIONS_STORE",
                        "conventions_store.json")
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -119,7 +119,8 @@ def _own_get(key: str):
             return row[0] if row else None
         except Exception as e:
             logger.warning(
-                f"Conventions DB load failed, using file: {e}")
+                f"Conventions DB load failed: {e}")
+            raise StoreError("conventions store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
     return store.get(key)
@@ -140,7 +141,8 @@ def _own_put(key: str, value):
             return
         except Exception as e:
             logger.warning(
-                f"Conventions DB save failed, using file: {e}")
+                f"Conventions DB save failed: {e}")
+            raise StoreError("conventions store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
         store[key] = value
@@ -256,7 +258,8 @@ def _all_notebooks(owner: str) -> Dict[str, List[dict]]:
                 return out
             except Exception as e:
                 logger.warning(
-                    f"Conventions DB scan failed, using file: {e}")
+                    f"Conventions DB scan failed: {e}")
+                raise StoreError("conventions store unavailable (Round 99)") from e
         with _store_lock:
             store = _load_file_store()
         for k, v in store.items():
