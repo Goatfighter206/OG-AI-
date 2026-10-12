@@ -65,6 +65,23 @@ og_accounts_data when OG_MEMORY_DB_URL is set, else a JSON
 file (accounts_store.json; OG_ACCOUNTS_STORE overrides the
 path, used by the test suite).
 
+STORE ERRORS (Round 99). When the database IS configured
+and does not answer, _get/_put/_del/_all_items raise
+og_db.StoreError — they never fall back to the file
+shadow. The pre-Round-99 fallback manufactured answers
+during database stalls: a correct password was checked
+against an empty file store and counted as a failed try
+(five hiccups = a 15-minute lockout of the owner,
+2026-10-12), and a live session read as signed-out.
+Callers therefore fail honestly: the auth routes answer
+503 ERR_STORE, a store error records NO login failure,
+and /auth/me + the sign-in gate answer a non-definitive
+503 instead of a definitive signed-out. A successful
+password reset also clears the account's throttle
+records (the reset proves mailbox control). The file
+store remains only for the genuinely unconfigured case
+(no OG_MEMORY_DB_URL — local/dev/tests).
+
 GATE ACTIVATION. The /chat gate follows the codebase's env
 convention: OG_SIGNIN_GATE=on forces it on, =off forces it
 off; unset, it is ON on the hosted runtime (Render sets
@@ -109,6 +126,7 @@ ERR_UNDERAGE = ("OG is 18+ only — you have to be 18 or older "
 ERR_THROTTLED = "Too many tries — wait a bit and try again."
 FORGOT_OK = "If that email has an account, a reset link is on its way."
 ERR_RESET = "That reset link didn't work. Ask for a new one and try again."
+ERR_STORE = "My end hiccupped — try again in a moment."
 RESET_SECONDS = 60 * 60
 
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
@@ -117,7 +135,9 @@ STORE_FILE = os.getenv("OG_ACCOUNTS_STORE", "accounts_store.json")
 _store_lock = threading.Lock()
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
+from og_db import DB_CONNECT_RETRIES as _DB_RETRIES
+from og_db import DB_CONNECT_RETRY_DELAY as _DB_RETRY_DELAY
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -129,8 +149,32 @@ except Exception:  # psycopg missing — file backend
 # --- Durable store (Round 18 pattern: one key -> JSON blob) --------------------
 
 
+def _db_connect_once():
+    return psycopg.connect(
+        MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+
+
 def _db_connect():
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    # Round 99: ONE bounded retry on a CONNECT failure
+    # only (og_db.DB_CONNECT_RETRIES). A backend that is
+    # waking — the hosted free tier in its cold regime —
+    # can eat a whole connect budget on the first attempt
+    # and answer the second at once; without the retry
+    # that wake window reads as "store down" and, before
+    # this round, manufactured wrong answers from the
+    # file shadow. Statement-phase failures never reach
+    # here twice: they surface from the calls below (or
+    # the caller's statements) and become StoreError with
+    # no retry. Worst case against a truly dead backend,
+    # one store op costs 5 + 0.5 + 5 ≈ 10.5s, once, then
+    # the honest 503 short-circuits the request.
+    try:
+        conn = _db_connect_once()
+    except Exception as e:
+        logger.warning(
+            f"Accounts DB connect failed, retrying once: {e}")
+        time.sleep(_DB_RETRY_DELAY)
+        conn = _db_connect_once()
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_accounts_data ("
@@ -170,7 +214,8 @@ def _get(key: str):
                     row = cur.fetchone()
             return row[0] if row else None
         except Exception as e:
-            logger.warning(f"Accounts DB load failed, using file: {e}")
+            logger.warning(f"Accounts DB load failed: {e}")
+            raise StoreError("accounts store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
     return store.get(key)
@@ -189,7 +234,8 @@ def _put(key: str, value):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Accounts DB save failed, using file: {e}")
+            logger.warning(f"Accounts DB save failed: {e}")
+            raise StoreError("accounts store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
         store[key] = value
@@ -206,7 +252,8 @@ def _del(key: str):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Accounts DB delete failed, using file: {e}")
+            logger.warning(f"Accounts DB delete failed: {e}")
+            raise StoreError("accounts store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
         store.pop(key, None)
@@ -341,11 +388,44 @@ def _record_failure(email: str, ip: str):
     rec = _get(key)
     count = int(rec.get("count") or 0) + 1 if isinstance(rec, dict) else 1
     locked = time.time() + FAIL_LOCK_SECONDS if count >= FAIL_LIMIT else 0
-    _put(key, {"count": count, "locked_until": locked})
+    # Round 99: the record carries the email so a password
+    # reset can find (and clear) every throttle record the
+    # account owns, across IPs — the key itself stays a
+    # hash of email|ip.
+    _put(key, {"count": count, "locked_until": locked,
+               "email": email})
+
+
+def _clear_failures(email: str):
+    """Drop EVERY throttle record for the account (all IPs).
+    Called after a successful password reset: the reset
+    proved mailbox control, so a lock earned before it —
+    above all a lock manufactured by a database stall —
+    must not keep punishing the owner (Round 99). Records
+    written before Round 99 carry no email field and
+    cannot be matched; they expire on their own in at
+    most FAIL_LOCK_SECONDS."""
+    if not email:
+        return
+    for key, data in _all_items():
+        if (key.startswith("fail:") and isinstance(data, dict)
+                and data.get("email") == email):
+            _del(key)
 
 
 def _err(message: str, status: int = 400) -> JSONResponse:
     return JSONResponse({"ok": False, "error": message}, status_code=status)
+
+
+async def _store_error_handler(request: Request, exc: StoreError):
+    """One app-wide honest answer to a store error (Round
+    99): registered for og_db.StoreError in
+    register_account_routes, so ANY route that lets one
+    escape — auth, 2FA, deletion, library, any converted
+    store's routes — answers the same 503 instead of a
+    bare 500 or, worse, a manufactured success."""
+    logger.warning(f"Store error answered 503: {exc}")
+    return _err(ERR_STORE, status=503)
 
 
 # --- Password reset ----------------------------------------------------------
@@ -360,7 +440,8 @@ def _all_items():
                     cur.execute("SELECT key, data FROM og_accounts_data")
                     return cur.fetchall()
         except Exception as e:
-            logger.warning(f"Accounts DB scan failed, using file: {e}")
+            logger.warning(f"Accounts DB scan failed: {e}")
+            raise StoreError("accounts store unavailable (Round 99)") from e
     with _store_lock:
         return list(_load_file_store().items())
 
@@ -585,7 +666,27 @@ class SignInGateMiddleware:
                     except Exception:
                         token = ""
                     break
-            if await asyncio.to_thread(_session_for, token) is None:
+            try:
+                sess = await asyncio.to_thread(_session_for, token)
+            except StoreError:
+                # Round 99: the session store could not
+                # answer — that is UNKNOWN, never
+                # "signed out". A 503 keeps the client in
+                # its reconnecting state (the R79 watcher
+                # treats only a 200 + boolean as
+                # definitive); a 401 here would paint the
+                # sign-in wall over a live session.
+                body = json.dumps(
+                    {"ok": False, "error": ERR_STORE}).encode("utf-8")
+                await send({
+                    "type": "http.response.start", "status": 503,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ]})
+                await send({"type": "http.response.body", "body": body})
+                return
+            if sess is None:
                 body = json.dumps(
                     {"detail": "sign_in_required"}).encode("utf-8")
                 await send({
@@ -603,6 +704,9 @@ class SignInGateMiddleware:
 
 def register_account_routes(app):
     app.add_middleware(SignInGateMiddleware)
+    # Round 99: one honest 503 for a store error escaping
+    # ANY route on this app (see _store_error_handler).
+    app.add_exception_handler(StoreError, _store_error_handler)
 
     @app.post("/auth/signup")
     async def auth_signup(request: Request):
@@ -668,6 +772,12 @@ def register_account_routes(app):
                 return JSONResponse({
                     "ok": True, "two_factor_required": True,
                     "challenge": chal})
+        except StoreError:
+            # Round 99: the 2FA store could not answer —
+            # that must fail the LOGIN honestly (503 via
+            # the app handler), never skip the second
+            # factor and mint a session on password alone.
+            raise
         except Exception as e:
             logger.warning(f"2FA login step skipped: {e}")
         # Round 44: uid-keyed guest state (a buyer entitlement)
@@ -730,6 +840,13 @@ def register_account_routes(app):
             return _err(ERR_RESET)
         acct["pw"] = _hash_password(password)
         _put("acct:" + email, acct)
+        # Round 99: the reset proved mailbox control, so
+        # the account's throttle records (every IP) die
+        # with the old password — a lock earned before the
+        # reset must not outlive it. Before the token
+        # burns, so a store error mid-reset leaves the
+        # token alive for an honest retry.
+        _clear_failures(email)
         _del(_reset_key(token))          # single-use: burn it
         _del("resetfor:" + email)
         _delete_sessions_for(email)      # every session dies
