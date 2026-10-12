@@ -66,7 +66,7 @@ _LESSON_CAP = 800
 
 STORE_FILE = os.getenv("OG_LESSONS_STORE", "lessons_store.json")
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -123,7 +123,8 @@ def _own_get(key: str):
                     row = cur.fetchone()
             return row[0] if row else None
         except Exception as e:
-            logger.warning(f"Lessons DB load failed, using file: {e}")
+            logger.warning(f"Lessons DB load failed: {e}")
+            raise StoreError("lessons store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
     return store.get(key)
@@ -142,7 +143,8 @@ def _own_put(key: str, value):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Lessons DB save failed, using file: {e}")
+            logger.warning(f"Lessons DB save failed: {e}")
+            raise StoreError("lessons store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
         store[key] = value
