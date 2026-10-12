@@ -108,6 +108,7 @@ _MAX_SEARCH = 5
 # OG_MEMORY_DB_URL points at a Postgres database the tokens live
 # there; psycopg missing simply means the JSON file backend is used.
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -131,7 +132,7 @@ def _cookie_max_age() -> int:
 
 def _youtube_db_connect():
     """Connect to the durable DB, creating the YouTube tokens table."""
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_youtube_tokens ("
