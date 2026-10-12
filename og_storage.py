@@ -82,7 +82,7 @@ NEAR_FULL_RATIO = 0.90
 _CLEANUP_TTL = 600  # a cleanup proposal lives 10 minutes
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
 try:
     import psycopg
 except Exception:  # psycopg missing — file backend for metadata
@@ -277,7 +277,8 @@ def _all_records() -> List[Dict]:
                         "kind, uploaded_at, s3_key FROM og_storage_files")
                     return [_row_to_record(r) for r in cur.fetchall()]
         except Exception as e:
-            logger.warning(f"Storage DB load failed, using file: {e}")
+            logger.warning(f"Storage DB load failed: {e}")
+            raise StoreError("storage records unavailable (Round 99)") from e
     with _store_lock:
         return _load_file_records()
 
@@ -297,7 +298,8 @@ def _insert_record(rec: Dict):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Storage DB insert failed, using file: {e}")
+            logger.warning(f"Storage DB insert failed: {e}")
+            raise StoreError("storage records unavailable (Round 99)") from e
     with _store_lock:
         records = _load_file_records()
         records.append(rec)
@@ -314,7 +316,8 @@ def _delete_record_row(fid: str):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Storage DB delete failed, using file: {e}")
+            logger.warning(f"Storage DB delete failed: {e}")
+            raise StoreError("storage records unavailable (Round 99)") from e
     with _store_lock:
         records = [r for r in _load_file_records() if r.get("id") != fid]
         _save_file_records(records)
