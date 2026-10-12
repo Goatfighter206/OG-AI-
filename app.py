@@ -38,11 +38,7 @@ logger = logging.getLogger(__name__)
 DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "false").lower() == "true"
 
 # --- OG Pro (money layer): chat tokens are metered WEEKLY
-# (Round 55 — trailing 7 days, every tier; the free pool is
-# FREE_DAILY_TOKENS x7). OG_FREE_DAILY_LIMIT = legacy alias.
-FREE_DAILY_TOKENS = int(os.getenv(
-    "OG_FREE_DAILY_TOKENS", os.getenv("OG_FREE_DAILY_LIMIT", "25000")))
-# (Raised 10k -> 25k 2026-10-08, Brent's call.)
+# (Round 55 — trailing 7 days, every tier).
 PRO_UPGRADE_URL = os.getenv("OG_PRO_LINK", "#")
 # SECURITY: set OG_PRO_TOKEN to a long random secret in production;
 # the fallback placeholder lets anyone who knows it mint a Pro cookie.
@@ -149,7 +145,6 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
 
 # --- AI voice: /tts speaks replies (OpenAI TTS "onyx") when
 # OPENAI_API_KEY is set; else 503 and the page uses device voice.
-TTS_DAILY_LIMIT = int(os.getenv("OG_TTS_DAILY_LIMIT", "60"))
 TTS_MAX_CHARS = 600
 # Round 37: per-avatar voices for the Unity app stage avatars.
 # /tts accepts an optional "voice" field; only these OpenAI
@@ -181,9 +176,6 @@ from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
     IMAGE_DOWN_LINE as _IMAGE_DOWN_LINE,
     clean_image_prompt as _clean_image_prompt,
     openai_generate_image as _openai_generate_image)
-
-IMAGE_FREE_DAILY = int(os.getenv("OG_IMAGE_FREE_DAILY", "2"))
-IMAGE_PRO_DAILY = int(os.getenv("OG_IMAGE_PRO_DAILY", "25"))
 
 def _consume_image(uid: str):
     """Record one generated image today (UTC); success-only.
@@ -334,6 +326,7 @@ import og_selfcheck as _og_selfcheck
 import og_fixqueue as _og_fixqueue
 import og_lessons as _og_lessons
 import og_tokenpacks as _og_tokenpacks  # Round 56
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -409,7 +402,6 @@ def _verify_stripe_signature(payload: bytes, sig_header: str, secret: str) -> bo
 # detect_intent/web_search hooks; Responses web_search + fallbacks.
 SEARCH_MODEL = os.getenv("OG_SEARCH_MODEL", "gpt-4o-mini")
 SEARCH_API_KEY = os.getenv("OG_SEARCH_API_KEY", "")  # optional Tavily key
-LOOKUP_DAILY_LIMIT = int(os.getenv("OG_LOOKUP_DAILY_LIMIT", "25"))
 LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
 # Lookup tokens for the current exchange; single slots safe
 # (chat is serialized).
@@ -1429,7 +1421,7 @@ _google_lock = threading.Lock()
 
 def _google_db_connect():
     """Connect to the durable DB, creating the Google tokens table."""
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_google_tokens ("
@@ -1535,7 +1527,7 @@ except Exception:  # psycopg not installed — DB backend simply unavailable
 
 def _memory_db_connect():
     """Connect to the durable memory DB, creating the table if needed."""
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=5)
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_visitor_memory ("
@@ -1634,8 +1626,11 @@ def _save_memory_store_file(store: Dict):
 # The *_locked helpers assume the caller holds _memory_lock (/chat
 # holds it across swap-in -> process -> save-back).
 def _load_visitor_history_locked(uid: str) -> List[Dict]:
-    """This visitor's stored conversation thread (most recent last)."""
-    entry = _load_memory_store().get(uid)
+    """This visitor's stored thread (most recent last) — Round 135
+    (B6a): KEYED durable read via og_memory_io, whole-store fallback."""
+    entry = _og_memory_io.load_history_entry(uid)
+    if entry is None:
+        entry = _load_memory_store().get(uid)
     if isinstance(entry, dict) and isinstance(entry.get("history"), list):
         return list(entry["history"])
     return []
@@ -2314,7 +2309,8 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         )
 
     # Freemium gate (Round 7): paid tiers skip the token cap.
-    tier = _tier_of(raw_request.cookies, uid)
+    # Round 135 (B2): DB-backed tier resolution, off the event loop.
+    tier = await asyncio.to_thread(_tier_of, raw_request.cookies, uid)
     is_pro = tier != "free"
     entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
         raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
