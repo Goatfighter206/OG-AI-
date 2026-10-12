@@ -607,3 +607,11 @@ def register_library_routes(app):
         _ogperm.register_permissions_routes(app)
     except Exception as e:
         logger.warning(f"Permissions routes skipped: {e}")
+    # Round 98: the Voice folder's routes (GET/POST
+    # /voice — the one per-account store for OG's
+    # speaking voice) ride the same registration.
+    try:
+        import og_voice_style as _ogvoicestyle
+        _ogvoicestyle.register_voice_routes(app)
+    except Exception as e:
+        logger.warning(f"Voice routes skipped: {e}")
