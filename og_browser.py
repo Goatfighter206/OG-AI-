@@ -141,6 +141,7 @@ import logging
 import math
 import os
 import re
+import sys
 import threading
 import time
 import urllib.error
@@ -151,6 +152,11 @@ from typing import Dict, List, Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
+
+import og_browser_warm as _warm  # noqa: E402
+
+# Round 72: og_browser_warm takes this module as its deps.
+_SELF = sys.modules[__name__]
 
 logger = logging.getLogger(__name__)
 
@@ -364,6 +370,11 @@ def _get_session(uid: str) -> Optional[Dict]:
 
 
 def _set_session(uid: str, rec: Optional[Dict]) -> None:
+    if rec is not None:
+        # Round 72: carry the meter forward (og_browser_warm)
+        # — a stale whole-record write can never unspend
+        # banked seconds or close an open window it predates.
+        rec = _warm.carry_meter(_get_session(uid), rec)
     _usage_set(f"browser_sess:{uid}", rec)
 
 
@@ -429,13 +440,21 @@ def _plan_for(uid: str, tier: str) -> Dict:
             "taste_available": False}
 
 
-def _session_elapsed_min(rec: Dict) -> float:
-    return max(0.0, (time.time() - float(rec.get("started", 0))) / 60.0)
+# Round 72: the active-window meter lives in
+# og_browser_warm (split for size) — tier minutes accrue
+# only inside active-use windows, never in warm standby;
+# the taste keeps its wall clock.
+_session_elapsed_min = _warm.session_elapsed_min
+_active_elapsed_s = _warm.active_elapsed_s
+_session_minutes_left = _warm.minutes_left
 
 
-def _session_minutes_left(rec: Dict) -> int:
-    left = float(rec.get("budget", 0)) - _session_elapsed_min(rec)
-    return max(0, int(math.ceil(left)))
+def _meter_open(uid: str) -> None:
+    _warm.meter_open(uid, _SELF)
+
+
+def _meter_bank(uid: str, cap=None) -> None:
+    _warm.meter_bank(uid, cap, _SELF)
 
 
 def _end_session(uid: str, why: str = "") -> Optional[Dict]:
@@ -458,7 +477,13 @@ def _end_session(uid: str, why: str = "") -> Optional[Dict]:
             _steel_release(sid)
         except Exception as e:
             logger.warning(f"Steel release failed for {sid}: {e}")
-    used = int(math.ceil(_session_elapsed_min(rec)))
+    # Round 72: tier mode meters ACTIVE windows only (the
+    # open window folds in via _active_elapsed_s here); the
+    # taste's "used" stays its wall clock, as before.
+    if rec.get("mode") == "taste":
+        used = int(math.ceil(_session_elapsed_min(rec)))
+    else:
+        used = int(math.ceil(_active_elapsed_s(rec) / 60.0))
     if rec.get("mode") == "tier" and used > 0:
         _add_minutes(uid, used)
     rec["ended_why"] = why
@@ -498,62 +523,15 @@ _pending_by_uid = _PendingMap(_usage_get, _usage_set, _with_store)
 
 
 def _set_pending(uid: str, state: Dict) -> bool:
-    """Park a pending proposal / gated action. Returns False when
-    the park is REFUSED (Round 36: an action approval with no
-    human description — no desc and no text it will post)."""
-    state = dict(state)
-    if state.get("kind") == "action":
-        desc = str(state.get("desc") or "").strip()
-        text = str(state.get("post_text")
-                   or state.get("disp_text")
-                   or state.get("text") or "").strip()
-        if not desc and not text:
-            logger.warning(
-                "Browser pending refused: action approval with "
-                "no description")
-            return False
-    state["created"] = time.time()
-    with _pending_lock:
-        prev = _pending_by_uid.get(uid)
-        # Round 38: re-parking the SAME still-live approval
-        # (identical identity, unexpired) is the same ask —
-        # it must not alert twice. A park that replaces a
-        # resolved / expired / different pending is a new ask.
-        same_live = (
-            prev is not None
-            and prev.get("kind") == state.get("kind")
-            and _pending_identity(prev) == _pending_identity(state)
-            and time.time() - float(prev.get("created", 0))
-            <= _PENDING_TTL)
-        _pending_by_uid[uid] = state
-    if state.get("kind") == "action" and not same_live:
-        _alert_approval(uid, state)
-    return True
+    return _warm.set_pending(uid, state, _SELF)
 
 
 def _get_pending(uid: str) -> Optional[Dict]:
-    if not uid:
-        return None
-    with _pending_lock:
-        state = _pending_by_uid.get(uid)
-        if state and time.time() - float(state.get("created", 0)) \
-                > _PENDING_TTL:
-            del _pending_by_uid[uid]
-            return None
-        state = dict(state) if state else None
-    if state and state.get("kind") == "action" \
-            and not _get_session(uid):
-        # Orphan sweep: an action approval belongs to its session.
-        # No session record -> the pending is already dead; clear
-        # it here so /browser/status can never report it.
-        _clear_pending(uid)
-        return None
-    return state
+    return _warm.get_pending(uid, _SELF)
 
 
 def _clear_pending(uid: str):
-    with _pending_lock:
-        _pending_by_uid.pop(uid, None)
+    _warm.clear_pending(uid, _SELF)
 
 
 # --- Round 49: the always-allow list -------------------------------------------
@@ -1527,9 +1505,15 @@ def _live_checks(uid: str, rec: Dict) -> Optional[str]:
     return None
 
 
+# Round 72: warmth rotation lives in og_browser_warm.
+
+
 def _run_action(uid: str, rec: Dict, action: Dict,
                 el: Optional[Dict] = None) -> List[Dict]:
     """Execute one already-cleared action and narrate the result."""
+    # Round 72: OG driving/loading is an active-use window —
+    # opened here, banked in the finally below.
+    _meter_open(uid)
     try:
         if action.get("do") == "navigate":
             ok, reason = _url_gate(action["url"])
@@ -1589,6 +1573,8 @@ def _run_action(uid: str, rec: Dict, action: Dict,
                        f"That move glitched: {e}. The session is still "
                        "live; try the move again or tell me a different "
                        "one." + _session_footer(uid))
+    finally:
+        _meter_bank(uid)
 
 
 # --- Chat parsing ---------------------------------------------------------------
@@ -1921,6 +1907,10 @@ def _start_session(uid: str, pend: Dict) -> List[Dict]:
                 pass
     rec = {"steel_id": sess["id"], "ws": sess["websocketUrl"],
            "started": time.time(), "last_action": time.time(),
+           # Round 72: steel_born (rotation reads it) +
+           # accrued_s / win_start (the active-window meter).
+           "steel_born": time.time(), "accrued_s": 0.0,
+           "win_start": None,
            "budget": budget, "mode": plan["mode"], "control": "og",
            "goal": pend.get("goal", ""), "focus": None,
            "last_url": "", "last_title": "", "taste_counted": False,
@@ -1984,6 +1974,7 @@ def _execute_gated(uid: str, pend: Dict) -> List[Dict]:
     if why:
         return _result("OG BROWSER", "OG browser — session ended",
                        f"That action never ran: {why}.")
+    rec = _warm.rotate_if_stale(uid, _SELF) or rec
     action = pend.get("action") or {}
     try:
         snap = _drive(rec, {"do": "read"})
@@ -2111,6 +2102,12 @@ def _do_control(uid: str, mode: str) -> List[Dict]:
     rec["control"] = mode
     rec["last_action"] = time.time()
     _set_session(uid, rec)
+    # Round 72: takeover is an active-use window — opens
+    # here, banks on hand-back.
+    if mode == "visitor":
+        _meter_open(uid)
+    else:
+        _meter_bank(uid)
     if mode == "visitor":
         return _result("OG BROWSER", "OG browser — your wheel",
                        "It's yours. Drive it right in the live panel "
@@ -2192,6 +2189,7 @@ def _do_act(uid: str, job: Dict) -> List[Dict]:
     if why and why != "visitor_driving":
         return _result("OG BROWSER", "OG browser — session ended",
                        f"Can't: {why}.")
+    rec = _warm.rotate_if_stale(uid, _SELF) or rec
     verb = job.get("verb")
     if verb == "navigate":
         return _run_action(uid, rec, {"do": "navigate",
@@ -2287,6 +2285,7 @@ def _attempt_post_draft(uid: str) -> List[Dict]:
     if why and why != "visitor_driving":
         return _result("OG BROWSER", "OG browser — session ended",
                        f"Can't draft that post: {why}.")
+    rec = _warm.rotate_if_stale(uid, _SELF) or rec
     try:
         snap = _drive(rec, {"do": "read"})
     except _DriveError as e:
