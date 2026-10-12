@@ -533,7 +533,7 @@ const response = await fetch(`${API_URL}/health`);
 const data = await response.json();
 updateStatus(`Connected - ${data.agent_name}`);
 } catch (error) {
-updateStatus('Server Offline - Start backend on port 8000');
+updateStatus('Server Offline');
 }
 }
 function updateStatus(text) {
@@ -615,7 +615,7 @@ const streamed = await streamReply(message, coords, imgFlag);
 if (!streamed) await classicReply(message, coords, imgFlag);
 } catch (error) {
 console.error('Error:', error);
-addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
+addMessage('ai', 'Yo my bad, something went wrong on my end. Ask me again in a second.');
 updateStatus('Error - Check connection');
 } finally {
 isProcessing = false;
@@ -1459,7 +1459,7 @@ try {
 var streamed = await streamReply(message, pos.coords);
 if (!streamed) await classicReply(message, pos.coords);
 } catch (error) {
-addMessage('ai', 'Yo my bad, something went wrong. Check if the server is running on port 8000.');
+addMessage('ai', 'Yo my bad, something went wrong on my end. Ask me again in a second.');
 updateStatus('Error - Check connection');
 } finally {
 isProcessing = false;
