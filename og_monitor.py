@@ -50,6 +50,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
+import og_garble
+
 logger = logging.getLogger(__name__)
 
 # --- Config -------------------------------------------------------------------
@@ -1057,8 +1059,59 @@ def _digest(uid, consume_lookup) -> Optional[list]:
     return _result("🗞️ The visitor's digest", body)
 
 
+# --- Garble tolerance (Round 75) -------------------------------------------------
+# This seam's vocabulary: the alert/watch trigger words, the
+# digest and calorie-log words, the direction words. The symbol
+# is payload — never in the vocabulary, and og_garble never
+# rewrites short ALL-CAPS tokens, so a ticker can't be
+# "corrected" into a word or the reverse.
+
+_GARBLE_VOCAB = (
+    "alert", "watch", "watchlist", "alerts", "watching",
+    "calories", "calorie", "log", "ate", "eaten", "eat", "food",
+    "digest", "brief", "missed", "miss", "what", "new", "today",
+    "undo",
+    "remove", "delete", "last", "cancel", "unwatch", "above",
+    "below", "over", "under", "drops", "falls", "rises", "hits",
+    "goes", "moves", "price", "stock", "crypto", "if", "when",
+    "me", "my",
+)
+
+
+def _parse_monitor_intent_garbled(message: str) -> Optional[Dict]:
+    """parse_monitor_intent's Round 75 second chance: repair,
+    then let the EXACT parser read the reading. A job claimed
+    this way carries "_garble" for the read-back."""
+    repaired, info = og_garble.repair_info(
+        str(message), _GARBLE_VOCAB)
+    if info is None:
+        return None
+    job = parse_monitor_intent(repaired)
+    if job is None:
+        return None
+    job = dict(job)
+    job["_garble"] = info
+    return job
+
+
 def monitor_results(job, uid, consume_lookup, consume_calorie,
                     calorie_left, get_tier) -> Optional[list]:
+    """Run one parsed monitoring job; (Round 75) a job claimed
+    through the garble repair carries its fixes, and the answer
+    names the reading that was acted on. Clean jobs run
+    byte-identically."""
+    garble = job.pop("_garble", None) \
+        if isinstance(job, dict) else None
+    results = _monitor_results(job, uid, consume_lookup,
+                               consume_calorie, calorie_left,
+                               get_tier)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _monitor_results(job, uid, consume_lookup, consume_calorie,
+                     calorie_left, get_tier) -> Optional[list]:
     """Run one parsed monitoring job for this visitor."""
     if not job or not uid:
         return None
@@ -1113,7 +1166,8 @@ def install_monitor_tools(agent_instance, get_uid, consume_lookup,
             uid = get_uid()
             if uid:
                 _pending["alerts"] = _pending_alerts(uid)
-                job = parse_monitor_intent(str(message))
+                job = parse_monitor_intent(str(message)) \
+                    or _parse_monitor_intent_garbled(str(message))
                 if job:
                     _pending["job"] = job
                 if job or _pending["alerts"]:
