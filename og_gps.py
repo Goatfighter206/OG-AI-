@@ -52,6 +52,21 @@ menu needs:
   OG a place loads the same route object the map reads. There
   is exactly ONE active-route shape and ONE store for it.
 
+  LOCATION SWITCH (Round 73) — ONE per-account toggle in
+  this same store under "gpsloc:"+uid as {"on": bool}:
+    GET  /gps/location        -> {"ok": true, "on": bool}
+    POST /gps/location {on}   -> {"ok": true, "on": bool}
+  Brent's rule: once on it STAYS on — across screens and
+  restarts — until the owner taps it off again or asks OG
+  in chat; OG never turns it on by himself; default OFF.
+  Both faces (the web Driving view + the Unity app) read
+  and flip THIS switch and nothing else, and og_maps' chat
+  seam flips it for "turn my location on/off" asks — one
+  switch, one source, the faces can never disagree. The
+  switch is OG's permission to use location; the device's
+  own OS permission prompt stays the phone/browser's gate
+  underneath it.
+
 GATE. None of these paths is in og_accounts.PUBLIC_PATHS, so
 the Round 44 sign-in gate covers them by construction. A
 request with no uid cookie reads/writes nothing.
@@ -163,11 +178,12 @@ def _put(key: str, value):
 
 
 def purge_uid(uid: str):
-    """Account deletion helper: drop this uid's points and
-    its stored active route."""
+    """Account deletion helper: drop this uid's points, its
+    stored active route and its location switch."""
     if uid:
         _put("gps:" + uid, {"points": []})
         _put("gpsroute:" + uid, None)
+        _put("gpsloc:" + uid, None)
 
 
 # ===========================================================================
@@ -785,6 +801,33 @@ def store_route(uid, route, from_raw, to_raw,
 
 
 # ===========================================================================
+# Location switch (Round 73) — one per-account toggle
+# ===========================================================================
+
+
+def location_on_for(uid: str) -> bool:
+    """The account's location switch: True only when the
+    stored record says on. Anything else — no record yet,
+    a corrupt blob, no uid — reads OFF (the default)."""
+    if not uid:
+        return False
+    data = _get("gpsloc:" + uid)
+    return isinstance(data, dict) and data.get("on") is True
+
+
+def set_location_on(uid: str, on) -> bool:
+    """Flip the account's location switch; returns the
+    state now stored. No uid stores nothing and reads
+    back OFF. Nothing anywhere calls this on its own —
+    the only callers are the owner's own tap (POST
+    /gps/location) and the owner's own chat ask (og_maps'
+    location-toggle seam)."""
+    if uid:
+        _put("gpsloc:" + uid, {"on": bool(on)})
+    return location_on_for(uid)
+
+
+# ===========================================================================
 # Routes
 # ===========================================================================
 
@@ -967,3 +1010,26 @@ def register_gps_routes(app):
         uid = _uid_of(request)
         return {"ok": True,
                 "route": active_route_for(uid) if uid else None}
+
+    @app.get("/gps/location")
+    async def gps_location_get(request: Request):
+        uid = _uid_of(request)
+        if not uid:
+            # Signed-in only (the pinned contract). In
+            # production the Round 44 gate answers first
+            # with this same body; this covers any mount
+            # without the gate.
+            return JSONResponse({"detail": "sign_in_required"},
+                                status_code=401)
+        return {"ok": True, "on": location_on_for(uid)}
+
+    @app.post("/gps/location")
+    async def gps_location_set(request: Request):
+        uid = _uid_of(request)
+        if not uid:
+            return JSONResponse({"detail": "sign_in_required"},
+                                status_code=401)
+        body = await _json_body(request)
+        if not isinstance(body.get("on"), bool):
+            return _bad("on must be true or false")
+        return {"ok": True, "on": set_location_on(uid, body["on"])}
