@@ -97,6 +97,7 @@ of Round 50's approve-to-upgrade hook:
    of problem is exactly as it was.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -1263,8 +1264,63 @@ def _decide_code(owner, problems, problem, prop, auto=None):
             "and a fresh approval from you.")
 
 
+def _run_code_decision_bg(owner: str, fingerprint,
+                          prop_id: str):
+    """Round 83: the background half of a deferred code
+    approve. decide() has ALREADY claimed the proposal
+    (status 'working', stamped, saved) under the
+    stamp-before-run discipline; this worker re-loads the
+    owner's problems and runs the UNCHANGED _decide_code,
+    whose own stamps land the durable outcome (executed /
+    superseded) on every exit. An exception escaping
+    _decide_code is caught here and stamped exactly the
+    way decide()'s server-kind tail stamps a crashed
+    executor — executed/fix_failed + a lesson — so a
+    claimed proposal never strands silently at 'working'
+    because of a code error. Runs on a daemon thread;
+    never the event loop."""
+    try:
+        problems = _problems(owner)
+        problem = problems.get(fingerprint or "")
+        if problem is None:
+            for p in problems.values():
+                if (p.get("proposal") or {}).get("id") \
+                        == prop_id:
+                    problem = p
+                    break
+        if problem is None:
+            return
+        prop = problem.get("proposal") or {}
+        if prop.get("id") != prop_id or \
+                prop.get("status") != "working":
+            return  # already landed by someone else
+        _decide_code(owner, problems, problem, prop)
+    except Exception:
+        try:
+            problems = _problems(owner)
+            for p in problems.values():
+                prop = p.get("proposal") or {}
+                if prop.get("id") == prop_id and \
+                        prop.get("status") == "working":
+                    prop["status"] = "executed"
+                    prop["outcome"] = "fix_failed"
+                    p["status"] = "fix_failed"
+                    _note(p, "code_fix_failed",
+                          "The approved fix crashed before "
+                          "it could land an outcome")
+                    _save_problems(owner, problems)
+                    _lesson_fix_failed(
+                        p, prop,
+                        "the background run crashed before "
+                        "the fix could land an outcome")
+                    break
+        except Exception:
+            pass
+
+
 def decide(uid: str, ident: str, decision: str,
-           auto: Optional[dict] = None) -> Tuple[bool, str, str]:
+           auto: Optional[dict] = None,
+           defer_code: bool = False) -> Tuple[bool, str, str]:
     """The one approval door. Returns (ok, title, body).
     Executes ONLY for the owning uid, ONLY an open unexpired
     proposal, ONLY the prepared payload — then verifies and
@@ -1272,7 +1328,13 @@ def decide(uid: str, ident: str, decision: str,
     nightly auto-update's stamp (rule + night), passed ONLY
     by og_autoupdate for OG's own system fixes; every human
     caller leaves it None and nothing about their path
-    changes."""
+    changes. Round 83: `defer_code` is passed ONLY by the
+    web act route — an approved CODE fix is claimed
+    (status 'working', stamped before anything runs) and
+    executed on a background thread by _decide_code,
+    unchanged; decide() returns at once and the outcome
+    lands on the proposal when the run lands. Every other
+    decision/kind/caller behaves exactly as before."""
     found = _find(uid, ident)
     if found is None:
         return (False, "No fix waiting by that name",
@@ -1329,6 +1391,33 @@ def decide(uid: str, ident: str, decision: str,
                 "\n".join(lines))
 
     if prop.get("fix_kind") == "code":
+        if defer_code and not auto:
+            # Round 83: claim FIRST — the stamp-before-run
+            # discipline, tightened. The proposal leaves
+            # 'open' before ANY of the run's network work
+            # starts, so a second decide (a re-armed button
+            # tap, a chat YES, the nightly pass) meets a
+            # non-open proposal and runs nothing; the run
+            # itself is the unchanged _decide_code on a
+            # worker thread, off the event loop.
+            prop["status"] = "working"
+            prop["decided_at"] = now
+            _note(problem, "fix_claimed",
+                  "Owner approved — running in the "
+                  "background")
+            _save_problems(owner, problems)
+            threading.Thread(
+                target=_run_code_decision_bg,
+                args=(owner, problem.get("fingerprint"),
+                      prop["id"]),
+                daemon=True).start()
+            return (True, "Working on it",
+                    f"OG is running the fix for "
+                    f"'{problem['title']}' now — the "
+                    f"re-checks and the pull request happen "
+                    f"in the background. The card flips to "
+                    f"the result when it lands; there is "
+                    f"nothing else to tap.")
         return _decide_code(owner, problems, problem, prop,
                             auto=auto)
 
@@ -1469,6 +1558,18 @@ def record_fix_verdict(owner, fingerprint, verdict,
 
 
 def _proposal_view(problem: dict, prop: dict) -> dict:
+    # Round 83: a superseded proposal's card says WHY — the
+    # headline of the refusal that retired it, read from the
+    # problem's own history (the note _decide_code's
+    # supersede() recorded). Empty for every other status.
+    status_note = ""
+    if prop.get("status") == "superseded":
+        for h in reversed(problem.get("history") or []):
+            if isinstance(h, dict) and \
+                    h.get("event") == "code_fix_superseded" \
+                    and h.get("note"):
+                status_note = str(h["note"])
+                break
     view = {
         "id": prop.get("id"),
         "problem_id": problem.get("id"),
@@ -1479,6 +1580,7 @@ def _proposal_view(problem: dict, prop: dict) -> dict:
         "fix_kind": prop.get("fix_kind"),
         "status": prop.get("status"),
         "outcome": prop.get("outcome"),
+        "status_note": status_note,
         "created": prop.get("created"),
         "expires": prop.get("expires"),
     }
@@ -1513,15 +1615,20 @@ def _proposal_view(problem: dict, prop: dict) -> dict:
 
 
 def list_proposals(uid: str) -> dict:
-    """The caller's own proposals: open ones first, then the
-    most recent decided ones (newest 5) so outcomes stay
-    visible. Somebody else's never appear."""
+    """The caller's own proposals: ones being executed
+    right now ('working', Round 83) first, then open ones,
+    then the most recent decided ones (newest 5) so
+    outcomes stay visible — 'superseded' among them since
+    Round 83: an honest refusal is an outcome too, and a
+    card that silently vanishes reads as a dead tap.
+    Somebody else's never appear. open_count counts ONLY
+    open proposals ('working' is decided, not waiting)."""
     if not uid:
         return {"proposals": [], "open_count": 0}
     _adopt_sentinel(uid)
     for owner in _owner_keys_for(uid):
         _ensure_update_holds(owner)
-    open_views, decided = [], []
+    open_views, decided, working_views = [], [], []
     for owner in _owner_keys_for(uid):
         for prob in _problems(owner).values():
             prop = prob.get("proposal")
@@ -1534,13 +1641,20 @@ def list_proposals(uid: str) -> dict:
                     continue  # Round 71: an update inside its
                     # 11pm hold does not surface yet
                 open_views.append(_proposal_view(prob, prop))
+            elif prop.get("status") == "working":
+                # Round 83: already approved and executing —
+                # the hold governed surfacing FOR approval,
+                # never the visibility of a running fix.
+                working_views.append(_proposal_view(prob, prop))
             elif prop.get("status") in ("executed", "handed_off",
-                                        "declined"):
+                                        "declined", "superseded"):
                 decided.append(_proposal_view(prob, prop))
     open_views.sort(key=lambda v: float(v.get("created") or 0))
+    working_views.sort(key=lambda v: float(v.get("created") or 0),
+                       reverse=True)
     decided.sort(key=lambda v: float(v.get("created") or 0),
                  reverse=True)
-    return {"proposals": open_views + decided[:5],
+    return {"proposals": working_views + open_views + decided[:5],
             "open_count": len(open_views)}
 
 
@@ -1745,7 +1859,17 @@ def register_fixqueue_routes(app):
             body = {}
         if not isinstance(body, dict):
             body = {}
-        ok, title, text = decide(uid, str(body.get("id") or ""),
-                                 str(body.get("decision") or ""))
+        # Round 83: decide() NEVER runs on the event loop
+        # (the R80 rule this route missed) — and with
+        # defer_code an approved code fix is claimed and
+        # executed on decide()'s own worker thread, so the
+        # POST answers at once with the working state
+        # instead of holding the tap hostage for the whole
+        # GitHub sequence. decide()'s discipline — owner
+        # only, stamp before run, exactly once — is
+        # unchanged; only the transport moved.
+        ok, title, text = await asyncio.to_thread(
+            decide, uid, str(body.get("id") or ""),
+            str(body.get("decision") or ""), defer_code=True)
         return {"ok": ok, "title": title, "body": text,
                 "error": "" if ok else text}
