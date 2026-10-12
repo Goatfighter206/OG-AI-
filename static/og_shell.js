@@ -22,10 +22,9 @@ shellRoot.innerHTML =
 '<div id="ogShellComposerSlot"></div>' +
 '<nav id="ogSeatBar" aria-label="OG sections">' +
 '<button class="og-seat is-on" id="ogSeatChat" type="button"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span class="og-seat-label">Chat</span></button>' +
-'<button class="og-seat" id="ogSeatGoals" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg><span class="og-seat-label">Goals</span></button>' +
+'<button class="og-seat" id="ogSeatGoals" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg><span class="og-seat-label">Progress</span></button>' +
 '<button class="og-seat" id="ogSeatIdeas" type="button"><svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.8.7 1 1.5 1 2.5h6c0-1 .2-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg><span class="og-seat-label">Ideas</span><span id="ogSeatIdeasDot" class="og-seat-dot" hidden></span></button>' +
 '<button class="og-seat" id="ogSeatFeed" type="button"><svg viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/></svg><span class="og-seat-label">Feed</span><span id="ogSeatFeedDot" class="og-seat-dot" hidden></span></button>' +
-'<button class="og-seat" id="ogSeatProgress" type="button"><svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M2 20h20"/></svg><span class="og-seat-label">Progress</span></button>' +
 '</nav>' +
 '</div>' +
 '<section id="ogSeatScreen" hidden aria-label="OG section">' +
@@ -33,6 +32,10 @@ shellRoot.innerHTML =
 '<p id="ogSeatNotice" class="og-seat-notice" hidden></p>' +
 '<div id="ogGoalsView" class="og-seat-view" hidden>' +
 '<p id="ogGoalsSummary" class="og-seat-summary">Loading…</p>' +
+'<h3 class="og-appr-sec">Being worked on</h3>' +
+'<p id="ogProgressSummary" class="og-seat-summary">Loading…</p>' +
+'<div id="ogProgressList"></div>' +
+'<p id="ogProgressEmpty" class="og-appr-empty" hidden>Nothing is being worked on right now — when OG is making something, browsing, or checking a watch for you, it shows up here while it runs.</p>' +
 '<h3 class="og-appr-sec">Watching for you</h3>' +
 '<div id="ogGoalsWatchList"></div>' +
 '<h3 class="og-appr-sec" id="ogGoalsPriceSec" hidden>Price watches</h3>' +
@@ -57,11 +60,6 @@ shellRoot.innerHTML =
 '<p id="ogFeedStorage" class="og-seat-summary" hidden></p>' +
 '<div id="ogFeedList"></div>' +
 '<p id="ogFeedEmpty" class="og-appr-empty" hidden>Nothing here yet — what OG makes for you, and what he notices, lands here.</p>' +
-'</div>' +
-'<div id="ogProgressView" class="og-seat-view" hidden>' +
-'<p id="ogProgressSummary" class="og-seat-summary">Loading…</p>' +
-'<div id="ogProgressList"></div>' +
-'<p id="ogProgressEmpty" class="og-appr-empty" hidden>Nothing is being worked on right now — when OG is making something, browsing, or checking a watch for you, it shows up here while it runs.</p>' +
 '</div>' +
 '</section>' +
 '<div id="ogApprovalsScrim" class="og-appr-scrim" hidden></div>' +
@@ -105,11 +103,10 @@ syncGate();
 
 /* --- 3. Seats ---------------------------------------------------------- */
 var seats = {
-  chat: $('ogSeatChat'), goals: $('ogSeatGoals'),
-  ideas: $('ogSeatIdeas'), feed: $('ogSeatFeed'),
-  progress: $('ogSeatProgress')
+  chat: $('ogSeatChat'), progress: $('ogSeatGoals'),
+  ideas: $('ogSeatIdeas'), feed: $('ogSeatFeed')
 };
-var SEAT_TITLES = { goals: '🎯 Goals — what OG is working on', ideas: '💡 Ideas — OG\'s proposals', feed: '📰 Feed', progress: '📈 Progress — what OG is working on' };
+var SEAT_TITLES = { progress: '🎯 Progress — what OG is working on', ideas: '💡 Ideas — OG\'s proposals', feed: '📰 Feed' };
 var activeSeat = 'chat';
 var ideasDot = $('ogSeatIdeasDot'), feedDot = $('ogSeatFeedDot');
 
@@ -170,6 +167,11 @@ function paintSeats() {
 }
 
 function gotoSeat(name) {
+  /* Round 70 rename (Brent, 2026-10-11): the Goals seat
+     IS Progress now — one seat, merged view. The legacy
+     'goals' name still resolves here so stored
+     notification targets never dead-end. */
+  if (name === 'goals') name = 'progress';
   activeSeat = name;
   closeAllViews();
   hideNotice();
@@ -180,25 +182,21 @@ function gotoSeat(name) {
     if (scr) scr.hidden = false;
     var t = $('ogSeatScreenTitle');
     if (t) t.textContent = SEAT_TITLES[name] || name;
-    var gv = $('ogGoalsView'), iv = $('ogIdeasView'), fv = $('ogFeedView'),
-        pv = $('ogProgressView');
-    if (gv) gv.hidden = name !== 'goals';
+    var gv = $('ogGoalsView'), iv = $('ogIdeasView'), fv = $('ogFeedView');
+    if (gv) gv.hidden = name !== 'progress';
     if (iv) iv.hidden = name !== 'ideas';
     if (fv) fv.hidden = name !== 'feed';
-    if (pv) pv.hidden = name !== 'progress';
-    if (name === 'goals') refreshGoals();
+    if (name === 'progress') { refreshGoals(); refreshProgress(); }
     if (name === 'ideas') { renderIdeas(); refreshFixes(); refreshOffers(); refreshGenIdeas(); }
     if (name === 'feed') refreshFeed();
-    if (name === 'progress') refreshProgress();
   }
   paintSeats();
 }
 
 if (seats.chat) seats.chat.addEventListener('click', function () { gotoSeat('chat'); });
-if (seats.goals) seats.goals.addEventListener('click', function () { gotoSeat('goals'); });
+if (seats.progress) seats.progress.addEventListener('click', function () { gotoSeat('progress'); });
 if (seats.ideas) seats.ideas.addEventListener('click', function () { gotoSeat('ideas'); });
 if (seats.feed) seats.feed.addEventListener('click', function () { gotoSeat('feed'); });
-if (seats.progress) seats.progress.addEventListener('click', function () { gotoSeat('progress'); });
 var scrClose = $('ogSeatScreenClose');
 if (scrClose) scrClose.addEventListener('click', function () { gotoSeat('chat'); });
 var apprClose = $('ogApprCloseBtn');
@@ -236,7 +234,7 @@ function routeTarget(t) {
     setFeedTab(t.kind || 'all');
     return true;
   }
-  if (t.view === 'watch') { gotoSeat('goals'); return true; }
+  if (t.view === 'watch') { gotoSeat('progress'); return true; }
   if (t.view === 'system') { gotoSeat('ideas'); return true; }
   return false;
 }
@@ -667,7 +665,7 @@ function decideFix(id, decision, yesBtn, noBtn, viaIdeas) {
     .then(function () { refreshFixes(); refreshPending(); });
 }
 
-/* --- 6. Goals seat: everything OG is working on ------------------------
+/* --- 6. Progress seat (renamed from Goals): everything OG is working on ------------------------
    Reads the routes that already exist (GET /watch/status for the
    Facebook-style watches) plus Round 59's additive GET
    /monitor/status for price watches — no new stores. */
@@ -1067,7 +1065,7 @@ setInterval(refreshFixes, 4000);
 setInterval(refreshRecents, 15000);
 setInterval(function () {
   if (isHidden($('ogSeatScreen'))) return;
-  if (activeSeat === 'goals') refreshGoals();
+  if (activeSeat === 'progress') refreshGoals();
   if (activeSeat === 'ideas') { refreshFixes(); refreshOffers(); refreshGenIdeas(); }
   if (activeSeat === 'feed') refreshFeed();
 }, 20000);
