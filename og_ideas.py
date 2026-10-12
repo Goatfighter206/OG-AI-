@@ -13,10 +13,17 @@ THIS caller —
   book_continue a started book is unfinished and not
                 currently generating (og_books via the
                 library collector)
-  storage       the caller's locker is >= 90% full
-                (og_storage via the library collector)
   generator_try a generator the caller has never used
                 (library counts == 0; first match only)
+
+Brent's rule (2026-10-11, same day): "OG should not be
+finding things to upgrade — he should be focusing on
+user tasks." Ideas draws ONLY from the user's world —
+their asks, tasks, watches, creations. NOTHING here may
+come from OG's own system needs: no upgrade pitches, no
+capacity nags, no maintain-me cards, ever. (A storage
+signal shipped in the first cut and was removed the
+same day under this rule.)
 
 Chat topics are deliberately NOT a v1 signal — there is no
 honest rules-only read of them, and inventing one would be
@@ -171,31 +178,17 @@ def _candidates(uid: str, request: Request) -> List[Dict]:
     except Exception as e:
         logger.warning(f"Ideas book signal failed: {e}")
 
-    # 4. The locker is nearly full (the standing
-    #    housekeeping rule: warn + propose, never delete
-    #    silently — this idea only proposes the look).
-    try:
-        import og_library
-        _li, line = og_library._locker(uid, request)
-        if isinstance(line, dict) and line.get("quota"):
-            used = float(line.get("used") or 0)
-            quota = float(line.get("quota") or 0)
-            if quota > 0 and used / quota >= 0.9:
-                out.append({
-                    "id": "storage",
-                    "kind": "storage",
-                    "title": "Your locker is almost full",
-                    "body": (f"{line.get('used_human', '')} of "
-                             f"{line.get('quota_human', '')} "
-                             "used. OG never deletes anything "
-                             "without your say-so."),
-                    "ask": "Show me what's in my storage "
-                           "locker",
-                })
-    except Exception as e:
-        logger.warning(f"Ideas storage signal failed: {e}")
+    # (Removed in the same 2026-10-11 rule pass: a
+    #    "locker nearly full" idea. It was the caller's
+    #    own storage, but in form it is a capacity nag,
+    #    and Brent's rule is that Ideas carries NOTHING
+    #    from OG's system-needs side — no upgrade pitches,
+    #    no capacity nags, no maintain-me cards. The
+    #    pre-existing storage_warning notification in the
+    #    Feed is a different, older mechanism and is not
+    #    part of Ideas.)
 
-    # 5. A generator the caller has never used (one idea).
+    # 4. A generator the caller has never used (one idea).
     try:
         for kind, title, body, ask in _TRY_IDEAS:
             if int(counts.get(_COUNT_KEYS[kind], 0) or 0) == 0:
