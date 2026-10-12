@@ -97,7 +97,7 @@ WATCH_STORE_FILE = "watch_store.json"
 _watch_lock = threading.Lock()
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -176,7 +176,8 @@ def _blob(uid: str, kind: str, default):
                     row = cur.fetchone()
             return row[0] if row else default
         except Exception as e:
-            logger.warning(f"Watch DB load failed, using file: {e}")
+            logger.warning(f"Watch DB load failed: {e}")
+            raise StoreError("watch store unavailable (Round 99)") from e
     with _watch_lock:
         store = _load_file_store()
     entry = (store.get(uid) or {}).get(kind)
@@ -198,7 +199,8 @@ def _put_blob(uid: str, kind: str, value):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Watch DB save failed, using file: {e}")
+            logger.warning(f"Watch DB save failed: {e}")
+            raise StoreError("watch store unavailable (Round 99)") from e
     with _watch_lock:
         store = _load_file_store()
         mine = store.get(uid) or {}
@@ -220,7 +222,8 @@ def _del_blob(uid: str, kind: str):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Watch DB delete failed, using file: {e}")
+            logger.warning(f"Watch DB delete failed: {e}")
+            raise StoreError("watch store unavailable (Round 99)") from e
     with _watch_lock:
         store = _load_file_store()
         mine = store.get(uid)
@@ -257,7 +260,8 @@ def _all_uids() -> list:
                     cur.execute("SELECT DISTINCT uid FROM og_watch_data")
                     return [r[0] for r in cur.fetchall()]
         except Exception as e:
-            logger.warning(f"Watch DB uid scan failed, using file: {e}")
+            logger.warning(f"Watch DB uid scan failed: {e}")
+            raise StoreError("watch store unavailable (Round 99)") from e
     with _watch_lock:
         store = _load_file_store()
     return list(store.keys())
