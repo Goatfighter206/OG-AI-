@@ -56,6 +56,7 @@ LINGER_S = 2 * 3600.0
 
 _STATE_LABELS = {
     "queued": "Queued",
+    "working": "Working",
     "drawing": "Drawing scenes",
     "voicing": "Voicing",
     "stitching": "Stitching it together",
@@ -287,6 +288,49 @@ def _fix_rows(uid: str) -> List[Dict]:
     return rows
 
 
+def _crew_rows(uid: str) -> List[Dict]:
+    """Round 81: the dispatched crew jobs (Researcher /
+    Runner) from og_crew's own store — the board reads the
+    owner's seam, duplicating no state. THE % RULE applies
+    as everywhere: a researcher carries real counts
+    (searches done / granted) so it earns a pct while
+    working; a runner is one session — state only."""
+    rows: List[Dict] = []
+    try:
+        import og_crew
+        icons = {"researcher": "🔎", "runner": "🏃"}
+        verbs = {"researcher": "Researcher", "runner": "Runner"}
+        for j in og_crew.jobs_for(uid):
+            state = j.get("state") or ""
+            updated = float(j.get("updated", 0) or 0)
+            if state in ("done", "failed") and updated \
+                    and time.time() - updated > LINGER_S:
+                continue
+            if state == "cancelled":
+                continue
+            working = state == "working"
+            pct = None
+            if working and j.get("role") == "researcher":
+                pr = j.get("progress") or {}
+                pct = _pct(pr.get("done"), pr.get("total"))
+            role = j.get("role") or ""
+            rows.append({
+                "section": "crew",
+                "icon": icons.get(role, "🧑‍🤝‍🧑"),
+                "title": (f"{verbs.get(role, 'Crew')}: "
+                          f"{j.get('title') or 'job'}"),
+                "state": state,
+                "state_label": _STATE_LABELS.get(state, state),
+                "working": working,
+                "pct": pct,
+                "sub": (j.get("host") or "")[:140],
+                "ts": float(j.get("created", 0) or 0),
+            })
+    except Exception as e:
+        logger.warning(f"Progress crew section failed: {e}")
+    return rows
+
+
 def _auto_update_block(uid: str,
                        request: Request) -> Optional[Dict]:
     """Owner only — the tierfix3 rule: the caller's
@@ -353,6 +397,7 @@ def collect_progress(uid: str, request: Request) -> Dict:
     rows.extend(_query_rows(uid))
     rows.extend(_watch_rows(uid))
     rows.extend(_fix_rows(uid))
+    rows.extend(_crew_rows(uid))
     return {"rows": rows,
             "auto_update": _auto_update_block(uid, request)}
 
