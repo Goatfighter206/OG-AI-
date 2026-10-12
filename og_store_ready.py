@@ -375,6 +375,9 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     _step(results, "gps", lambda: _gps.purge_uid(uid))
     import og_shittalk as _shittalk
     _step(results, "shittalk", lambda: _shittalk.purge_uid(uid))
+    import og_permissions as _permissions
+    _step(results, "permissions",
+          lambda: _permissions.purge_uid(uid))
 
     def storage():
         import og_storage as _st
