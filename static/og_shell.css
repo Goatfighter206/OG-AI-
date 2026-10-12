@@ -255,17 +255,17 @@ body.og-shell-off #ogSeatScreen { display: none !important; }
       seat. */
 #ogStatusLine, #tokenStatus { display: none !important; }
 
-/* Menu footer line removed (Brent, 2026-10-11, with a
-   screenshot): "I don't want this there." The
-   "🔞 OG AI is an 18+ AI — adults only. · Privacy ·
-   Terms" line is NOT carried into the full-screen menu
-   (.og-menu-foot), and its other signed-in shell
-   rendering — the same line under the composer
-   (.age-footer) — goes too. The /privacy and /terms
+/* Footer line placement (Brent, 2026-10-11, corrected
+   17:00): "No it's fine in the menu, I don't like it in
+   chat though." The "🔞 OG AI is an 18+ AI — adults
+   only. · Privacy · Terms" line STAYS in the menu
+   (.og-menu-foot, untouched) and is REMOVED from the
+   chat surface — its under-composer rendering
+   (.age-footer) is hidden. The /privacy and /terms
    PAGES stay live at their URLs (store/Google
    requirements), and the age gate's own notices are
-   untouched; only this shell chrome line is removed. */
-.og-menu-foot, .age-footer { display: none !important; }
+   untouched. */
+.age-footer { display: none !important; }
 
 #ogSeatScreen {
     top: 0; bottom: 0; left: 0; transform: none;
