@@ -35,9 +35,26 @@ round-94/NOTES.md):
     lookups/upserts, plus two bounded whole-store reads
     that answer in about a second on a live backend) —
     so it only ever fires on a genuinely stalled backend,
-    where it turns a parked worker into a fast, honest
-    failure: the stores all fail soft (file fallback /
-    error copy) on a DB exception.
+    where it turns a parked worker into a fast failure.
+
+Round 99 adds the second half of that sentence: WHAT a
+store does with the fast failure. Before Round 99, every
+store caught the exception and fell back to its local
+JSON file — on the hosted runtime an empty or ancient
+shadow — so a stalled database MANUFACTURED answers:
+"account not found" for a correct password (the
+2026-10-12 owner lockout), a live session read as
+signed-out, writes silently swallowed into a file the
+database would never see. The law now: when a database
+IS configured, a store that cannot get an answer raises
+StoreError (defined here, the one place every store
+already imports from) and its caller fails honestly —
+an error, never an invented answer. The file store
+remains only for the genuinely unconfigured case (no
+OG_MEMORY_DB_URL — local/dev), never as a runtime
+fallback. The stores converted to the law, and the ones
+named safe without it, are censused in
+round-99/NOTES.md.
 
   DB_LOCK_TIMEOUT_MS — waiting to acquire a lock is
     bounded at 5s, half the statement budget, so a lock
@@ -64,3 +81,35 @@ DB_OPTIONS = (
     f"-c statement_timeout={DB_STATEMENT_TIMEOUT_MS} "
     f"-c lock_timeout={DB_LOCK_TIMEOUT_MS}"
 )
+
+# Round 99: the waking-backend allowance. Field evidence
+# (2026-10-12 ~05:55, live probes): in the hosted
+# backend's cold regime, login attempts consistently
+# take ~5.3s — right at DB_CONNECT_TIMEOUT — while plain
+# reads answer in under a second: a connect can burn
+# its whole 5s budget against a backend that is WAKING,
+# not down. The shared connect timeout stays 5s
+# (lengthening it would lengthen every genuinely-down
+# failure at all 44 call sites); instead, a store whose
+# failure locks a human out may retry the CONNECT once
+# after a short pause: the first attempt is what pokes
+# the backend awake, the second lands on it. Only
+# connect-phase failures retry — a statement that was
+# accepted and then cancelled/timed out is a wedged
+# backend, and retrying it would just double the stall.
+# Adopted by og_accounts (the identity store) in this
+# round; other stores fail honestly for the length of a
+# wake instead (see round-99/NOTES.md).
+DB_CONNECT_RETRIES = 1
+DB_CONNECT_RETRY_DELAY = 0.5
+
+
+class StoreError(Exception):
+    """The database is configured but did not answer.
+
+    Raised by a store INSTEAD of falling back to its
+    local file shadow (Round 99). Callers must treat it
+    as "unknown / try again later" — never as "not
+    found", never as a user's failed attempt, never as
+    signed-out. og_accounts registers one app-wide
+    handler that answers it with an honest 503."""
