@@ -57,6 +57,8 @@ shellRoot.innerHTML =
 '</div>' +
 '<div id="ogFeedView" class="og-seat-view" hidden>' +
 '<p id="ogFeedStorage" class="og-seat-summary" hidden></p>' +
+'<p id="ogFeedNote" class="og-seat-summary" hidden></p>' +
+'<div id="ogFeedClearRow" class="og-feed-clear" hidden><button id="ogFeedClearRead" type="button">Clear read</button><button id="ogFeedClearAll" type="button">Clear all</button></div>' +
 '<div id="ogFeedList"></div>' +
 '<p id="ogFeedEmpty" class="og-appr-empty" hidden>Nothing here yet — what OG makes for you, and what he notices, lands here.</p>' +
 '</div>' +
@@ -226,7 +228,6 @@ function closeAllViews() {
   var menu = $('sideMenu');
   if (menu && menu.classList.contains('open')) clickIf('menuClose');
   if (!isHidden($('ogProfile'))) clickIf('profileCloseBtn');
-  if (!isHidden($('ogNotifyPanel'))) clickIf('notifyCloseBtn');
   if (!isHidden($('ogLibrary'))) clickIf('libraryCloseBtn');
   if (!isHidden($('ogConnections'))) clickIf('connectionsCloseBtn');
   if ($('nsetCloseBtn')) clickIf('nsetCloseBtn');
@@ -360,7 +361,14 @@ function updateDot() {
   if (ideasDot) ideasDot.hidden = !(pending || openFixCount > 0);
 }
 function paintFeedDot() {
-  if (feedDot) feedDot.hidden = !(feedUnread > 0);
+  /* Round 95: the bell is deleted (Brent: "it's in the
+     idea at the bottom") — the Feed seat carries the
+     unread COUNT now, the same number from the same
+     payloads, on the seat itself. */
+  if (feedDot) {
+    feedDot.textContent = feedUnread > 9 ? '9+' : String(feedUnread);
+    feedDot.hidden = !(feedUnread > 0);
+  }
 }
 
 function openApprovals() {
@@ -1127,6 +1135,38 @@ function markNotifRead(it, row) {
   }).catch(function () { });
 }
 
+/* Round 95: the manual clear (Brent: "there's no clear").
+   The Feed seat is where notifications are consumed now
+   that the bell is gone: a per-row dismiss ✕ plus Clear
+   read / Clear all at the top of the seat. Every clear
+   is a server POST — the row is gone server-side or it
+   isn't cleared; both list surfaces re-read the store
+   after (no client-side fake clearing). */
+function clearNotification(body) {
+  return fetch('/notifications/clear', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () { return null; });
+}
+function afterClear(d) {
+  if (d && typeof d.unread === 'number') {
+    feedUnread = d.unread;
+    paintFeedDot();
+  }
+  refreshFeed();
+  refreshRecents();
+}
+function dismissFeedNotif(id) {
+  clearNotification({ id: id }).then(afterClear);
+}
+function clearFeedScope(scope) {
+  clearNotification({ scope: scope }).then(afterClear);
+}
+var clearReadBtn = $('ogFeedClearRead'), clearAllBtn = $('ogFeedClearAll');
+if (clearReadBtn) clearReadBtn.addEventListener('click', function () { clearFeedScope('read'); });
+if (clearAllBtn) clearAllBtn.addEventListener('click', function () { clearFeedScope('all'); });
+
 function renderFeed() {
   var list = $('ogFeedList'), empty = $('ogFeedEmpty');
   if (!list) return false;
@@ -1162,6 +1202,16 @@ function renderFeed() {
         markNotifRead(r.raw, row);
         if (r.target) routeTarget(r.target);
       });
+      var dis = document.createElement('button');
+      dis.type = 'button';
+      dis.className = 'og-feed-dismiss';
+      dis.setAttribute('aria-label', 'Dismiss notification');
+      dis.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+      dis.addEventListener('click', function (ev) {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        dismissFeedNotif(r.id);
+      });
+      row.appendChild(dis);
     }
     if (flashLibId && r.src === 'lib' && r.id === flashLibId) {
       row.classList.add('og-feed-flash');
@@ -1171,13 +1221,40 @@ function renderFeed() {
     list.appendChild(row);
   });
   if (empty) empty.hidden = shown !== 0;
+  var clearRow = $('ogFeedClearRow');
+  if (clearRow) {
+    clearRow.hidden = !feedRows.some(function (r) {
+      return r && r.src === 'ntf';
+    });
+  }
   return flashed;
 }
 
 function refreshFeed() {
   getJSON('/feed')
     .then(function (d) {
-      d = d || {};
+      if (!d) {
+        /* Round 95: a FAILED load is not an empty feed.
+           The old code painted the genuine-empty copy on
+           any failure — while the bell, polling on its own
+           clock and holding its last list, stayed full.
+           Same pile, two failure shapes: that was the
+           "bell full, feed empty" mismatch. Now the feed
+           keeps its last good rows and the note line says
+           plainly that the load failed. */
+        var note = $('ogFeedNote');
+        if (note) {
+          note.hidden = false;
+          note.textContent = feedRows.length
+            ? 'Couldn\'t refresh just now — showing the last list I got.'
+            : 'Couldn\'t load just now — try again in a moment.';
+        }
+        var emptyEl = $('ogFeedEmpty');
+        if (emptyEl) emptyEl.hidden = true;
+        return;
+      }
+      var noteOk = $('ogFeedNote');
+      if (noteOk) noteOk.hidden = true;
       if (typeof d.unread === 'number') { feedUnread = d.unread; paintFeedDot(); }
       feedLibIds = {};
       feedRows = (d.rows || []).map(function (r) {
