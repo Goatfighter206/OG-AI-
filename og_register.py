@@ -43,6 +43,18 @@ owner's cost visibility.
 SWITCH. OG_REGISTER_ENABLED=0 turns the pass into a no-op (app.py
 then serves the model's raw text, Round 25 behavior).
 
+ROUND 77 — THE ERROR-LEAK SCRUB. The agent's fallback
+(ai_agent_enhanced._fallback_response — a locked file this
+module never edits) interpolates the RAW exception into the
+reply text. enforce_text therefore runs scrub_error_leak
+FIRST, before the swearing switch and every other check: a
+fallback reply's interpolated error is replaced by the
+fallback's own opener, cleaned, and the real error is
+written to the server log. Both fallback variants (profane
++ swearing-off) are covered in every mode. Nothing else is
+touched — see the scrub section below for the scope
+discipline.
+
 SWEARING SWITCH ("swearing on switch off switch",
 swearing_on_switch_off_switch.py): when OG_PROFANITY_MODE=off,
 enforce_text — the shared entry every call site routes through
@@ -109,6 +121,71 @@ def _max_rewrites() -> int:
 
 def has_profanity(sentence: str) -> bool:
     return bool(_PROF_RE.search(sentence))
+
+
+# --- Round 77: the error-leak scrub -------------------------------------------
+#
+# The agent's fallback (ai_agent_enhanced._fallback_response — a
+# LOCKED file, never edited) interpolates the raw exception into
+# the reply: "Yo my bad, some bullshit happened: {error}". That
+# error is str(e) from the provider call — connection strings,
+# internal hosts/ports, library text. It belongs in the server
+# log, never in a user's chat. This scrub is the seam fix: it
+# runs at the TOP of enforce_text — the shared entry every
+# outgoing reply routes through (classic enforce_reply, the SSE
+# RegisterSink, og_respond drafts) — BEFORE the swearing switch
+# and the register-enabled check, so both fallback variants
+# (profane + clean) are covered in every mode.
+#
+# Scope discipline: it fires ONLY on the fallback's own four
+# paragraph openers, at a paragraph start, and consumes exactly
+# the fallback's own shape — opener + interpolated error up to
+# the paragraph break / end of text; the fallback's fixed tail
+# after the break is preserved verbatim. Any other text —
+# including a user's own pasted error that OG quotes or
+# discusses in any other shape — passes through byte-identical.
+
+_LEAK_CLEAN = {
+    "Yo my bad, some bullshit happened:":
+        "Yo my bad, some bullshit happened on my end.",
+    "Damn, hit a snag:": "Damn, hit a snag on my end.",
+    "Aw shit, ran into this:":
+        "Aw shit, ran into something on my end.",
+    "Yo my bad, ran into an issue:":
+        "Yo my bad, ran into an issue on my end.",
+}
+
+_LEAK_RE = re.compile(
+    r"(?P<prefix>Yo my bad, some bullshit happened:|Damn, hit a snag:|"
+    r"Aw shit, ran into this:|Yo my bad, ran into an issue:)"
+    r".*?(?=\n\n|\Z)", re.S)
+
+_LEAK_PREFIX_RE = re.compile(
+    r"Yo my bad, some bullshit happened:|Damn, hit a snag:|"
+    r"Aw shit, ran into this:|Yo my bad, ran into an issue:")
+
+
+def _at_paragraph_start(text: str, i: int) -> bool:
+    if i == 0:
+        return True
+    head = text[:i]
+    return head.endswith("\n\n") or head.strip() == ""
+
+
+def scrub_error_leak(text: str):
+    """Strip the interpolated raw error out of an agent-fallback
+    reply. Returns (new_text, removed_or_None); the caller logs
+    the removed text server-side. At most one fallback paragraph
+    exists per reply, so at most one replacement is made."""
+    if not text:
+        return text, None
+    for m in _LEAK_RE.finditer(text):
+        if not _at_paragraph_start(text, m.start()):
+            continue
+        removed = text[m.start():m.end()]
+        clean = _LEAK_CLEAN[m.group("prefix")]
+        return text[:m.start()] + clean + text[m.end():], removed
+    return text, None
 
 
 # --- Segmentation: protected spans + sentence spans ----------------------------
@@ -340,6 +417,17 @@ def enforce_text(text: str, rewrite_fn=None, max_rewrites=None):
     stats = {"sentences": 0, "passed": 0, "rewritten": 0, "fallback": 0,
              "left": 0, "attempts": 0, "rewrite_tokens": 0, "ms": 0.0,
              "skipped": False}
+    # Round 77: scrub the agent fallback's interpolated raw error
+    # BEFORE anything else (the swearing switch and the enabled
+    # check included) — the real error goes to the server log,
+    # the user gets the clean OG fallback line. See the scrub
+    # section above.
+    text, _leak = scrub_error_leak(text)
+    if _leak is not None:
+        import logging
+        logging.getLogger(__name__).warning(
+            "register scrub (round 77): raw error removed from a "
+            "fallback reply: %s", _leak[:300])
     # Swearing switch: OFF -> pure pass-through, nothing forced.
     try:
         import swearing_on_switch_off_switch as _swearing
@@ -441,6 +529,29 @@ class RegisterSink:
 
     def _drain(self, final: bool):
         while self._buf:
+            # Round 77: if the agent fallback's error paragraph is
+            # in the buffer, never let it drain in pieces — emit
+            # what's before it, then hold the paragraph until its
+            # end (the blank line, or flush) so enforce_text's
+            # scrub sees it whole and the raw error can't slip
+            # out sentence by sentence.
+            leak = _LEAK_PREFIX_RE.search(self._buf)
+            if leak is not None:
+                if leak.start() > 0:
+                    head, self._buf = self._buf[:leak.start()], \
+                        self._buf[leak.start():]
+                    self._emit_enforced(head)
+                    continue
+                tail = self._buf.find("\n\n", leak.end())
+                if tail < 0:
+                    if not final:
+                        return
+                    self._emit_enforced(self._buf)
+                    self._buf = ""
+                    return
+                self._emit_enforced(self._buf[:tail])
+                self._buf = self._buf[tail:]
+                continue
             fence = self._buf.find("```")
             if fence > 0:
                 head, self._buf = self._buf[:fence], self._buf[fence:]
