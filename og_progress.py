@@ -343,6 +343,14 @@ def _pm_rows(uid: str) -> List[Dict]:
     try:
         import og_pm
         og_pm._advance(uid)
+        # Round 110: the Filer's counts ride the same rows
+        # (og_filing's seam — the board duplicates no state).
+        file_counts: Dict[str, int] = {}
+        try:
+            import og_filing
+            file_counts = og_filing.counts_for(uid)
+        except Exception as e:
+            logger.warning(f"Progress filing counts failed: {e}")
         for p in og_pm.projects_for(uid):
             state = p.get("state") or ""
             if state == "cancelled":
@@ -372,6 +380,10 @@ def _pm_rows(uid: str) -> List[Dict]:
                    f"{p.get('total', 0)} steps done")
             if front is not None and state != "done":
                 sub += f" · now: {front.get('title', '')}"
+            n_files = file_counts.get(p.get("id", ""), 0)
+            if n_files:
+                sub += (f" · {n_files} file"
+                        f"{'s' if n_files != 1 else ''}")
             rows.append({
                 "section": "projects", "icon": "📋",
                 "title": f"Project: {p.get('title') or 'Untitled'}",
@@ -379,6 +391,9 @@ def _pm_rows(uid: str) -> List[Dict]:
                 "working": working,
                 "pct": pct,
                 "sub": sub[:140],
+                "files": n_files,
+                "files_href": (f"/filing/project/{p.get('id', '')}"
+                               if n_files else ""),
                 "ts": float(p.get("created", 0) or 0),
             })
     except Exception as e:
