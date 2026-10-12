@@ -350,6 +350,12 @@ var feedUnread = 0;
 
 /* The Ideas dot lights for a parked approval OR an open fix proposal. */
 var openFixCount = 0, lastProposals = [];
+/* Round 83: proposal ids with a decide POST in flight FROM
+   THIS TAB. fixRow renders the working state for these ids
+   (and for server-reported 'working' proposals), so the
+   4-second list refresh can no longer wipe a tap back to a
+   pristine card — the dead tap Brent reported. */
+var fixWorking = {};
 function updateDot() {
   if (ideasDot) ideasDot.hidden = !(pending || openFixCount > 0);
 }
@@ -801,7 +807,22 @@ function fixRow(p, viaIdeas) {
   b.className = 'og-appr-item-body';
   b.textContent = p.summary || '';
   main.appendChild(t); main.appendChild(b);
-  if (p.status === 'open') {
+  if (p.status === 'working' || fixWorking[p.id] ||
+      (p.status === 'executed' && !p.outcome)) {
+    /* Round 83: the row ITSELF says it's working — buttons
+       gone — from the moment of the tap (fixWorking) and
+       for as long as the server reports the run in flight,
+       across every 4s re-render, seat switch and page
+       reload. 'executed' with no outcome yet is still in
+       flight: the stamp-before-run discipline lands
+       'executed' BEFORE the run finishes, so until an
+       outcome lands the honest label is Working, never
+       "didn't take". */
+    var ww = document.createElement('div');
+    ww.className = 'og-appr-item-time';
+    ww.textContent = '⏳ Working on it — OG is running this fix now';
+    main.appendChild(ww);
+  } else if (p.status === 'open') {
     var btns = document.createElement('div');
     btns.className = 'og-appr-fix-btns';
     var yes = document.createElement('button');
@@ -819,7 +840,9 @@ function fixRow(p, viaIdeas) {
     w.className = 'og-appr-item-time';
     w.textContent = p.status === 'executed'
       ? (p.outcome === 'fixed' ? 'Fixed ✓ — OG re-checked and it is gone' : 'Fix didn\'t take — a fresh approval is needed to try again')
-      : (p.status === 'handed_off' ? 'Steps handed over — in your hands now' : 'Declined');
+      : (p.status === 'handed_off' ? 'Steps handed over — in your hands now'
+        : (p.status === 'superseded' ? 'Retired — ' + (p.status_note || 'OG could not ship this one; nothing was run')
+          : 'Declined'));
     main.appendChild(w);
   }
   row.appendChild(main);
@@ -860,6 +883,12 @@ function refreshFixes() {
 function decideFix(id, decision, yesBtn, noBtn, viaIdeas) {
   if (yesBtn) yesBtn.disabled = true;
   if (noBtn) noBtn.disabled = true;
+  /* Round 83: mark the row working BEFORE the fetch and
+     re-render at once — the card itself shows the tap
+     landed, and every refresh from here on keeps showing
+     it (fixRow) until the server reports the outcome. */
+  fixWorking[id] = true;
+  renderFixLists();
   fetch('/approvals/proposals/act', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -878,7 +907,14 @@ function decideFix(id, decision, yesBtn, noBtn, viaIdeas) {
       if (viaIdeas) seatNotice('ideas', msg);
       else showApprOutcome(msg);
     })
-    .then(function () { refreshFixes(); refreshPending(); });
+    .then(function () {
+      /* The POST settled: this tab's marker retires and the
+         SERVER status is the row's single source from here
+         ('working' while a deferred code fix runs, then
+         the durable outcome). */
+      delete fixWorking[id];
+      refreshFixes(); refreshPending();
+    });
 }
 
 /* --- 6. Progress seat (renamed from Goals): everything OG is working on ------------------------
