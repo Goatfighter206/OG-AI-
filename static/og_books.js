@@ -20,7 +20,7 @@
     "width:min(92vw,380px);background:#101010;color:#f5eeda;border:1px solid #c9a227;" +
     "border-radius:14px;padding:12px 14px;font:14px/1.45 system-ui,sans-serif;" +
     "box-shadow:0 8px 30px rgba(0,0,0,.55)}" +
-    "#ogBookCard h3{margin:0 24px 6px 0;font-size:15px;color:#e8c766}" +
+    "#ogBookCard h3{margin:0 54px 6px 0;font-size:15px;color:#e8c766}" +
     "#ogBookCard .ogbk-meta{opacity:.85;font-size:12.5px;margin-bottom:6px}" +
     "#ogBookCard .ogbk-chaps{max-height:130px;overflow:auto;background:#000;" +
     "border-radius:8px;padding:8px;font-size:12.5px;margin:6px 0}" +
@@ -30,8 +30,11 @@
     "text-decoration:none;font-size:13.5px}" +
     "#ogBookCard button.ogbk-no{background:#2a2a2a;color:#f5eeda;" +
     "border:1px solid #555}" +
-    "#ogBookCard .ogbk-x{position:absolute;top:6px;right:8px;background:none;" +
-    "border:0;color:#f5eeda;font-size:16px;cursor:pointer;padding:4px}" +
+    "#ogBookCard .ogbk-x{position:absolute;top:8px;right:8px;width:42px;height:42px;" +
+    "border-radius:50%;background:#1b1b1b;border:1px solid #333;color:#e8e8e8;" +
+    "display:grid;place-items:center;cursor:pointer;padding:0}" +
+    "#ogBookCard .ogbk-x svg{width:21px;height:21px}" +
+    "#ogBookCard .ogbk-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}" +
     "#ogBookCard .ogbk-err{color:#ff9c9c;font-size:12.5px}" +
     "#ogBookReader{position:fixed;inset:0;z-index:2147483000;background:#0b0b0b;" +
     "color:#f5eeda;font:15px/1.6 system-ui,sans-serif;display:flex;flex-direction:column}" +
@@ -45,8 +48,10 @@
     "#ogBookReader .ogbkr-list button.is-on{background:#2a2a2a;color:#e8c766}" +
     "#ogBookReader .ogbkr-text{flex:1;overflow:auto;padding:16px 20px;white-space:pre-wrap}" +
     "#ogBookReader img.ogbkr-cover{max-width:180px;border-radius:8px;margin:0 0 12px}" +
-    "#ogBookReader button.ogbkr-x{background:#2a2a2a;color:#f5eeda;border:1px solid #555;" +
-    "border-radius:9px;padding:7px 12px;cursor:pointer;font-weight:700}";
+    "#ogBookReader button.ogbkr-x{background:#1b1b1b;color:#e8e8e8;border:1px solid #333;" +
+    "border-radius:50%;width:42px;height:42px;padding:0;display:grid;place-items:center;cursor:pointer}" +
+    "#ogBookReader .ogbkr-x svg{width:21px;height:21px}" +
+    "#ogBookReader button.ogbkr-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}";
   document.head.appendChild(css);
 
   var card = document.createElement("section");
@@ -69,7 +74,9 @@
   function hide() { card.hidden = true; card.innerHTML = ""; }
   function head(title) {
     card.innerHTML = "";
-    var x = el("button", "ogbk-x", "✕");
+    var x = el("button", "ogbk-x");
+    x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+    x.setAttribute("aria-label", "Close");
     x.addEventListener("click", function () {
       var j = card.getAttribute("data-job");
       var p = card.getAttribute("data-pending");
@@ -96,7 +103,9 @@
         dl.href = "/books/" + id + "/download";
         dl.setAttribute("download", "");
         hd.appendChild(dl);
-        var x = el("button", "ogbkr-x", "✕ Close");
+        var x = el("button", "ogbkr-x");
+        x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+        x.setAttribute("aria-label", "Close");
         x.addEventListener("click", function () { wrap.remove(); });
         hd.appendChild(x);
         wrap.appendChild(hd);
