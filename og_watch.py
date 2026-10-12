@@ -72,6 +72,8 @@ import time
 import urllib.parse
 import uuid
 from datetime import datetime, timezone
+
+import og_garble
 from typing import Dict, List, Optional
 
 from fastapi import Request
@@ -1301,19 +1303,41 @@ def _parse_create(message: str) -> Optional[Dict]:
             "place": place}
 
 
-def _claim_job(message: str, uid: str) -> Optional[Dict]:
+# Round 75: this seam's garble vocabulary — the create/list/
+# stop/resume trigger words only. The item, the price and the
+# place are captures (payload) and are never in it.
+_GARBLE_VOCAB = (
+    "watch", "marketplace", "facebook", "keep", "eye", "on",
+    "for", "under", "max", "below", "less", "than", "near",
+    "stop", "watching", "cancel", "resume", "list", "watches",
+    "what", "are", "you", "my", "the", "logins", "logged",
+    "into", "sites", "where",
+)
+
+
+def _claim_job(message: str, uid: str,
+               _repaired: bool = False) -> Optional[Dict]:
     raw = str(message or "")
     low = raw.lower()
     if not uid:
         return None
-    if _FORGET_ALL_RE.search(low):
+    # The forget branches stay EXACT-only (never reached on a
+    # repaired reading): forgetting a saved login is destructive,
+    # and a garbled site name must never delete the wrong one.
+    if not _repaired and _FORGET_ALL_RE.search(low):
         return {"op": "forget_all"}
     m = _FORGET_SITE_RE.search(raw)
-    if m:
+    if m and not _repaired:
         words = next(g for g in m.groups() if g)
         host = _site_host(words)
         if host:
             return {"op": "forget_site", "host": host}
+    if _repaired and (_FORGET_ALL_RE.search(low)
+                      or _FORGET_SITE_RE.search(raw)):
+        # A repaired reading of a forget-shaped ask claims
+        # NOTHING at all — not even the harmless logins list.
+        # The whole forget family is exact-only.
+        return None
     if _LOGINS_RE.search(low):
         return {"op": "logins"}
     watches = _watches(uid)
@@ -1327,10 +1351,33 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
         return {"op": "stop", "words": words}
     if _LIST_RE.search(low):
         return {"op": "list"}
-    return _parse_create(raw)
+    job = _parse_create(raw)
+    if job is None and not _repaired:
+        # Round 75: the garble second chance — repair the words,
+        # then let the EXACT claim logic read the reading (the
+        # forget branches above stay closed in repaired mode).
+        repaired, info = og_garble.repair_info(raw, _GARBLE_VOCAB)
+        if info is not None:
+            job = _claim_job(repaired, uid, _repaired=True)
+            if job is not None:
+                job = dict(job)
+                job["_garble"] = info
+    return job
 
 
 def watch_results(job: Dict, uid: str, tier: str) -> List[Dict]:
+    """Run one watch job; (Round 75) a job claimed through the
+    garble repair carries its fixes, and the answer names the
+    reading that was acted on. Clean jobs run byte-identically."""
+    garble = job.pop("_garble", None) \
+        if isinstance(job, dict) else None
+    results = _watch_results(job, uid, tier)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _watch_results(job: Dict, uid: str, tier: str) -> List[Dict]:
     op = job.get("op")
     if op == "create":
         return _create_watch(uid, tier, job.get("item") or "",
