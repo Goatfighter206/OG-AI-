@@ -412,3 +412,25 @@ body.og-auth-reconnecting #ageGate { display: none !important; }
 #ogReconnectChip[hidden] { display: none !important; }
 .og-reconnect-title { display: block; font-size: 1.05rem; font-weight: 700; color: #ffd54f; }
 .og-reconnect-sub { display: block; margin-top: 6px; font-size: .88rem; line-height: 1.45; color: #bcbcbc; }
+
+/* --- Round 87: every ✕ the same — the placement half -------------
+   Brent (2026-10-12): "Make sure all the X buttons are the
+   same." The canonical ✕ (the seat screens' og-circle-btn:
+   42x42 circle, inline SVG glyph at 21px, top-right, close
+   one level) was already the right button on the Library,
+   Connections and profile pages — but those three head rows
+   LEAD with the button, so their ✕ rendered at the top
+   LEFT while every other surface (menu, seats, scaffold
+   views, bell panel) carries it at the top right. These
+   flex-order rules move the button to the right end of its
+   own head row. DOM order, ids, wiring and behavior are
+   untouched (the page's own suites pin the profile's DOM
+   order; closeAllViews clicks by id). The look half of the
+   round (sizes + glyphs) lives with each surface's own
+   rules. On the profile the head is space-between, so the
+   order swap alone lands the ✕ at the right; the two panel
+   heads pack left, so their buttons also take the auto
+   left margin that pushes them to the row's right end. */
+.og-library-top .og-circle-btn { order: 2; margin-left: auto; }
+.og-connections-top .og-circle-btn { order: 2; margin-left: auto; }
+#profileCloseBtn { order: 2; }
