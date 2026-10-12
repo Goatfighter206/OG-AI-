@@ -67,6 +67,24 @@ menu needs:
   own OS permission prompt stays the phone/browser's gate
   underneath it.
 
+  ONE-TIME PERMISSION ASK (Round 78) — Brent's rule: "Only
+  ask one time then it stay on until they turn it off."
+  When a chat directions ask reaches og_maps with no
+  starting point, the switch OFF and the account never
+  asked, OG asks permission ONE TIME to use their location
+  to navigate them where they want to go; a yes flips THIS
+  switch on (same set_location_on — no parallel store) and
+  it stays on until they turn it off. The asked state and
+  the pending ask live in this same store under
+  "gpslocask:"+uid as {"asked": bool, "pending": {...}}:
+  the flag is set the moment the ask is made (yes, no or
+  ignored, OG never initiates the ask again) and ALSO when
+  the owner turns the switch on themselves (set_location_on
+  marks it — they already decided); the pending ask
+  (destination + the ask text + a timestamp, ~10-minute
+  expiry) is what a later yes/no in chat answers. Account
+  purge clears the record with the rest of the GPS data.
+
 GATE. None of these paths is in og_accounts.PUBLIC_PATHS, so
 the Round 44 sign-in gate covers them by construction. A
 request with no uid cookie reads/writes nothing.
@@ -179,11 +197,13 @@ def _put(key: str, value):
 
 def purge_uid(uid: str):
     """Account deletion helper: drop this uid's points, its
-    stored active route and its location switch."""
+    stored active route, its location switch and its
+    one-time-ask record (Round 78)."""
     if uid:
         _put("gps:" + uid, {"points": []})
         _put("gpsroute:" + uid, None)
         _put("gpsloc:" + uid, None)
+        _put("gpslocask:" + uid, None)
 
 
 # ===========================================================================
@@ -820,11 +840,104 @@ def set_location_on(uid: str, on) -> bool:
     state now stored. No uid stores nothing and reads
     back OFF. Nothing anywhere calls this on its own —
     the only callers are the owner's own tap (POST
-    /gps/location) and the owner's own chat ask (og_maps'
-    location-toggle seam)."""
+    /gps/location), the owner's own chat ask (og_maps'
+    location-toggle seam) and the owner's YES to the
+    one-time permission ask (Round 78).
+    Turning ON also marks the one-time ask as asked
+    (Round 78): the owner has made the location decision
+    themselves, so OG never needs to ask them later —
+    even after they turn it back off."""
     if uid:
         _put("gpsloc:" + uid, {"on": bool(on)})
+        if on:
+            _mark_location_asked(uid)
     return location_on_for(uid)
+
+
+# ===========================================================================
+# One-time location permission ask (Round 78)
+# ===========================================================================
+# Brent's rule: "Only ask one time then it stay on until
+# they turn it off." One record per account beside the
+# switch: "gpslocask:"+uid -> {"asked": bool, "pending":
+# {"destination", "ask", "ts"} | None}. The asked flag is
+# set the moment the ask is made (and by any manual turn-on,
+# via set_location_on above); the pending ask is what a
+# later yes/no in chat answers, and it expires — a yes ten
+# minutes later is just a yes to nothing.
+
+LOC_ASK_TTL_S = 600.0
+
+
+def _loc_ask_record(uid: str) -> dict:
+    if not uid:
+        return {}
+    data = _get("gpslocask:" + uid)
+    return data if isinstance(data, dict) else {}
+
+
+def location_asked_for(uid: str) -> bool:
+    """True once the account has been asked the one-time
+    location permission question — or has made the
+    decision itself by turning the switch on. No record,
+    a corrupt blob or no uid all read NOT asked."""
+    return _loc_ask_record(uid).get("asked") is True
+
+
+def _mark_location_asked(uid: str):
+    """Record that the location decision has been faced:
+    the asked flag set, any pending ask cleared. Called
+    when the ask is made (via set_location_pending_ask)
+    and by set_location_on when the switch turns on."""
+    _put("gpslocask:" + uid, {"asked": True, "pending": None})
+
+
+def set_location_pending_ask(uid: str, destination, ask_text) -> bool:
+    """Store the pending one-time ask for the account and
+    set the asked flag in the same write — the flag is set
+    the moment the ask is made, whatever the answer turns
+    out to be. Returns False (stores nothing) with no uid
+    or no destination."""
+    if not uid or not destination:
+        return False
+    _put("gpslocask:" + uid, {
+        "asked": True,
+        "pending": {
+            "destination": str(destination),
+            "ask": str(ask_text or ""),
+            "ts": time.time(),
+        },
+    })
+    return True
+
+
+def location_pending_ask(uid: str):
+    """The account's pending one-time ask, or None — no
+    record, already answered, or past its expiry. An
+    expired pending is cleared as it is read, so it can
+    never be answered late."""
+    rec = _loc_ask_record(uid)
+    pending = rec.get("pending")
+    if not isinstance(pending, dict):
+        return None
+    try:
+        ts = float(pending.get("ts") or 0)
+    except (TypeError, ValueError):
+        ts = 0.0
+    if ts <= 0 or (time.time() - ts) > LOC_ASK_TTL_S:
+        _put("gpslocask:" + uid,
+             {"asked": rec.get("asked") is True, "pending": None})
+        return None
+    return pending
+
+
+def clear_location_pending_ask(uid: str):
+    """Drop the pending ask (it has been answered); the
+    asked flag is untouched — it stays set for good."""
+    if uid:
+        rec = _loc_ask_record(uid)
+        _put("gpslocask:" + uid,
+             {"asked": rec.get("asked") is True, "pending": None})
 
 
 # ===========================================================================
