@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # Durable backend (the og_lessons pattern): Postgres when
 # OG_MEMORY_DB_URL is set, else JSON files beside the stores.
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -109,8 +109,8 @@ def _load_checks_store() -> Dict:
                     cur.execute("SELECT uid, data FROM og_github_checks")
                     return {u: d for u, d in cur.fetchall()}
         except Exception as e:
-            logger.warning(f"GitHub checks DB load failed, "
-                           f"using file: {e}")
+            logger.warning(f"GitHub checks DB load failed: {e}")
+            raise StoreError("codemore store unavailable (Round 99)") from e
     if os.path.exists(_CHECKS_STORE_FILE):
         try:
             with open(_CHECKS_STORE_FILE, 'r') as f:
@@ -142,8 +142,8 @@ def _save_checks_store(store: Dict):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"GitHub checks DB save failed, "
-                           f"using file: {e}")
+            logger.warning(f"GitHub checks DB save failed: {e}")
+            raise StoreError("codemore store unavailable (Round 99)") from e
     try:
         with open(_CHECKS_STORE_FILE, 'w') as f:
             json.dump(store, f)
@@ -305,8 +305,8 @@ def _load_map_store() -> Dict:
                     cur.execute("SELECT key, data FROM og_github_maps")
                     return {k: d for k, d in cur.fetchall()}
         except Exception as e:
-            logger.warning(f"Repo-map DB load failed, "
-                           f"using file: {e}")
+            logger.warning(f"Repo-map DB load failed: {e}")
+            raise StoreError("codemore store unavailable (Round 99)") from e
     if os.path.exists(_MAP_STORE_FILE):
         try:
             with open(_MAP_STORE_FILE) as f:
@@ -338,8 +338,8 @@ def _save_map_store(store: Dict):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Repo-map DB save failed, "
-                           f"using file: {e}")
+            logger.warning(f"Repo-map DB save failed: {e}")
+            raise StoreError("codemore store unavailable (Round 99)") from e
     try:
         with open(_MAP_STORE_FILE, "w") as f:
             json.dump(store, f)
