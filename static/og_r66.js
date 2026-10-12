@@ -22,6 +22,15 @@
  *             shows map + route only — live turn-by-turn
  *             while driving is the app's job, and the view
  *             says so.
+ *             Round 73 adds the ACCOUNT location switch
+ *             to this view: a toggle button bound to GET/
+ *             POST /gps/location — the same one switch the
+ *             app flips and chat flips ("turn my location
+ *             on"). The button paints only the server's
+ *             answer, never its own guess; the position
+ *             watch runs only while the switch is on; the
+ *             browser's own permission stays the device's
+ *             gate underneath it, and the view says so.
  *   Construction — the job-site folder: the caller's
  *             saved points (GET /gps/points) with add
  *             (manual or "Drop at my location"), Convert
@@ -161,6 +170,19 @@
     var chip = el('span', 'og66-chip', 'Location: …');
     chip.id = 'og66LocChip';
     wrap.appendChild(chip);
+    /* Round 73: the account location switch (GET/POST
+     * /gps/location) — the same switch the app and chat
+     * flip. It paints only what the server answers. */
+    var locBtn = el('button', 'og66-btn dim', 'OG location: …');
+    locBtn.type = 'button';
+    locBtn.id = 'og66LocBtn';
+    wrap.appendChild(locBtn);
+    wrap.appendChild(el('p', 'og66-note',
+      'That button is OG\'s location switch. It stays how you '
+      + 'leave it — on every device signed into your account — '
+      + 'until you tap it again or ask OG to change it. Your '
+      + 'browser still has its own location permission '
+      + 'underneath it; the map dot needs both on.'));
     var here = el('p', 'og66-note', 'You are here: (location not shared yet)');
     here.id = 'og66Here';
     var mapBox = el('div', 'og70-map og66-map');
@@ -225,10 +247,20 @@
       else if (points.length) ensureMap(points[0].lat, points[0].lon);
     }).catch(function () { /* map stays as-is */ });
 
-    if (!navigator.geolocation) {
-      chip.textContent = 'Location: Off — this browser has no GPS.';
-    } else {
-      var watchId = navigator.geolocation.watchPosition(function (p) {
+    /* The position watch runs only while the ACCOUNT
+     * switch is on (Round 73). The chip below it reports
+     * this browser's own position state — the device gate
+     * under the switch. */
+    var watchId = null;
+    function stopWatch() {
+      if (watchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      watchId = null;
+    }
+    function startWatch() {
+      if (watchId !== null || !navigator.geolocation) return;
+      watchId = navigator.geolocation.watchPosition(function (p) {
         myPos = { lat: p.coords.latitude, lon: p.coords.longitude };
         chip.textContent = 'Location: On';
         chip.className = 'og66-chip on';
@@ -245,12 +277,64 @@
           }
         }
       }, function () {
-        chip.textContent = 'Location: Off — the map still shows '
-          + 'your route and points.';
+        chip.textContent = 'Location: Off — this browser is not '
+          + 'sharing its position. The map still shows your '
+          + 'route and points.';
       }, { enableHighAccuracy: true });
-      view.track(function () {
-        navigator.geolocation.clearWatch(watchId);
+    }
+    view.track(stopWatch);
+
+    var locOn = null;   // null until the server answers
+    function paintLocBtn() {
+      if (locOn === null) {
+        locBtn.textContent = 'OG location: …';
+        locBtn.className = 'og66-btn dim';
+        return;
+      }
+      locBtn.textContent = locOn
+        ? 'OG location: On — tap to turn off'
+        : 'OG location: Off — tap to turn on';
+      locBtn.className = locOn ? 'og66-btn' : 'og66-btn dim';
+    }
+    function applyLocState(on) {
+      locOn = !!on;
+      paintLocBtn();
+      if (locOn) {
+        startWatch();
+      } else {
+        stopWatch();
+        myPos = null;
+        if (map) map.setUser(null);
+        chip.textContent = 'Location: Off — OG\'s location switch '
+          + 'is off. The map still shows your route and points.';
+        chip.className = 'og66-chip';
+        var h = $('og66Here');
+        if (h) h.textContent = 'You are here: (location not shared yet)';
+      }
+    }
+    api('/gps/location').then(function (res) {
+      if (!alive) return;
+      if (res.d && typeof res.d.on === 'boolean') {
+        applyLocState(res.d.on);
+      }
+    }).catch(function () { /* button keeps its … state */ });
+    locBtn.addEventListener('click', function () {
+      if (locOn === null) return;
+      locBtn.textContent = 'OG location: …';
+      post('/gps/location', { on: !locOn }).then(function (res) {
+        if (!alive) return;
+        if (res.d && typeof res.d.on === 'boolean') {
+          applyLocState(res.d.on);
+        } else {
+          paintLocBtn();
+        }
+      }).catch(function () {
+        if (alive) paintLocBtn();
       });
+    });
+
+    if (!navigator.geolocation) {
+      chip.textContent = 'Location: Off — this browser has no GPS.';
     }
 
     go.addEventListener('click', function () {
