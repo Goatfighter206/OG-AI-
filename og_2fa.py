@@ -105,6 +105,7 @@ able to verify codes — that is what a TOTP server is);
 recovery codes and challenge tokens are sha256-only.
 """
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -733,11 +734,17 @@ def register_2fa_routes(app):
 
     @app.get("/auth/2fa/status")
     async def tf_status(request: Request):
-        sess = _session(request)
+        # Round 107 (B3): both reads are sync store reads
+        # (the session lookup, then the 2FA record) that
+        # used to run INLINE on the event loop — a slow
+        # database froze every visitor's worker behind this
+        # poll. Off the loop now; answers are unchanged.
+        sess = await asyncio.to_thread(_session, request)
         if sess is None:
             return JSONResponse({"detail": "sign_in_required"},
                                 status_code=401)
-        return _status_payload(sess.get("uid") or "")
+        return await asyncio.to_thread(_status_payload,
+                                       sess.get("uid") or "")
 
     @app.post("/auth/2fa/verify")
     async def tf_verify(request: Request):
