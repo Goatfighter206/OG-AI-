@@ -1830,6 +1830,17 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogcrew.install_crew_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Crew install skipped: {e}")
+    # Round 84: the shit-talking seam rides the same last
+    # install, AFTER the crew (so its wraps land outermost:
+    # it notes the turn's uid before every other seam reads
+    # it, and its chat flips are whole-message settings asks
+    # naming the register, so no other seam's asks or bare
+    # YES/NO are ever eaten). Fail-safe.
+    try:
+        import og_shittalk as _ogshit
+        _ogshit.install_shittalk_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Shittalk install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
