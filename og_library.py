@@ -590,3 +590,11 @@ def register_library_routes(app):
         _ogcrew.register_crew_routes(app)
     except Exception as e:
         logger.warning(f"Crew routes skipped: {e}")
+    # Round 84: the shit-talking setting's routes
+    # (GET/POST /shittalk — the per-account register switch)
+    # ride the same registration.
+    try:
+        import og_shittalk as _ogshit
+        _ogshit.register_shittalk_routes(app)
+    except Exception as e:
+        logger.warning(f"Shittalk routes skipped: {e}")
