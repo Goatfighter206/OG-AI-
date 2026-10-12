@@ -17,7 +17,7 @@
     "width:min(92vw,380px);background:#101010;color:#f5eeda;border:1px solid #c9a227;" +
     "border-radius:14px;padding:12px 14px;font:14px/1.45 system-ui,sans-serif;" +
     "box-shadow:0 8px 30px rgba(0,0,0,.55)}" +
-    "#ogVoiceCard h3{margin:0 24px 6px 0;font-size:15px;color:#e8c766}" +
+    "#ogVoiceCard h3{margin:0 54px 6px 0;font-size:15px;color:#e8c766}" +
     "#ogVoiceCard .ogvc-meta{opacity:.85;font-size:12.5px;margin-bottom:6px}" +
     "#ogVoiceCard audio{width:100%;margin:8px 0 4px}" +
     "#ogVoiceCard input[type=text]{width:100%;box-sizing:border-box;margin:6px 0;" +
@@ -31,8 +31,11 @@
     "#ogVoiceCard button.ogvc-no{background:#2a2a2a;color:#f5eeda;" +
     "border:1px solid #555}" +
     "#ogVoiceCard button:disabled{opacity:.45;cursor:default}" +
-    "#ogVoiceCard .ogvc-x{position:absolute;top:6px;right:8px;background:none;" +
-    "border:0;color:#f5eeda;font-size:16px;cursor:pointer;padding:4px}" +
+    "#ogVoiceCard .ogvc-x{position:absolute;top:8px;right:8px;width:42px;height:42px;" +
+    "border-radius:50%;background:#1b1b1b;border:1px solid #333;color:#e8e8e8;" +
+    "display:grid;place-items:center;cursor:pointer;padding:0}" +
+    "#ogVoiceCard .ogvc-x svg{width:21px;height:21px}" +
+    "#ogVoiceCard .ogvc-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}" +
     "#ogVoiceCard .ogvc-voice{display:flex;gap:8px;align-items:center;margin:4px 0}" +
     "#ogVoiceCard .ogvc-voice span{flex:1}";
   document.head.appendChild(css);
@@ -62,7 +65,9 @@
   function hide() { card.hidden = true; card.innerHTML = ""; }
   function head(title) {
     card.innerHTML = "";
-    var x = el("button", "ogvc-x", "✕");
+    var x = el("button", "ogvc-x");
+    x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+    x.setAttribute("aria-label", "Close");
     x.addEventListener("click", function () {
       var j = card.getAttribute("data-job");
       var p = card.getAttribute("data-pending");
