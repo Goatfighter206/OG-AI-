@@ -77,8 +77,12 @@ of Round 50's approve-to-upgrade hook:
    should not pop up right now — those should be an 11 o' pm
    thing"). UPDATE-class problems (verify kind "update" —
    the package updates the self-check ingest mints) are
-   stamped at creation with hold_until = the next 23:00 in
-   the owner's timezone (og_autoupdate's own clock). While
+   stamped at creation with hold_until = the releasing
+   23:00 in the owner's timezone (og_autoupdate's own
+   clock): the next 23:00 for a daytime stamp, or the
+   23:00 that opened the running night for one minted
+   inside the nightly window (Round 72's seam — a
+   nightly-minted update surfaces that same night). While
    the hold is active the proposal still exists in the
    queue — the nightly run reads the queue unfiltered and
    the operator surfaces are untouched — but it is excluded
@@ -284,16 +288,29 @@ def _is_update_problem(problem) -> bool:
 
 
 def _release_ts(ts: float) -> float:
-    """The next 23:00 owner-local strictly after ts — the
-    nightly window, read through og_autoupdate's own
-    _owner_tz so the hold clock and the run clock are the
-    same code (zoneinfo America/Los_Angeles with its
-    fixed-offset fallback)."""
+    """The 23:00 owner-local that releases a stamp made at
+    ts. Daytime stamps get the next 23:00 strictly after ts
+    (Round 71). A stamp minted INSIDE the nightly window
+    (Round 72: the self-check battery runs in the window
+    now, so that is where update problems are born) gets
+    the 23:00 that OPENED the running night — already due
+    the moment it lands, so a nightly-minted update
+    surfaces THAT night: in Ideas, and counted by the
+    nightly note's released-updates line, which keys on a
+    past hold_until. The night is read through
+    og_autoupdate's own _night_for/_owner_tz so the hold
+    clock and the run clock are literally the same code
+    (zoneinfo America/Los_Angeles with its fixed-offset
+    fallback; the fallback mirrors _night_for's arithmetic:
+    23:00-23:59 is that date's night, 00:00-03:59 is the
+    previous date's catch-up tail)."""
     from datetime import datetime, timedelta, timezone
     tz = None
+    night_for = None
     try:
         import og_autoupdate as _au
         tz, _ = _au._owner_tz()
+        night_for = _au._night_for
     except Exception:
         tz = None
     if tz is None:
@@ -303,6 +320,23 @@ def _release_ts(ts: float) -> float:
         except Exception:
             tz = timezone(timedelta(hours=-8))
     local = datetime.fromtimestamp(ts, tz)
+    night = None
+    if night_for is not None:
+        try:
+            night = night_for(local)
+        except Exception:
+            night = None
+    elif local.hour >= RELEASE_HOUR:
+        night = local.date().isoformat()
+    elif local.hour < 4:
+        night = (local.date() - timedelta(days=1)).isoformat()
+    if night:
+        try:
+            _y, _m, _d = (int(p) for p in str(night).split("-"))
+            return datetime(_y, _m, _d, RELEASE_HOUR,
+                            tzinfo=tz).timestamp()
+        except Exception:
+            pass
     cand = local.replace(hour=RELEASE_HOUR, minute=0,
                          second=0, microsecond=0)
     if cand <= local:
