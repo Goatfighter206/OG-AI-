@@ -30,7 +30,23 @@
     "border-radius:50%;background:#1b1b1b;border:1px solid #333;color:#e8e8e8;" +
     "display:grid;place-items:center;cursor:pointer;padding:0}" +
     "#ogMotionCard .ogmc-x svg{width:21px;height:21px}" +
-    "#ogMotionCard .ogmc-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}";
+    "#ogMotionCard .ogmc-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}" +
+    /* Round 106: the locker save is an icon at the card's
+       top right, left of the canonical x (Brent: icon only). */
+    "##ogMotionCard button.ogmc-save{position:absolute;top:8px;right:58px;" +
+    "width:42px;height:42px;border-radius:50%;background:#1b1b1b;" +
+    "border:1px solid #333;color:#e8e8e8;display:grid;place-items:center;" +
+    "cursor:pointer;padding:0}" +
+    "##ogMotionCard .ogmc-save svg{width:21px;height:21px;fill:none;" +
+    "stroke:currentColor;stroke-width:2;stroke-linecap:round;" +
+    "stroke-linejoin:round}" +
+    "##ogMotionCard button.ogmc-save:hover{border-color:rgba(255,193,7,.7);" +
+    "color:#ffc107}" +
+    "##ogMotionCard button.ogmc-save.is-saved{background:linear-gradient(" +
+    "135deg,#ffc107,#ff8f00);color:#151515;border-color:transparent}" +
+    "##ogMotionCard button.ogmc-save.is-saved svg{fill:currentColor}" +
+    "##ogMotionCard .ogmc-savenote{color:#ff9c9c;font-size:12.5px;" +
+    "align-self:center}";
   document.head.appendChild(css);
 
   var card = document.createElement("section");
@@ -121,17 +137,36 @@
       dl.href = video.src;
       dl.setAttribute("download", "");
       btns.appendChild(dl);
+      var snote = el("span", "ogmc-savenote", "");
+      btns.appendChild(snote);
+      card.appendChild(btns);
       if (!j.saved) {
-        var save = el("button", null, "Save to my locker");
+        /* Round 106: the save rides the same POST, but it
+           is an icon now — the folder glyph at the card's
+           top right, left of the x. Saved = the glyph
+           fills gold; a failure keeps the old words, on
+           the note line + the icon's label. */
+        var save = el("button", "ogmc-save");
+        save.innerHTML = '<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+        save.setAttribute("aria-label", "Save to my locker");
+        save.setAttribute("title", "Save to my locker");
         save.addEventListener("click", function () {
           save.disabled = true;
           post("/motion/save/" + j.id).then(function (d) {
-            save.textContent = d && d.ok ? "Saved ✓" : "Locker said no";
+            if (d && d.ok) {
+              save.classList.add("is-saved");
+              save.setAttribute("aria-label", "Saved");
+              save.setAttribute("title", "Saved");
+            } else {
+              snote.textContent = "Locker said no";
+              save.setAttribute("aria-label", "Locker said no");
+              save.setAttribute("title", "Locker said no");
+            }
           });
         });
-        btns.appendChild(save);
+        card.appendChild(save);
+        card.querySelector("h3").style.marginRight = "108px";
       }
-      card.appendChild(btns);
       card.hidden = false;
       return;
     }
