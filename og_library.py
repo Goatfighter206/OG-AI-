@@ -429,6 +429,22 @@ def feed_rows(uid: str, request: Request):
     return rows[:ITEM_CAP], line, unread
 
 
+def _request_uid(request: Request) -> str:
+    """Round 95: the caller's ONE identity — the live
+    session's account uid when signed in, else the
+    presented cookie (og_accounts.session_uid_or, the
+    tierfix resolver). The Feed and the notification
+    surfaces resolve identity the same way, so they can
+    never read different piles for the same person."""
+    cookie_uid = request.cookies.get(UID_COOKIE) or ""
+    try:
+        import og_accounts as _acct
+        return _acct.session_uid_or(request.cookies,
+                                    cookie_uid)
+    except Exception:
+        return cookie_uid
+
+
 def register_library_routes(app):
 
     # Round 62: message reactions + OG respond ride this
@@ -541,7 +557,7 @@ def register_library_routes(app):
 
     @app.get("/library")
     async def library_list(request: Request):
-        uid = request.cookies.get(UID_COOKIE) or ""
+        uid = _request_uid(request)
         if not uid:
             return {"items": [], "storage": None,
                     "counts": {"videos": 0, "songs": 0,
@@ -560,7 +576,7 @@ def register_library_routes(app):
         the caller's rows in feed_rows() order (the ordering
         lives server-side; the client renders it verbatim).
         Behind the same sign-in gate as /library."""
-        uid = request.cookies.get(UID_COOKIE) or ""
+        uid = _request_uid(request)
         if not uid:
             return {"rows": [], "storage_line": None,
                     "unread": 0}
