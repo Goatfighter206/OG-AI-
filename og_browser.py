@@ -2596,7 +2596,7 @@ def register_browser_routes(app):
             out["phase"] = "ready" if out["frame_ready"] \
                 else "loading"
             # Fresh from Steel on every poll — never stored anywhere.
-            out["viewer_url"] = _viewer_url(rec.get("steel_id", ""))
+            out["viewer_url"] = await asyncio.to_thread(_viewer_url, rec.get("steel_id", ""))
         if not rec and uid:
             # Round 61 (additive): a start in flight — the
             # session record does not exist yet (the Steel
@@ -2697,7 +2697,7 @@ def register_browser_routes(app):
             return {"ok": False,
                     "error": "no pending action — it expired or "
                              "was already resolved"}
-        blocks = _do_approve(uid)
+        blocks = await asyncio.to_thread(_do_approve, uid)
         return {"ok": True,
                 "title": blocks[0].get("title", "") if blocks else "",
                 "body": "\n".join(b.get("body", "") for b in blocks)}
@@ -2725,7 +2725,7 @@ def register_browser_routes(app):
                     "error": "that site can't be always-allowed "
                              "— approve or decline this one "
                              "instead"}
-        blocks = _do_approve(uid)
+        blocks = await asyncio.to_thread(_do_approve, uid)
         body = "\n".join(b.get("body", "") for b in blocks)
         return {"ok": True,
                 "title": blocks[0].get("title", "") if blocks
@@ -2877,7 +2877,7 @@ def register_browser_routes(app):
         uid = _route_uid(request)
         if uid:
             _clear_pending(uid)
-            _end_session(uid, "ended from the panel")
+            await asyncio.to_thread(_end_session, uid, "ended from the panel")
         return {"ok": True}
 
     @app.on_event("startup")
@@ -2886,7 +2886,7 @@ def register_browser_routes(app):
             while True:
                 await asyncio.sleep(_REAPER_SECONDS)
                 try:
-                    _reap_once()
+                    await asyncio.to_thread(_reap_once)
                 except Exception as e:
                     logger.warning(f"Browser reaper loop failed: {e}")
         asyncio.create_task(_loop())
