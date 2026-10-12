@@ -102,7 +102,7 @@ CREW_STORE_FILE = "crew_store.json"
 _crew_lock = threading.RLock()
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -202,7 +202,8 @@ def _blob(uid: str, kind: str, default):
                     row = cur.fetchone()
             return row[0] if row else default
         except Exception as e:
-            logger.warning(f"Crew DB load failed, using file: {e}")
+            logger.warning(f"Crew DB load failed: {e}")
+            raise StoreError("crew store unavailable (Round 99)") from e
     with _crew_lock:
         store = _load_file_store()
     entry = (store.get(uid) or {}).get(kind)
@@ -224,7 +225,8 @@ def _put_blob(uid: str, kind: str, value):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"Crew DB save failed, using file: {e}")
+            logger.warning(f"Crew DB save failed: {e}")
+            raise StoreError("crew store unavailable (Round 99)") from e
     with _crew_lock:
         store = _load_file_store()
         mine = store.get(uid) or {}
@@ -243,6 +245,7 @@ def _all_uids() -> List[str]:
                     return [r[0] for r in cur.fetchall() if r[0]]
         except Exception as e:
             logger.warning(f"Crew uid scan failed: {e}")
+            raise StoreError("crew store unavailable (Round 99)") from e
     with _crew_lock:
         return list(_load_file_store().keys())
 
