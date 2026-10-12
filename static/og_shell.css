@@ -23,7 +23,6 @@
     background: radial-gradient(ellipse 75% 115% at 50% 0%, rgba(8,8,8,.88), rgba(8,8,8,0) 78%);
 }
 .og-top-avatar-bar .og-top-ava { pointer-events: auto; }
-.og-top-avatar-bar .og-notify-bell { pointer-events: auto; top: calc(12px + env(safe-area-inset-top)); right: 76px; box-shadow: 0 6px 18px rgba(0,0,0,.5); }
 
 /* The chat column clears the floating cluster above and the dock below */
 .chat-container {
@@ -73,13 +72,18 @@
 .og-seat:hover { color: #ffc107; }
 .og-seat.is-on { background: linear-gradient(135deg, #ffc107, #ff8f00); color: #151515; }
 .og-seat.is-on:hover { color: #151515; }
+/* Round 95: the Feed seat's dot is a COUNT badge now —
+   the bell is deleted and its unread count lives here,
+   the same number from the same payloads. */
 .og-seat-dot {
-    position: absolute; top: 5px; left: calc(50% + 5px);
-    width: 10px; height: 10px; border-radius: 50%;
+    position: absolute; top: 2px; left: calc(50% + 3px);
+    min-width: 19px; height: 19px; border-radius: 999px;
     background: #ffc107; border: 2px solid #111;
+    color: #111; font-size: 11px; font-weight: 700; line-height: 1;
+    display: grid; place-items: center; padding: 0 4px;
 }
 .og-seat-dot[hidden] { display: none !important; }
-.og-seat.is-on .og-seat-dot { background: #151515; border-color: #ffc107; }
+.og-seat.is-on .og-seat-dot { background: #151515; border-color: #ffc107; color: #ffc107; }
 
 /* --- Approvals panel --------------------------------------------------- */
 .og-appr-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 8199; }
@@ -196,6 +200,25 @@ body.og-shell-off #ogSeatScreen { display: none !important; }
     border-radius: 999px; padding: 7px 14px; font-size: .85rem; font-weight: 700;
 }
 .og-feed-action:hover { background: rgba(255,193,7,.25); }
+/* Round 95: the Feed seat's clear controls + the
+   per-notification dismiss (the canonical 42px circle —
+   the same button as every ✕ since Round 87). */
+.og-feed-clear { display: flex; gap: 10px; padding: 8px 4px 2px; }
+.og-feed-clear[hidden] { display: none !important; }
+.og-feed-clear button {
+    flex: 1 1 0; padding: 10px 12px; border-radius: 12px;
+    border: 1px solid rgba(255,193,7,.45); background: transparent;
+    color: #ffc107; font-weight: 700; font-family: inherit;
+    font-size: .9rem; cursor: pointer;
+}
+.og-feed-dismiss {
+    flex: 0 0 auto; align-self: center; width: 42px; height: 42px;
+    border-radius: 50%; background: #1b1b1b; border: 1px solid #333;
+    color: #e8e8e8; display: grid; place-items: center;
+    cursor: pointer; padding: 0;
+}
+.og-feed-dismiss svg { width: 21px; height: 21px; }
+.og-feed-dismiss:hover { border-color: rgba(255,193,7,.7); color: #ffc107; }
 .og-feed-flash { animation: ogFeedFlash 1.8s ease; }
 @keyframes ogFeedFlash {
     0%, 55% { background: rgba(255,193,7,.3); border-color: #ffc107; }
