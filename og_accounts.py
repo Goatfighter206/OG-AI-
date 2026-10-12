@@ -74,6 +74,7 @@ process — which is what keeps the repo's own test suite
 production is walled.
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -583,7 +584,7 @@ class SignInGateMiddleware:
                     except Exception:
                         token = ""
                     break
-            if _session_for(token) is None:
+            if await asyncio.to_thread(_session_for, token) is None:
                 body = json.dumps(
                     {"detail": "sign_in_required"}).encode("utf-8")
                 await send({
