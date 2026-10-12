@@ -148,7 +148,7 @@
    stub order here is a courtesy, not a dependency. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r70.js';
+  s.src = '/static/og_r70.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -158,7 +158,7 @@
    static script — instead of a new page tag. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r62.js';
+  s.src = '/static/og_r62.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -167,7 +167,7 @@
    the page is at its push ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r63.js';
+  s.src = '/static/og_r63.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -176,7 +176,7 @@
    the page is at its push ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r65.js';
+  s.src = '/static/og_r65.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -185,7 +185,7 @@
    Rounds 62/63/65 — the page is at its push ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r66.js';
+  s.src = '/static/og_r66.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -195,7 +195,20 @@
    ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r84.js';
+  s.src = '/static/og_r84.js' + '?v=85';
+  document.head.appendChild(s);
+})();
+
+/* Round 85: the in-shell plans view (the plan card's tap
+   opens the plans inside the shell instead of navigating
+   to /pro — see static/og_r85.js for why); same ride-along
+   loader as Rounds 62/63/65/66/84. Its src carries the
+   Round 85 version stamp like every injected asset here:
+   any round that changes a covered static bumps the stamp
+   in this file AND in index_epic.html in the same push. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_r85.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -205,7 +218,7 @@
    at its push ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_podcast.js';
+  s.src = '/static/og_podcast.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -218,7 +231,7 @@
    fall through to a plain picture. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_designer.js';
+  s.src = '/static/og_designer.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -228,7 +241,7 @@
    is at its push ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_books.js';
+  s.src = '/static/og_books.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -238,7 +251,7 @@
    is at its push ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_motion.js';
+  s.src = '/static/og_motion.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -248,7 +261,7 @@
    — the page is at its push ceiling. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_voice_lab.js';
+  s.src = '/static/og_voice_lab.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -259,7 +272,7 @@
    while the wallet gate is off. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_wallet.js';
+  s.src = '/static/og_wallet.js' + '?v=85';
   document.head.appendChild(s);
 })();
 
@@ -272,6 +285,6 @@
    earlier wrap (e.g. og_r62's voice approvals). */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_stoplisten.js';
+  s.src = '/static/og_stoplisten.js' + '?v=85';
   document.head.appendChild(s);
 })();
