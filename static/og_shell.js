@@ -83,7 +83,8 @@ shellRoot.innerHTML =
 '<h3 class="og-appr-sec" id="ogApprFixSec" hidden>Fixes waiting</h3>' +
 '<div id="ogApprFixList"></div>' +
 '</div>' +
-'</section>';
+'</section>' +
+'<div id="ogReconnectChip" hidden><span class="og-reconnect-title">Reconnecting…</span><span class="og-reconnect-sub">The server isn\'t answering right now — that\'s not a sign-out. Retrying on its own.</span></div>';
 document.body.appendChild(shellRoot);
 
 /* --- 1. Composer into the dock --------------------------------------- */
@@ -96,9 +97,113 @@ function syncGate() {
   document.body.classList.toggle('og-shell-off', !!(gate && !gate.hidden));
 }
 if (gate && window.MutationObserver) {
-  new MutationObserver(syncGate).observe(gate, { attributes: true, attributeFilter: ['hidden'] });
+  new MutationObserver(function () { syncGate(); onGatePaint(); })
+    .observe(gate, { attributes: true, attributeFilter: ['hidden'] });
 }
 syncGate();
+
+/* --- 2b. Session truth (Round 79): a blink is not a sign-out ----------
+   The page's own session check (og-auth-js checkMe) paints
+   the wall on ANY failure of its /auth/me fetch: fetch
+   resolves on a 502, r.json() throws on the HTML error
+   page, and the catch shows the wall — though the session
+   (a server-side record; a 502 kills nothing) is alive.
+   Brent's 2026-10-11 recording: server blinked, the page
+   reloaded, the wall came up with his email + a saved
+   password filled in, and his live Remember-me session
+   was treated as dead.
+   This watcher arbitrates the wall with a status-aware
+   probe of the same endpoint. /auth/me answers 200 with
+   {"signed_in": <bool>} — a 200 carrying that boolean is
+   the ONLY definitive answer. signed_in -> the page's
+   own ogAuthCheck() re-runs and enters the app. false ->
+   the wall is correct; stand down. Anything else (5xx,
+   non-JSON, a rejected fetch) is a blink: while the wall
+   is up it is suppressed behind the neutral reconnecting
+   chip (a body class only — the gate element, its hidden
+   attribute, and the og-shell-off mirror are never
+   touched) and the probe retries with backoff until a
+   definitive answer lands. A ?reset= link owns the wall
+   (password reset): the watcher never engages then.
+   enterApp is the page's ONLY gate-hider and it runs
+   only on a definitive signed_in, so a hidden gate is
+   itself proof of a confirmed session this load. */
+var sessionState = (gate && !gate.hidden) ? 'unknown' : 'in';
+var sessionProbeBusy = false, reconnectTimer = null, reconnectTries = 0;
+var hasResetToken = false;
+try { hasResetToken = !!new URLSearchParams(location.search).get('reset'); } catch (e) { }
+function classifyMe(status, d) {
+  if (status === 200 && d && typeof d.signed_in === 'boolean') {
+    return d.signed_in ? 'in' : 'out';
+  }
+  return 'transient';
+}
+window.ogClassifyMe = classifyMe;
+function stopReconnect() {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  reconnectTries = 0;
+  document.body.classList.remove('og-auth-reconnecting');
+  var chip = $('ogReconnectChip');
+  if (chip) chip.hidden = true;
+}
+function startReconnect() {
+  document.body.classList.add('og-auth-reconnecting');
+  var chip = $('ogReconnectChip');
+  if (chip) chip.hidden = false;
+  if (reconnectTimer) return;
+  var delay = Math.min(2500 + reconnectTries * 750, 10000);
+  reconnectTries++;
+  reconnectTimer = setTimeout(function () {
+    reconnectTimer = null;
+    probeSession();
+  }, delay);
+}
+function onSessionTruth(truth) {
+  if (truth === 'in') {
+    sessionState = 'in';
+    stopReconnect();
+    if (gate && !gate.hidden && typeof window.ogAuthCheck === 'function') {
+      window.ogAuthCheck();
+    }
+  } else if (truth === 'out') {
+    sessionState = 'out';
+    stopReconnect();
+  } else if (gate && !gate.hidden && !hasResetToken) {
+    /* transient: only the wall's paint is in question */
+    startReconnect();
+  }
+}
+function probeSession() {
+  if (sessionProbeBusy || hasResetToken) return;
+  sessionProbeBusy = true;
+  fetch('/auth/me').then(function (r) {
+    return r.json().then(
+      function (d) { return { status: r.status, d: d }; },
+      function () { return { status: r.status, d: null }; });
+  }).then(function (res) {
+    sessionProbeBusy = false;
+    onSessionTruth(classifyMe(res.status, res.d));
+  }).catch(function () {
+    sessionProbeBusy = false;
+    onSessionTruth('transient');
+  });
+}
+function onGatePaint() {
+  if (!gate) return;
+  if (gate.hidden) {
+    /* enterApp is the only gate-hider: a session was
+       just confirmed — and any reconnect is over. */
+    sessionState = 'in';
+    stopReconnect();
+    return;
+  }
+  /* The wall just appeared (or re-appeared). Arbitrate
+     it only when a confirmed session stands behind this
+     page load; a wall after a definitive sign-out this
+     load is the page's own truth and stays. */
+  if (sessionState === 'in' && !hasResetToken) probeSession();
+}
+if (gate && !gate.hidden && !hasResetToken) probeSession();
 
 /* --- 3. Seats ---------------------------------------------------------- */
 var seats = {
@@ -329,9 +434,114 @@ function getJSON(url) {
    and restores the activity text when the last needs-
    user state clears. Both pill instances are always
    written together. Tapping the pill routes to the
-   thing it names (see pillTap). */
+   thing it names (see pillTap).
+   Round 79: the writes themselves now go through the
+   ONE-writer coordinator (§4c) — the page's updater
+   supplies the activity text through the pill channels
+   and only the coordinator paints, so a needs text and
+   an activity text can never paint over each other. */
 var composerLocked = false, lastBrowserStatus = null, sendWrapped = false;
 var signinNeeded = false, browserNeeded = false, pillNeedsActive = false;
+
+/* --- 4c. The pill's ONE writer (Round 79) ------------------------------
+   Two painters used to write the status pills
+   (#ogTaskPillTop + #ogTaskPillProfile): the page's
+   activity updater (Thinking… / Making your video /
+   Browsing <host> / Online & Ready), deduped by a
+   closure-private lastText the shell cannot see, and
+   this shell's needs layer (assertApprovalPill /
+   restorePill below). Neither knew the other's writes:
+   the page could repaint OVER a live needs state until
+   the shell's next poll re-asserted it, and its dedupe
+   guard could then skip the repaint that should have
+   replaced the shell's restored text — on Brent's phone
+   the two texts smeared across each other ("OG needs
+   you to sign in" ghosted over "Online & Ready").
+   Now the pills have ONE writer: this coordinator. Each
+   pill element gets a textContent channel — the native
+   setter is captured first, then an own-property trap
+   routes EVERY outside write (the page painter's above
+   all) into the coordinator as the latest ACTIVITY text.
+   Only the coordinator ever calls the native setter,
+   painting needs ?? activity, change-only, both
+   instances in the same write: a new state REPLACES the
+   text, nothing ever paints over. If a channel cannot
+   be installed (non-configurable property), the
+   coordinator falls back to the legacy direct writes
+   for the elements it could not channel. */
+var pillNeeds = null, pillActivityText = null, pillShown = null,
+    pillPageSeen = false, pillChannels = [], pillPlain = [];
+function pillRawChannel(el) {
+  var nativeSet = null, nativeGet = null, o = el, guard = 0;
+  while (o && guard++ < 12) {
+    var d = null;
+    try { d = Object.getOwnPropertyDescriptor(o, 'textContent'); } catch (e) { }
+    if (d) {
+      if (typeof d.set === 'function') { nativeSet = d.set; nativeGet = d.get || null; }
+      break;
+    }
+    o = Object.getPrototypeOf(o);
+  }
+  var seed = '';
+  try { seed = nativeGet ? String(nativeGet.call(el) || '') : String(el.textContent || ''); }
+  catch (e) { }
+  var store = { text: seed };
+  var ch = {
+    seed: seed,
+    rawSet: function (t) {
+      store.text = t;
+      if (nativeSet) { try { nativeSet.call(el, t); } catch (e) { } }
+    }
+  };
+  try {
+    Object.defineProperty(el, 'textContent', {
+      configurable: true, enumerable: true,
+      get: function () { return store.text; },
+      set: function (v) { pillActivityWrite(v == null ? '' : String(v)); }
+    });
+    return ch;
+  } catch (e) {
+    return null;
+  }
+}
+function pillPaint() {
+  var t = pillNeeds != null ? pillNeeds : pillActivityText;
+  if (t == null || t === pillShown) return;
+  pillShown = t;
+  pillChannels.forEach(function (ch) { ch.rawSet(t); });
+  pillPlain.forEach(function (el) {
+    /* unchanneled fallback: no trap lives here, so this
+       direct write cannot re-enter the coordinator */
+    try { el.textContent = t; } catch (e) { }
+  });
+}
+function pillActivityWrite(t) {
+  pillPageSeen = true;
+  if (t === pillActivityText) { pillPaint(); return; }
+  pillActivityText = t;
+  pillPaint();
+}
+function pillSetNeeds(t) {
+  pillNeeds = t || null;
+  pillPaint();
+}
+['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
+  var el = $(id);
+  if (!el) return;
+  var ch = pillRawChannel(el);
+  if (ch) {
+    pillChannels.push(ch);
+    if (pillActivityText == null && ch.seed) pillActivityText = ch.seed;
+  } else {
+    pillPlain.push(el);
+    if (pillActivityText == null) {
+      try { if (el.textContent) pillActivityText = String(el.textContent); } catch (e) { }
+    }
+  }
+});
+if (pillActivityText == null) pillActivityText = 'Online & Ready';
+pillShown = pillActivityText;
+
 function wrapSend() {
   if (sendWrapped || typeof window.sendMessage !== 'function') return;
   var orig = window.sendMessage;
@@ -351,9 +561,7 @@ function assertApprovalPill() {
   var t = needsPillText();
   if (!t) return;
   pillNeedsActive = true;
-  ['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
-    var p = $(id); if (p) p.textContent = t;
-  });
+  pillSetNeeds(t);
 }
 function updateNeedsPill() {
   if (needsPillText()) { assertApprovalPill(); return; }
@@ -388,18 +596,27 @@ function pillTap() {
   p.addEventListener('click', pillTap);
 });
 function restorePill() {
-  var st = lastBrowserStatus, t = 'Online & Ready';
-  if (st && st.enabled) {
-    if (st.loading_host) t = 'Opening ' + st.loading_host + '…';
-    else if (st.active) {
-      var host = '';
-      if (st.page_url) { try { host = new URL(st.page_url).hostname || ''; } catch (e) { } }
-      t = host ? 'Browsing ' + host : 'Browsing';
+  /* Round 79: restoring = drop the needs text through the
+     ONE writer (§4c). The activity text underneath is the
+     page updater's latest paint — its writes are captured
+     by the channels even while a needs state covers them,
+     so nothing is stale. Only when the page has never
+     painted do we seed the activity text from the last
+     browser status, exactly as this function used to
+     paint it directly. */
+  if (!pillPageSeen) {
+    var st = lastBrowserStatus, t = 'Online & Ready';
+    if (st && st.enabled) {
+      if (st.loading_host) t = 'Opening ' + st.loading_host + '…';
+      else if (st.active) {
+        var host = '';
+        if (st.page_url) { try { host = new URL(st.page_url).hostname || ''; } catch (e) { } }
+        t = host ? 'Browsing ' + host : 'Browsing';
+      }
     }
+    pillActivityText = t;
   }
-  ['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
-    var p = $(id); if (p) p.textContent = t;
-  });
+  pillSetNeeds(null);
 }
 function applyComposerLock() {
   var locked = !!pending;
