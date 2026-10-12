@@ -51,6 +51,15 @@ added. Registration + assertion are real: a minimal stdlib
 CBOR codec, attestation format "none" only, ES256 signature
 verification via cryptography. Challenges are single-use,
 5-minute, server-held, exactly like the login challenge.
+Round 74: both verify handlers also check the
+clientDataJSON origin against the RP ID (host equal to the
+RP ID or a subdomain of it) — see _origin_ok. The RP ID
+itself stays ONE fixed value (OG_WEBAUTHN_RP_ID, else the
+OG_PUBLIC_URL host, default getogai.com.co): a passkey is
+bound to that one RP by the browser, so passkeys work on
+the canonical domain and its subdomains, and never on an
+unrelated host — that binding is the phishing resistance,
+not a bug (round-74 NOTES.md has the full finding).
 If cryptography were ever unavailable, the passkey routes
 answer 501 and status reports passkey "unavailable" —
 honest dark, never faked.
@@ -496,6 +505,26 @@ def _client_data(raw_b64):
         return None
 
 
+def _origin_ok(client_data: dict) -> bool:
+    """WebAuthn origin check (Round 74): the clientDataJSON
+    origin's host must be the RP ID itself or a subdomain
+    of it — the relation a browser enforces between an
+    origin and the RP it runs a ceremony for (so the
+    canonical host and its www subdomain both pass, and a
+    ceremony replayed from any other host fails). A missing
+    or garbled origin fails. Before R74 the origin field
+    was never read; the rpIdHash comparison and the
+    single-use challenge carried the ceremony."""
+    origin = client_data.get("origin")
+    if not isinstance(origin, str) or not origin:
+        return False
+    host = urlparse(origin).hostname
+    if not host:
+        return False
+    rp = _rp_id()
+    return host == rp or host.endswith("." + rp)
+
+
 # --- Shared route helpers -------------------------------------------------------------
 
 
@@ -697,6 +726,8 @@ def register_2fa_routes(app):
         cd = _client_data(body.get("client_data_json"))
         if not cd or cd.get("type") != "webauthn.create":
             return _err("That passkey didn't check out.")
+        if not _origin_ok(cd):
+            return _err("That passkey didn't check out.")
         if _take_wa_challenge(cd, uid, "reg") is None:
             return _err("That passkey setup timed out — try again.")
         try:
@@ -792,6 +823,8 @@ def register_2fa_routes(app):
         except Exception:
             return bad
         if not isinstance(cd, dict) or cd.get("type") != "webauthn.get":
+            return bad
+        if not _origin_ok(cd):
             return bad
         wa = _take_wa_challenge(cd, uid, "assert")
         if wa is None or wa.get("twofa_chal") != chal_token:
