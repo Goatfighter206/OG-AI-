@@ -381,6 +381,9 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     import og_permissions as _permissions
     _step(results, "permissions",
           lambda: _permissions.purge_uid(uid))
+    import og_voice_style as _voice_style
+    _step(results, "voice",
+          lambda: _voice_style.purge_uid(uid))
 
     def storage():
         import og_storage as _st
