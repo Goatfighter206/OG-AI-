@@ -437,6 +437,18 @@ def enforce_text(text: str, rewrite_fn=None, max_rewrites=None):
             return text, stats
     except Exception:
         pass  # a switch glitch never eats the register pass
+    # Round 84: the current account's own shit-talking
+    # switch gets the same word — OFF for this user -> the
+    # same untouched pass-through (the master gate above
+    # still outranks it). No uid noted this turn -> ON.
+    try:
+        import og_shittalk as _shittalk
+        if not _shittalk.on_for_current():
+            stats["skipped"] = True
+            stats["ms"] = (time.perf_counter() - t0) * 1000
+            return text, stats
+    except Exception:
+        pass  # a switch glitch never eats the register pass
     if not text or not _enabled() or _SHEET_RE.search(text):
         stats["skipped"] = bool(text) and bool(_SHEET_RE.search(text or ""))
         stats["ms"] = (time.perf_counter() - t0) * 1000
