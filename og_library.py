@@ -740,6 +740,14 @@ def register_library_routes(app):
         _ogreboot.register_reboot_routes(app)
     except Exception as e:
         logger.warning(f"Reboot routes skipped: {e}")
+    # Round 109: the Project Manager's one route
+    # (GET /pm/status — the projects payload the chat answer
+    # also uses) rides the same registration.
+    try:
+        import og_pm as _ogpm
+        _ogpm.register_pm_routes(app)
+    except Exception as e:
+        logger.warning(f"PM routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
