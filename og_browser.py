@@ -1598,7 +1598,11 @@ from og_browser_claim import (  # noqa: F401
     _resolve_site_url,
     # Round 61 code motion (see og_browser_claim.py).
     _norm_host, _pending_identity, _pending_site,
+    # Round 75 (see og_browser_claim.py).
+    _dark_text, _garble_claim, _resolve_site_url_fuzzy,
 )
+
+import og_garble  # Round 75
 
 
 def _disallow_host(words: str) -> str:
@@ -1609,7 +1613,8 @@ def _disallow_host(words: str) -> str:
     w = re.sub(r"^the\s+", "", w)
     if not w:
         return ""
-    url = _extract_url(w) or _resolve_site_url(w)
+    url = _extract_url(w) or _resolve_site_url(w) \
+        or _resolve_site_url_fuzzy(w)[0]
     if url:
         return _norm_host(urllib.parse.urlparse(url).hostname
                           or "")
@@ -1693,7 +1698,7 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
         # parked waiting for its words: this message IS the text.
         if intent and not intent.get("text"):
             return {"op": "posttext", "text": raw}
-        return None
+        return _garble_claim(raw, low, True)  # Round 75
     # 3) No live session: a posting ask starts the browser ON the
     #    target site; any other start ask starts it too (Round 27
     #    auto-open — no proposal, no YES needed to begin).
@@ -1706,21 +1711,13 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
         return {"op": "start", "url": url, "goal": raw}
     if _BROWSER_WORD_RE.search(low) and _extract_url(raw):
         return {"op": "start", "url": _extract_url(raw), "goal": raw}
-    return None
+    return _garble_claim(raw, low, False)  # Round 75
 
 
 # --- Results execution ----------------------------------------------------------
 
 
-def _dark_text() -> List[Dict]:
-    return _result(
-        "OG BROWSER", "OG browser — not switched on",
-        "Real talk: my web browser ain't switched on yet. The build "
-        "is done and sitting dark — it lights up the moment the owner "
-        "hooks up the browser service (a Steel account + two switches "
-        "on his end). Until then I can't open pages or run web "
-        "errands live, and I won't fake like I did. My regular web "
-        "lookup still works for quick facts.")
+# _dark_text lives in og_browser_claim.py (R75 motion).
 
 
 def _plan_math_text(plan: Dict, tier: str) -> str:
@@ -2430,6 +2427,16 @@ def _do_posttext(uid: str, job: Dict) -> List[Dict]:
 
 
 def browser_results(job: Dict, message: str, uid: str) -> List[Dict]:
+    """Dispatch + (Round 75) the garble read-back."""
+    garble = job.pop("garble", None) \
+        if isinstance(job, dict) else None
+    results = _browser_results(job, message, uid)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _browser_results(job: Dict, message: str, uid: str) -> List[Dict]:
     op = job.get("op")
     if op in ("start", "propose"):
         return _do_start(uid, job)
