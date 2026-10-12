@@ -50,7 +50,10 @@ every fetch anyway.
 """
 
 import logging
+import sys
+import threading
 from datetime import datetime
+from http.cookies import SimpleCookie
 
 from fastapi import Request
 
@@ -445,6 +448,103 @@ def _request_uid(request: Request) -> str:
         return cookie_uid
 
 
+class ChatDisconnectLogMiddleware:
+    """Round 107 (item 8): ONE info line when a /chat client
+    disconnects mid-stream. The diagnosis: a dropped stream
+    used to vanish without a trace — the stream worker's
+    sink swallows the dead loop silently BY DESIGN (the
+    worker still finishes and saves the turn), so the
+    server log held the access line and nothing about the
+    drop. This pure-ASGI wrapper (the og_accounts
+    SignInGateMiddleware precedent) counts the SSE bytes
+    streamed for a POST /chat and, if the transport reports
+    a disconnect before the response completes, writes
+    exactly one INFO line with the visitor's uid + the
+    byte count. Every other path passes through unwrapped,
+    and the messages themselves are never altered."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (scope.get("type") != "http"
+                or scope.get("path") != "/chat"
+                or scope.get("method") != "POST"):
+            await self.app(scope, receive, send)
+            return
+        uid = ""
+        for name, value in scope.get("headers") or []:
+            if name.lower() == b"cookie":
+                try:
+                    jar = SimpleCookie()
+                    jar.load(value.decode("latin-1"))
+                    if UID_COOKIE in jar:
+                        uid = jar[UID_COOKIE].value
+                except Exception:
+                    uid = ""
+                break
+        state = {"bytes": 0, "done": False, "logged": False}
+
+        async def send_wrap(message):
+            if message["type"] == "http.response.body":
+                state["bytes"] += len(message.get("body") or b"")
+                if not message.get("more_body"):
+                    state["done"] = True
+            await send(message)
+
+        async def receive_wrap():
+            message = await receive()
+            if (message["type"] == "http.disconnect"
+                    and not state["done"] and not state["logged"]):
+                state["logged"] = True
+                logger.info(
+                    "chat stream client disconnected mid-turn: "
+                    f"uid={uid or '?'} "
+                    f"bytes_streamed={state['bytes']}")
+            return message
+
+        await self.app(scope, receive_wrap, send_wrap)
+
+
+_warm_lock = threading.Lock()
+_warm_started = False
+
+
+def _warm_agent_once(app) -> None:
+    """Round 107 (B5): warm the shared agent at worker boot.
+
+    /health and the first chat used to pay the cold
+    get_agent() build (the agent + its ~24 installers)
+    inside a request — on the 2026-10-12 loop the health
+    check itself timed out behind it. The build now runs
+    on a daemon thread spawned from this registration,
+    once per worker, so by the time traffic arrives the
+    call is a cache hit. Gated to the REAL app (the app
+    module's own app object): a test mount of these routes
+    warms nothing. The lazy `import app` inside the thread
+    waits out the import lock when registration happens
+    mid-import, and any failure is one warning — warming
+    must never take a boot down with it."""
+    global _warm_started
+    appmod = sys.modules.get("app")
+    if appmod is None or getattr(appmod, "app", None) is not app:
+        return
+    with _warm_lock:
+        if _warm_started:
+            return
+        _warm_started = True
+
+    def _warm():
+        try:
+            import app as _appmod
+            _appmod.get_agent()
+        except Exception as e:
+            logger.warning(f"Agent warm-up failed: {e}")
+
+    threading.Thread(target=_warm, daemon=True,
+                     name="og-agent-warm").start()
+
+
 def register_library_routes(app):
 
     # Round 62: message reactions + OG respond ride this
@@ -631,3 +731,17 @@ def register_library_routes(app):
         _ogvoicestyle.register_voice_routes(app)
     except Exception as e:
         logger.warning(f"Voice routes skipped: {e}")
+    # Round 107 (item 8): the chat-disconnect log — a
+    # pure-ASGI middleware in this module (see the class
+    # above); registered here because app.py is at its
+    # push ceiling.
+    try:
+        app.add_middleware(ChatDisconnectLogMiddleware)
+    except Exception as e:
+        logger.warning(f"Chat disconnect log skipped: {e}")
+    # Round 107 (B5): warm the agent at boot (real app
+    # only — the gate lives in _warm_agent_once).
+    try:
+        _warm_agent_once(app)
+    except Exception as e:
+        logger.warning(f"Agent warm-up skipped: {e}")
