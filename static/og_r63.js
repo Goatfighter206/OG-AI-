@@ -18,8 +18,11 @@
  *    navigator.credentials.get -> POST
  *    /auth/2fa/passkey/verify.
  *
- * 2. ACCOUNT SECURITY. A section injected under the menu's
- *    Account card: 2-step status, TOTP setup (the secret +
+ * 2. SECURITY. A section injected under the menu's
+ *    Account card, headed "Security" (renamed in Round 74
+ *    — Brent named the folder; same section, same
+ *    controls):
+ *    2-step status, TOTP setup (the secret +
  *    otpauth URI shown as TEXT for manual authenticator
  *    entry — there is no QR library on this page, so no QR
  *    is promised or faked), turn-on with a code, recovery
@@ -364,7 +367,7 @@
     var card = $('menuAccountCard');
     if (!card || sec) return !!sec;
     sec = document.createElement('div');
-    var h = el('h3', 'og-menu-sec', 'Account security');
+    var h = el('h3', 'og-menu-sec', 'Security');
     h.id = 'og2faSecHead';
     var nav = el('nav', 'og-menu-card', '');
     var inner = el('div', 'og2fa-sec', '');
