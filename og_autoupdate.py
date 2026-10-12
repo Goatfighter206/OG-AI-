@@ -20,6 +20,49 @@ and why, by plain name. Two rolled-back nights in a row and
 auto-apply switches ITSELF off until the owner turns it back
 on. A quiet night (nothing eligible) is a silent no-op.
 
+ROUND 101 (Brent, 2026-10-12): "He approved for all
+updates/upgrades/and fix anything that needs fixing and no
+notification do not show but unless the fix-update-upgrade
+failed then notification." The law now:
+- STANDING APPROVAL covers prepared update/upgrade
+  proposals too — including dependency updates, whose one
+  touched path is the dependency manifest
+  (requirements.txt). That file is the ONE eligible
+  non-.py path in classify_paths(); every other non-code
+  path still excludes. The fences listed below are
+  unchanged: persona, pricing/tiers/caps, user money,
+  accounts, deletion, connected services/tokens,
+  env/keys, the test surface, and this module stay
+  prepare-only, and their proposals still notify the
+  owner (fix_needed) for a human yes.
+- SILENT SUCCESS: a passing night sends NO notification.
+  Round 69's one summary notification and Round 71's
+  released-updates announce line are repealed (the
+  announce helper stays in the file for the record —
+  the r71 suite exercises it directly — but the nightly
+  path no longer calls it).
+- FAILURE NOTIFIES, EXACTLY ONCE PER NIGHT: a battery
+  that cannot run, an apply that fails (the pipeline
+  errored, the fix did not ship, the PR merge did not
+  land), a post-apply verification failure, or a
+  rollback produces ONE owner notification naming what
+  failed and what happened (not applied / rolled back);
+  every failure of the night rides that one
+  notification. The post-rollback health re-check, if
+  it still finds trouble, records it in history — it
+  does not send a second notification for the night.
+- TWO FAILED NIGHTS IN A ROW (the existing
+  consec_rollbacks counter, now counting every
+  failure-notified night) still switch auto-apply off
+  until the owner re-enables, and the second night's
+  notification says so.
+- fix_needed SUPPRESSION (og_fixqueue): while this
+  gate is on and the feature has not disabled itself,
+  a fresh proposal this collector would auto-apply
+  sends no fix_needed — standing approval means there
+  is nothing to ask. With the gate off, nothing about
+  the fix queue's notifications changes.
+
 THE RULE, encoded in classify_paths() below — NEVER
 auto-applied, always left in the queue for a human yes, even
 when a prepared fix touches them:
@@ -36,8 +79,11 @@ when a prepared fix touches them:
   storage, the notification fanout with its push tokens);
 - environment / keys / secrets (by filename, any tree);
 - any non-code change (a touched path that is not a .py
-  file), and the test surface itself (the battery stays an
-  honest judge — auto-apply never edits the tests);
+  file — Round 101's one exception: requirements.txt,
+  the dependency manifest, which a prepared dependency
+  update may touch), and the test surface itself (the
+  battery stays an honest judge — auto-apply never
+  edits the tests);
 - this module (the night shift never rewrites the night
   shift).
 Anything else in the fix pipeline that is not a prepared,
@@ -301,6 +347,14 @@ def classify_paths(paths: List[str]) -> Optional[str]:
     for path in paths or []:
         base = _basename(path)
         low = base.lower()
+        if low == "requirements.txt":
+            # Round 101: the dependency manifest is the
+            # ONE eligible non-.py path — a prepared
+            # dependency update touches exactly this
+            # file. It is not the test surface and holds
+            # no keys; the remaining checks in this loop
+            # simply do not apply to it.
+            continue
         if not low.endswith(".py"):
             return "a non-code change"
         if low.startswith("test_") or low.endswith("_test.py") \
@@ -478,11 +532,112 @@ def _notify(operator: str, title: str, body: str):
         logger.warning(f"Autoupdate notify failed: {e}")
 
 
+# --- Round 101: the night's failures (exactly one notification) -----------------
+
+
+def _record_night_failure(night: str, operator: str,
+                          title: str, what: str):
+    """Durably record one failure of tonight's run. The
+    record rides this module's store, so a deploy restart
+    between stages can neither lose a failure nor report
+    it twice; the night's ONE failure notification is
+    composed from it. Fail-safe: a recording failure is
+    logged, never raised (the stages must go on)."""
+    try:
+        state = _state()
+        nf = state.get("night_failures")
+        if not isinstance(nf, dict) \
+                or nf.get("night") != night:
+            nf = {"night": night, "operator": operator,
+                  "items": [], "notified": False}
+        if operator and not nf.get("operator"):
+            nf["operator"] = operator
+        nf["items"].append({"title": str(title),
+                            "what": str(what)})
+        state["night_failures"] = nf
+        _save_state(state)
+    except Exception as e:
+        logger.warning(f"Autoupdate failure record failed: {e}")
+
+
+def _pending_night_failures(state: dict) -> Optional[dict]:
+    """The night's failure record when it holds failures
+    no notification has carried yet."""
+    nf = state.get("night_failures")
+    if isinstance(nf, dict) and nf.get("items") \
+            and not nf.get("notified"):
+        return nf
+    return None
+
+
+def _fire_night_failure_notice() -> bool:
+    """Send the night's ONE failure notification from the
+    durable record — once, naming every recorded failure.
+    The record is stamped BEFORE the send (the pipeline's
+    stamp-before-running discipline), the bad night is
+    counted, and at two bad nights in a row auto-apply
+    switches itself off — the notification says so.
+    With no resolvable recipient the record is stamped
+    and nothing is sent (a recipient is never guessed).
+    Returns True when a notification was sent."""
+    try:
+        state = _state()
+        nf = _pending_night_failures(state)
+        if nf is None:
+            return False
+        operator = str(nf.get("operator") or "")
+        nf["notified"] = True
+        state["failure_notice_night"] = nf.get("night")
+        if not operator:
+            _save_state(state)
+            return False
+        consec = int(state.get("consec_rollbacks") or 0) + 1
+        state["consec_rollbacks"] = consec
+        disabled_now = consec >= DISABLE_AFTER_ROLLBACKS \
+            and not state.get("disabled")
+        if disabled_now:
+            state["disabled"] = True
+            state["disabled_reason"] = (
+                f"{consec} failed nights in a row — "
+                f"auto-update is off until the owner turns "
+                f"it back on")
+            state["disabled_at"] = time.time()
+        _history(state, "failure_notice",
+                 f"night {nf.get('night')}: "
+                 f"{len(nf['items'])} failure(s) notified")
+        _save_state(state)
+        lines = ["Nightly auto-update — something failed "
+                 "tonight. Nothing that failed was applied.",
+                 "What failed:"]
+        for it in nf["items"]:
+            lines.append(f"- {it.get('title')}: "
+                         f"{it.get('what')}")
+        if disabled_now:
+            lines.append("That's two bad nights in a row, "
+                         "so auto-update is now OFF until "
+                         "you turn it back on (POST "
+                         "/system/autoupdate/reenable).")
+        _notify(operator,
+                "Auto-update: something failed tonight",
+                "\n".join(lines))
+        return True
+    except Exception as e:
+        logger.warning(f"Autoupdate failure notice failed: {e}")
+        return False
+
+
 def _released_updates_line(operator: str) -> str:
     """Round 71: the one plain line for tonight's owner
     notification — how many UPDATE proposals (the fix
     queue's 11pm hold, og_fixqueue) have been released and
     are still waiting on the owner's approval in Ideas.
+    Round 101: RETIRED from the nightly path — success is
+    silent now and dependency updates auto-apply, so
+    nothing calls this anymore. It stays callable (the
+    r71 suite exercises it directly, and hold_announced
+    remains the record that a released wait was once
+    announced); do not re-wire it into a notification
+    without a new owner order.
     Each counted problem is stamped hold_announced in the
     queue, so a later notifying night never re-announces
     the same wait; a release on a night whose run sends no
@@ -543,8 +698,9 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
     merge — the deploy this triggers replaces this process,
     and the next one runs the tests from that record."""
     summary = {"night": night, "applied": [], "skipped": [],
-               "blocked": ""}
+               "blocked": "", "failures": []}
     state = _state()
+    operator = ""
     if stamp:
         # Stamp BEFORE running: a crash or the deploy restart
         # can neither re-run this night nor double-apply.
@@ -557,6 +713,11 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
         if not operator:
             summary["blocked"] = "no operator resolved"
             _finish_apply(state, summary)
+            _record_night_failure(
+                night, "", "The nightly run",
+                "no operator could be resolved — nothing "
+                "was applied")
+            _fire_night_failure_notice()
             return summary
         _fq._adopt_sentinel(operator)
         eligible, skipped = _collect(operator)
@@ -569,6 +730,11 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
         if entry is None:
             summary["blocked"] = "GitHub is not connected"
             _finish_apply(state, summary)
+            _record_night_failure(
+                night, operator, "The nightly run",
+                "GitHub is not connected — nothing was "
+                "applied")
+            _fire_night_failure_notice()
             return summary
         repo_full = os.getenv("OG_SELF_REPO", "").strip()
         # Baselines BEFORE anything lands: parity is judged
@@ -586,6 +752,10 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
                 "the pre-update test battery could not run — "
                 "nothing was applied (no baseline, no parity)")
             _finish_apply(state, summary)
+            _record_night_failure(
+                night, operator, "The nightly run",
+                summary["blocked"])
+            _fire_night_failure_notice()
             return summary
         pv = {"night": night, "operator": operator,
               "repo_full": repo_full, "started": time.time(),
@@ -608,6 +778,15 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
                     "title": cand["title"],
                     "why": f"the fix pipeline errored "
                            f"({type(e).__name__})"})
+                summary["failures"].append({
+                    "title": cand["title"],
+                    "what": f"the fix pipeline errored "
+                            f"({type(e).__name__}) — not "
+                            f"applied"})
+                _record_night_failure(
+                    night, operator, cand["title"],
+                    f"the fix pipeline errored "
+                    f"({type(e).__name__}) — not applied")
                 continue
             problems = _fq._problems(cand["store_owner"])
             prob = problems.get(cand["fingerprint"]) or {}
@@ -617,6 +796,12 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
                 summary["skipped"].append({
                     "title": cand["title"],
                     "why": f"not shipped ({title})"})
+                summary["failures"].append({
+                    "title": cand["title"],
+                    "what": f"not shipped ({title})"})
+                _record_night_failure(
+                    night, operator, cand["title"],
+                    f"not shipped ({title})")
                 continue
             number = _pr_number(pr_url)
             if number is None or not _merge_pr(
@@ -626,6 +811,14 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
                     "why": "the PR opened but the merge did "
                            "not land — left for the owner",
                     "pr_url": pr_url})
+                summary["failures"].append({
+                    "title": cand["title"],
+                    "what": "the PR opened but the merge "
+                            "did not land — not applied"})
+                _record_night_failure(
+                    night, operator, cand["title"],
+                    "the PR opened but the merge did not "
+                    "land — not applied")
                 continue
             payload = prop.get("payload") or {}
             files = []
@@ -665,6 +858,22 @@ def _apply_stage(night: str, stamp: bool = True) -> dict:
             f"apply stage errored ({type(e).__name__})"
     state = _state()
     _finish_apply(state, summary)
+    if summary.get("blocked"):
+        summary["failures"].append({
+            "title": "The nightly run",
+            "what": summary["blocked"]})
+        _record_night_failure(night, operator,
+                              "The nightly run",
+                              summary["blocked"])
+    pv_now = _state().get("pending_verify")
+    if not (isinstance(pv_now, dict) and pv_now.get("items")):
+        # Nothing is awaiting verification, so tonight's
+        # outcome is final: recorded failures (if any) get
+        # the night's ONE failure notification now. When
+        # items DID land, tonight's failures ride the
+        # verify/rollback stage instead — never a second
+        # notification for the same night.
+        _fire_night_failure_notice()
     return summary
 
 
@@ -735,22 +944,6 @@ def _verify_stage() -> dict:
     if not failures:
         titles = [str(it.get("title") or "a fix")
                   for it in pv["items"]]
-        lines = ["Nightly auto-update — everything is still "
-                 "running.",
-                 f"Applied to OG's own system "
-                 f"({pv.get('night')}):"]
-        for it in pv["items"]:
-            lines.append(f"- {it.get('title')} "
-                         f"({it.get('pr_url')})")
-        lines.append("Post-update tests: home page OK, the "
-                     "system check shows no new failing "
-                     "buttons, and the full test battery "
-                     "matches the pre-update run — no new "
-                     "failures.")
-        extra = _released_updates_line(
-            str(pv.get("operator") or ""))
-        if extra:
-            lines.append(extra)
         state = _state()
         state["pending_verify"] = None
         state["consec_rollbacks"] = 0
@@ -763,10 +956,13 @@ def _verify_stage() -> dict:
                  f"{len(titles)} update(s) verified — "
                  + ", ".join(titles))
         _save_state(state)
-        _notify(str(pv.get("operator") or ""),
-                f"Auto-update: {len(titles)} fix(es) applied, "
-                f"all tests passing",
-                "\n".join(lines))
+        # Round 101: success is SILENT — a passing night
+        # sends no notification. If part of tonight's run
+        # failed back in the apply stage, those recorded
+        # failures still get the night's ONE failure
+        # notification here (and count the bad night);
+        # the applied fixes themselves stay silent.
+        _fire_night_failure_notice()
         return {"ran": True, "passed": True}
     return _rollback_stage(pv, failures)
 
@@ -926,7 +1122,7 @@ def _rollback_stage(pv: dict, failures: List[str]) -> dict:
         state["disabled_at"] = time.time()
     state["pending_verify"] = None
     state["pending_rollback_check"] = {
-        "at": time.time(), "why": why,
+        "at": time.time(), "why": why, "night": pv.get("night"),
         "titles": [str(it.get("title") or "a fix")
                    for it in pv.get("items") or []]}
     state["last_run"] = {
@@ -936,6 +1132,18 @@ def _rollback_stage(pv: dict, failures: List[str]) -> dict:
     _history(state, "rollback",
              f"night {pv.get('night')}: rolled back "
              f"{len(reverted)} — {why}")
+    # Round 101: this rollback notification IS the night's
+    # one failure notification — stamp the night and fold
+    # in any failures recorded back in the apply stage, so
+    # the owner hears about the whole night exactly once.
+    state["failure_notice_night"] = pv.get("night")
+    nf_items: List[dict] = []
+    nf = state.get("night_failures")
+    if isinstance(nf, dict) and nf.get("items") \
+            and not nf.get("notified"):
+        nf_items = list(nf["items"])
+        nf["notified"] = True
+        state["night_failures"] = nf
     _save_state(state)
     lines = ["Nightly auto-update — a fix failed its "
              "post-update tests and was rolled back.",
@@ -944,6 +1152,9 @@ def _rollback_stage(pv: dict, failures: List[str]) -> dict:
     lines.append(f"Why: the post-update tests failed — {why}.")
     for n in notes:
         lines.append(f"- {n}")
+    for it in nf_items:
+        lines.append(f"- Also tonight: {it.get('title')} — "
+                     f"{it.get('what')}")
     lines.append("The approach is in OG's lessons book as "
                  "failed — he will not auto-apply it again.")
     if disabled_now:
@@ -951,9 +1162,6 @@ def _rollback_stage(pv: dict, failures: List[str]) -> dict:
                      "auto-update is now OFF until you turn "
                      "it back on (POST "
                      "/system/autoupdate/reenable).")
-    extra = _released_updates_line(operator)
-    if extra:
-        lines.append(extra)
     _notify(operator,
             "Auto-update rolled back: "
             + (", ".join(reverted) or "update"),
@@ -990,24 +1198,35 @@ def _rollback_check_stage() -> dict:
                  "still unhealthy after rollback: "
                  + "; ".join(failures))
         _save_state(state)
-        # The operator uid rides the most recent run's record;
-        # fall back to resolving it fresh.
-        operator = ""
-        try:
-            import og_fixqueue as _fq
-            operator = _fq._operator_uid() or ""
-        except Exception:
+        # Round 101: exactly one failure notification per
+        # night — the rollback already sent tonight's, so a
+        # still-unhealthy re-check is recorded in history
+        # above and does NOT notify again. It notifies only
+        # in the defensive case where tonight has no
+        # failure notification on record at all.
+        if state.get("failure_notice_night") \
+                != prc.get("night"):
+            # The operator uid rides the most recent run's
+            # record; fall back to resolving it fresh.
             operator = ""
-        if operator:
-            _notify(operator,
-                    "Auto-update: still not healthy after "
-                    "the rollback",
-                    "OG rolled last night's update back, and "
-                    "the re-check after that deploy still "
-                    "shows problems: " + "; ".join(failures)
-                    + ". This one needs your eyes — nothing "
-                      "else will be auto-applied until you "
-                      "look.")
+            try:
+                import og_fixqueue as _fq
+                operator = _fq._operator_uid() or ""
+            except Exception:
+                operator = ""
+            if operator:
+                state = _state()
+                state["failure_notice_night"] = prc.get("night")
+                _save_state(state)
+                _notify(operator,
+                        "Auto-update: still not healthy after "
+                        "the rollback",
+                        "OG rolled last night's update back, and "
+                        "the re-check after that deploy still "
+                        "shows problems: " + "; ".join(failures)
+                        + ". This one needs your eyes — nothing "
+                          "else will be auto-applied until you "
+                          "look.")
     else:
         _history(state, "rollback_check",
                  "healthy after rollback")
@@ -1089,6 +1308,8 @@ def state_view() -> dict:
                                  or 0),
         "disable_after_rollbacks": DISABLE_AFTER_ROLLBACKS,
         "last_check_night": state.get("last_check_night"),
+        "failure_notice_night": state.get(
+            "failure_notice_night"),
         "last_run": state.get("last_run"),
         "pending_verify": pv_view,
         "window": "23:00 owner time, nightly",
