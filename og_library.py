@@ -582,3 +582,11 @@ def register_library_routes(app):
         _ogprog.register_progress_routes(app)
     except Exception as e:
         logger.warning(f"Progress routes skipped: {e}")
+    # Round 81: the crew's one route (GET /crew/status — the
+    # roster payload the chat answer also uses) rides the
+    # same registration.
+    try:
+        import og_crew as _ogcrew
+        _ogcrew.register_crew_routes(app)
+    except Exception as e:
+        logger.warning(f"Crew routes skipped: {e}")
