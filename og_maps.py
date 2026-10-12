@@ -65,6 +65,26 @@ the normal chat flow. Maps never raises into a chat path, never
 light (nodes only, 1.5 km first pass, 5 km retry) — heavier QL
 makes the public instances time out, dense downtowns most of all.
 
+Round 78 adds the ONE-TIME location permission ask (Brent: "Only
+ask one time then it stay on until they turn it off"). When a
+directions ask reaches the route seam with a destination but no
+named start and no shared coordinates, and the account's Round 73
+location switch is OFF and the account has NEVER been asked, the
+start-point clarifying note is replaced — once — by a permission
+ask: OG asks to use their location to navigate them where they
+want to go, saying a yes turns location ON and it STAYS on until
+they turn it off. The asked flag + pending ask live in og_gps
+(gpslocask:<uid>); the flag is set the moment the ask is made, so
+yes, no or ignored, OG never initiates it again. A YES (strict
+whole-message parse, deliberately NOT garble-tolerated — a typo'd
+yes never flips a persistent switch) flips the SAME R73 switch
+via og_gps.set_location_on and OG confirms + asks the visitor to
+say the destination once more, so the route can compute from the
+fix the client attaches on that next ask; a NO falls back to the
+existing start-point clarify, byte-identical. Coordinates are
+never invented or stored server-side; chat text never contains
+coordinates (the Round 68 rule stands).
+
 Caches: geocodes 5 min, place lists + routes ~4 min (public data,
 shared across visitors — same as the Round 4 data pack caches; no
 visitor data is ever keyed or stored here).
@@ -809,6 +829,173 @@ def _location_toggle_results(uid, want):
 
 
 # ---------------------------------------------------------------------------
+# One-time location permission ask (Round 78)
+# ---------------------------------------------------------------------------
+# Brent's rule: "Only ask one time then it stay on until they
+# turn it off." When a directions ask reaches the route seam
+# with a destination but no named start and no shared
+# coordinates, the switch OFF and the account never asked,
+# OG asks permission ONE TIME instead of the start-point
+# clarify: use your location to navigate you there? A yes
+# turns location ON and it STAYS on until they turn it off.
+# The asked flag + the pending ask live in og_gps
+# (gpslocask:<uid>) — set the moment the ask is made, so
+# yes, no or ignored, the ask is never initiated again
+# (turning the switch on manually also marks it asked —
+# see og_gps.set_location_on). The answer parse is STRICT
+# whole-message, in the R73 toggle's style, and Round 75's
+# garble repair is deliberately NOT applied to it: a
+# garbled "yse" must never flip a persistent switch. A
+# yes/no with no pending ask (or an expired one) changes
+# nothing at all.
+
+_LOC_ASK_YES = re.compile(
+    r"^(?:yes|yeah|yep|yup|ok|okay|sure|yes please|please do"
+    r"|go ahead|do it|turn it on)$",
+    re.IGNORECASE)
+_LOC_ASK_NO = re.compile(
+    r"^(?:no|nope|nah|no thanks|no thank you|not now|no way"
+    r"|don'?t|do not)$",
+    re.IGNORECASE)
+
+
+def parse_location_ask_answer(message):
+    """'yes' / 'no' when the WHOLE message is a plain answer
+    to the one-time location permission ask, else None.
+    Strict on purpose (see above): the same polite
+    lead/trail trim as the R73 toggle, then an anchored
+    full match — compound replies are not answers."""
+    if not message:
+        return None
+    low = " ".join(str(message).lower().split()).strip(" .!?")
+    for _ in range(2):
+        trimmed = _LOC_LEAD.sub("", low).strip(" ,")
+        if trimmed == low:
+            break
+        low = trimmed
+    low = re.sub(r"[\s,]+please$", "", low).strip(" ,")
+    if _LOC_ASK_YES.match(low):
+        return "yes"
+    if _LOC_ASK_NO.match(low):
+        return "no"
+    return None
+
+
+def _loc_ask_pending(uid):
+    """The account's live pending one-time ask, or None.
+    Store failures read as no pending — the exchange then
+    just runs as normal chat, nothing flipped, nothing
+    asked."""
+    if not uid:
+        return None
+    try:
+        import og_gps
+        return og_gps.location_pending_ask(uid)
+    except Exception as e:
+        logger.warning(f"Location ask pending read failed: {e}")
+        return None
+
+
+def _loc_permission_ask_results(parsed, uid, original_ask=""):
+    """The one-time permission ask, or None when it does not
+    apply (no uid, the switch already ON, or the account
+    already asked) — the caller then returns the start-point
+    clarify exactly as before. When it applies, the asked
+    flag + pending ask are stored BEFORE the question is
+    handed to OG: the flag is set the moment the ask is
+    made, whatever the answer turns out to be."""
+    if not uid:
+        return None
+    try:
+        import og_gps
+        if og_gps.location_on_for(uid):
+            return None  # already on — the R68 path, unchanged
+        if og_gps.location_asked_for(uid):
+            return None  # asked once already — never again
+        dest = parsed.get("destination") or ""
+        if not og_gps.set_location_pending_ask(
+                uid, dest,
+                original_ask or f"directions to {dest}"):
+            return None
+    except Exception as e:
+        logger.warning(f"Location permission ask failed: {e}")
+        return None
+    return _clarify_result(
+        f"(Maps note for OG: the visitor asked for "
+        f"directions to {dest} but did not say where they "
+        f"are starting from, and their location switch is "
+        f"OFF. This is the ONE time you ever ask this — do "
+        f"NOT just ask where they are starting from. Ask "
+        f"them, plainly and in your own voice, for "
+        f"permission to use their location to navigate "
+        f"them to {dest}: a yes turns their location ON, "
+        f"and it STAYS on until they turn it off (the "
+        f"Location switch in the Driving map, or telling "
+        f"you 'turn my location off'). If they say no, "
+        f"that is fine — you will ask where they are "
+        f"starting from instead. Ask the question and wait "
+        f"for their yes or no. Do NOT invent a starting "
+        f"point, a route or a distance, and do NOT claim "
+        f"you have their location — you do not, yet.)")
+
+
+def _loc_ask_answer_results(uid, answer):
+    """Answer the pending one-time ask. YES flips the SAME
+    R73 switch (og_gps.set_location_on — no parallel store)
+    and OG confirms from a grounded note + asks for the
+    destination once more: the device fix only rides along
+    once the client sees the switch on, and coordinates
+    are never invented or stored server-side. NO keeps the
+    switch off and falls back to the existing start-point
+    clarify for the stored destination, byte-identical to
+    the no-origin path. No live pending ask -> None (the
+    message was just chat; nothing flips)."""
+    pending = _loc_ask_pending(uid)
+    if not pending:
+        return None
+    try:
+        import og_gps
+        og_gps.clear_location_pending_ask(uid)
+        if answer == "yes":
+            on = og_gps.set_location_on(uid, True)
+            if not on:
+                return None  # the flip did not land — fall through
+            dest = pending.get("destination") or ""
+            body = (
+                "(Location note for OG: the visitor just "
+                "said YES to your one-time ask, and it is "
+                "DONE — their account location switch is ON "
+                "now and STAYS on until they turn it off. "
+                "Confirm it plainly in your own voice: "
+                "location is on, and it stays on until they "
+                "turn it off (the Location switch in the "
+                "Driving map, or telling you 'turn my "
+                f"location off'). Then ask them to say "
+                f"their destination once more — "
+                f"'{dest}' is what they asked for — so you "
+                f"can route from where they are standing: "
+                f"their phone attaches where they are to "
+                f"that next ask now that the switch is on. "
+                f"Do NOT invent coordinates, a route or a "
+                f"distance yet, and do NOT claim you can "
+                f"see where they are right this second — "
+                f"the switch is permission, and their phone "
+                f"or browser still has its own location "
+                f"permission prompt, which is separate.)")
+            return [{"title": "Location switch", "body": body,
+                     "href": ""}]
+    except Exception as e:
+        logger.warning(f"Location ask answer failed: {e}")
+        return None
+    # answer == "no": the switch stays OFF and the stored
+    # ask gets the existing start-point clarifying behavior
+    # — the very results the no-origin path returns today.
+    return _route_results({
+        "kind": "route", "origin": None,
+        "destination": pending.get("destination") or None})
+
+
+# ---------------------------------------------------------------------------
 # Result building (rides the web_search seam, {title, body, href})
 # ---------------------------------------------------------------------------
 
@@ -1118,6 +1305,14 @@ def maps_search_results(parsed, uid, consume_lookup, coords=None):
         if not parsed.get("destination"):
             return _route_results(parsed)   # clarifying ask, no spend
         if not parsed.get("origin") and not coords:
+            # Round 78: the ONE-TIME location permission ask
+            # replaces the start-point clarify when the
+            # account's switch is off and it has never been
+            # asked; otherwise this is the clarifying ask,
+            # byte-identical, no spend either way.
+            ask = _loc_permission_ask_results(parsed, uid)
+            if ask:
+                return ask
             return _route_results(parsed)   # clarifying ask, no spend
         if geocode(parsed["destination"]) is None:
             # Round 68: a complete directions ask (a named
@@ -1238,7 +1433,10 @@ def _garble_parse(message):
 # location-switch ask parsed for this exchange, if any.
 # "garble" (Round 75) rides it too: the repair's fixes, when the
 # exchange's job was claimed through the second chance.
-_pending = {"parsed": None, "loctoggle": None, "garble": None}
+# "locask" (Round 78) rides it too: the strict yes/no answer to
+# the one-time location permission ask, when one is pending.
+_pending = {"parsed": None, "loctoggle": None, "garble": None,
+            "locask": None}
 
 
 def install_maps_tools(agent_instance, get_uid, consume_lookup):
@@ -1261,6 +1459,7 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
         _pending["parsed"] = None
         _pending["loctoggle"] = None
         _pending["garble"] = None
+        _pending["locask"] = None
         try:
             toggle = parse_location_toggle(str(message))
             if toggle:
@@ -1272,17 +1471,30 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
                 if parsed:
                     _pending["parsed"] = parsed
                 else:
-                    # Round 75: the garble second chance — the
-                    # exact parsers said no; re-run them on the
-                    # repaired reading.
-                    toggle, parsed, garble = _garble_parse(
+                    # Round 78: a strict yes/no answers the
+                    # one-time location permission ask — but
+                    # ONLY while one is actually pending for
+                    # this account; a bare yes/no in normal
+                    # chat stays untouched. Exact message
+                    # only: the garble second chance below
+                    # never gets to manufacture an answer.
+                    answer = parse_location_ask_answer(
                         str(message))
-                    if toggle:
-                        _pending["loctoggle"] = toggle
-                    if parsed:
-                        _pending["parsed"] = parsed
-                    _pending["garble"] = garble
-            if (toggle or _pending["parsed"]) \
+                    if answer and _loc_ask_pending(get_uid()):
+                        _pending["locask"] = answer
+                    else:
+                        # Round 75: the garble second chance —
+                        # the exact parsers said no; re-run
+                        # them on the repaired reading.
+                        toggle, parsed, garble = _garble_parse(
+                            str(message))
+                        if toggle:
+                            _pending["loctoggle"] = toggle
+                        if parsed:
+                            _pending["parsed"] = parsed
+                        _pending["garble"] = garble
+            if (toggle or _pending["parsed"]
+                    or _pending["locask"]) \
                     and isinstance(intent, dict) \
                     and not intent.get("needs_web_search"):
                 intent["needs_web_search"] = True
@@ -1296,6 +1508,23 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
         _pending["loctoggle"] = None
         garble = _pending.get("garble")
         _pending["garble"] = None
+        locask = _pending.get("locask")
+        _pending["locask"] = None
+        if locask:
+            # Round 78: the answer to the one-time location
+            # permission ask — handled before everything
+            # else, like the toggle. The handler re-reads
+            # the pending ask from the store; if it has
+            # expired since detect, it returns None and the
+            # exchange falls through to normal chat.
+            try:
+                results = _loc_ask_answer_results(
+                    get_uid(), locask)
+            except Exception as e:
+                logger.warning(f"Location ask answer failed: {e}")
+                results = None
+            if results:
+                return results[: max(1, num_results)]
         if toggle:
             try:
                 results = _location_toggle_results(get_uid(), toggle)
