@@ -70,6 +70,7 @@ error raises og_db.StoreError and the caller fails
 honestly (the app-wide 503) — never a shadow answer.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -255,6 +256,31 @@ def set_voice(uid: str, voice) -> str:
     return stored_voice(uid) or voice
 
 
+# ===========================================================================
+# Round 107 (B1): the reads moved OFF the event loop.
+#
+# /voice used to run its sync store read (psycopg through
+# og_db's bounds — up to ~15 s on a slow database) INLINE
+# on the loop, and the page polls it about every 6 s: any
+# database slowdown froze the whole worker for every
+# visitor (the diagnosis's #1 stall cause). The handlers
+# below now reach the store only through asyncio.to_thread.
+# No payload cache: Round 99's law (pinned by the r98
+# suite) says a store error answers the honest 503, never
+# a shadow answer — a cache would serve exactly that
+# during an outage. The thread hop is the cure; the polls
+# cost one bounded store read each, like every sibling
+# settings route.
+# ===========================================================================
+
+
+def _set_voice_payload(uid: str, voice, avatar) -> dict:
+    """POST's one thread hop: store the pick, then build
+    the payload from what actually reads back."""
+    set_voice(uid, voice)
+    return voice_payload(uid, avatar)
+
+
 def voice_payload(uid: str, avatar=None) -> dict:
     """The folder's payload: the effective voice, the
     asking face's avatar + its default, and every
@@ -318,7 +344,10 @@ def register_voice_routes(app):
             # without the gate.
             return JSONResponse({"detail": "sign_in_required"},
                                 status_code=401)
-        return voice_payload(uid, request.query_params.get("avatar"))
+        # Round 107 (B1): the sync store read runs OFF
+        # the event loop (see the note above voice_payload).
+        return await asyncio.to_thread(
+            voice_payload, uid, request.query_params.get("avatar"))
 
     @app.post("/voice")
     async def voice_set(request: Request):
@@ -330,5 +359,8 @@ def register_voice_routes(app):
         voice = body.get("voice")
         if voice not in _BY_ID:
             return _bad("unknown voice")
-        set_voice(uid, voice)
-        return voice_payload(uid, body.get("avatar"))
+        # Round 107 (B1): the write + rebuild run OFF the
+        # loop in one hop; the answer is built from what
+        # actually reads back (the R73 discipline).
+        return await asyncio.to_thread(
+            _set_voice_payload, uid, voice, body.get("avatar"))
