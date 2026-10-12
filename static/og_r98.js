@@ -79,8 +79,15 @@
     return e;
   }
   function api(path, opts) {
-    return fetch(path, opts).then(function (r) {
-      return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+    // credentials: the /voice routes are auth-gated — every
+    // call carries the session cookie explicitly, never
+    // rides on a default.
+    var o = opts || {};
+    if (!o.credentials) o.credentials = 'same-origin';
+    return fetch(path, o).then(function (r) {
+      return r.json().then(function (d) {
+        return { ok: r.ok, status: r.status, d: d };
+      });
     });
   }
   function post(path, body) {
@@ -102,11 +109,36 @@
     return '';
   }
 
+  /* ------------- the poller's discipline -------------
+     /voice is auth-gated. The background poll fires ONLY
+     when the page itself says we're in the app — the wall
+     (ageGate) dismissed by enterApp after /auth/me
+     confirmed the session, and the account section shown.
+     Firing earlier earns an honest 401: at load (before
+     checkMe answers), signed out, and in the seconds
+     while a fresh sign-in is still landing (field
+     evidence 2026-10-12: four GET /voice 401s in the six
+     seconds after the owner's sign-in). A 401 PARKS the
+     poller until the page next crosses signed-out ->
+     signed-in, so a flaky moment costs one answer, not a
+     drumbeat. The folder's own loads (a tap = user
+     intent) always run, and any success un-parks. */
+  var pollParked = false;
+  var wasInApp = false;
+  function pageInApp() {
+    var g = $('ageGate');
+    var sec = $('menuAccountSec');
+    return !!(g && g.hidden && sec && !sec.hidden);
+  }
+
   function refresh() {
+    if (!pageInApp() || pollParked) return Promise.resolve();
     return api('/voice?avatar=' + AVATAR).then(function (res) {
       if (res.ok && res.d && res.d.ok) {
         payload = res.d;
         paintRowState();
+      } else if (res.status === 401) {
+        pollParked = true;
       }
     }).catch(function () { /* keep the last server state */ });
   }
@@ -204,6 +236,7 @@
         if (!alive) return;
         if (res.ok && res.d && res.d.ok) {
           payload = res.d;
+          pollParked = false;
           paintRowState();
           paintStyles(payload);
         } else {
@@ -235,6 +268,7 @@
           if (!alive) return;
           if (res.ok && res.d && res.d.ok) {
             payload = res.d;
+            pollParked = false;
             paintRowState();
             paintStyles(payload);
             status.textContent = 'OG\'s voice is now '
@@ -288,8 +322,12 @@
     return true;
   }
 
-  /* ---------------- boot: wrap + row + first read ---------------- */
-  refresh();
+  /* ------------- boot: wrap + row -------------
+     No unconditional first read: at script load the
+     page's own /auth/me verdict hasn't landed yet, and a
+     /voice fire here is a guaranteed 401 (see the
+     poller's discipline above). The slow cadence below
+     picks the pick up the moment the page is in-app. */
   var fastTries = 0;
   var fastIv = setInterval(function () {
     fastTries += 1;
@@ -304,8 +342,10 @@
       // the app or another tab lands here too.
       setInterval(function () {
         try {
-          var acctSec = $('menuAccountSec');
-          if (acctSec && !acctSec.hidden) refresh();
+          var inApp = pageInApp();
+          if (inApp && !wasInApp) pollParked = false;
+          wasInApp = inApp;
+          if (inApp) refresh();
         } catch (e) { /* never throws */ }
       }, 6000);
     }
