@@ -1917,6 +1917,17 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogshit.install_shittalk_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Shittalk install skipped: {e}")
+    # Round 109: the Project Manager seam rides the same last
+    # install, AFTER R84 (so PM wraps land outermost; its
+    # claims require an explicit project frame, a plan-lead,
+    # or the get-ready shape — and it never claims a message
+    # the crew claims — so bare YES/NO and every other seam's
+    # asks are never eaten). Fail-safe.
+    try:
+        import og_pm as _ogpm
+        _ogpm.install_pm_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"PM install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
