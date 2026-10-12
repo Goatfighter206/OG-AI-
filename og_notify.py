@@ -102,6 +102,40 @@ HTTP v1 message per device; UNREGISTERED /
 registration-token-not-registered prunes that token,
 every other failure keeps it. No producer can be broken
 by this channel -- same fail-safe swallow as record().
+
+ROUND 95 (notifications cleanup; Brent, 2026-10-12: "OG
+has a hard time cleaning up after himself" + "Get rid of
+the bell notification because it's in the idea at the
+bottom"). Three changes:
+- MANUAL CLEAR: POST /notifications/clear removes one
+  record ({"id": ...}) or a scope ({"scope": "read"|"all"})
+  from the CALLER'S OWN list only — another identity's id
+  simply matches nothing. The clear is server-side truth:
+  the Feed seat (the bell's successor) re-reads the store,
+  so a row is gone or it isn't cleared. Clearing touches
+  ONLY the items:<uid> list: kinds that POINT at live
+  things (approval_needed -> og_browser's pending store,
+  signin_needed -> the browser session's wall list,
+  fix_needed -> og_fixqueue's proposals) never delete the
+  thing pointed at — those live in their own stores.
+- AUTO-CLEAR: a read record expires READ_TTL_SECONDS
+  (7 days) after it was read (the read_ts the read route
+  stamps; legacy read records without one age from their
+  ts — the honest field the record carries); an unread
+  record expires UNREAD_TTL_SECONDS (30 days) after its
+  ts. Expiry runs inside _items() — the existing read
+  path every surface already uses (Round 72: no new
+  always-on loop) — and the prune is persisted, so the
+  store itself stays clean. MAX_ITEMS stays as backstop.
+- ONE IDENTITY: the routes resolve the caller through
+  og_accounts.session_uid_or (the tierfix resolver — the
+  live session's ACCOUNT uid wins over the presented
+  cookie). Producers write under the account uid; every
+  reader surface (these routes, /feed, /ideas) now
+  resolves the same way, so they can never read different
+  piles for the same person.
+The bell itself is GONE from the shell (owner's order);
+these routes remain — the Feed seat consumes them.
 """
 
 import base64
@@ -128,6 +162,12 @@ MAX_DEVICES = 5
 DEVICE_PLATFORMS = ("ios", "android")
 DEVICE_SURFACES = ("shell", "unity")
 STORAGE_DEDUPE_SECONDS = 24 * 60 * 60
+# Round 95 auto-clear (Brent: "there's no automatic clear
+# to get rid of the old notifications"): read records die
+# a week after they were read; unread records die a month
+# after they landed. MAX_ITEMS above stays as backstop.
+READ_TTL_SECONDS = 7 * 24 * 60 * 60
+UNREAD_TTL_SECONDS = 30 * 24 * 60 * 60
 TITLE_CAP = 160
 BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
@@ -299,9 +339,67 @@ def purge_uid(uid: str):
 # --- Records ---------------------------------------------------------------------
 
 
+def _expired(it, now: float) -> bool:
+    """Round 95 auto-clear, one record: a READ record dies
+    READ_TTL_SECONDS after it was read (its read_ts; a
+    legacy read record without one ages from its ts — the
+    honest field the record carries); an UNREAD record
+    dies UNREAD_TTL_SECONDS after its ts. A malformed
+    record is expired by construction."""
+    if not isinstance(it, dict):
+        return True
+    ts = float(it.get("ts") or 0)
+    if it.get("read"):
+        anchor = it.get("read_ts")
+        anchor = float(anchor) \
+            if isinstance(anchor, (int, float)) else ts
+        return now - anchor > READ_TTL_SECONDS
+    return now - ts > UNREAD_TTL_SECONDS
+
+
 def _items(uid: str) -> list:
-    items = _get("items:" + uid)
-    return items if isinstance(items, list) else []
+    raw = _get("items:" + uid)
+    if not isinstance(raw, list):
+        return []
+    now = time.time()
+    live = [it for it in raw if not _expired(it, now)]
+    if len(live) != len(raw):
+        # Expiry runs HERE, inside the read path every
+        # surface already uses (Round 72 doctrine: no new
+        # always-on loop), and the prune is persisted so
+        # the store itself stays clean, not just the view.
+        _put("items:" + uid, live)
+    return live
+
+
+def _clear(uid: str, item_id=None, scope=None):
+    """Round 95 manual clear — the caller's OWN records
+    only: one record by id, every read record (scope
+    "read"), or the whole list (scope "all"). Returns
+    (removed, unread). Only the items:<uid> list is ever
+    touched: a cleared notification never deletes the
+    thing its kind POINTS at (a parked approval, a fix
+    proposal) — those live in their own stores."""
+    items = _items(uid)
+    if item_id:
+        kept = [it for it in items
+                if not (isinstance(it, dict)
+                        and it.get("id") == item_id)]
+    elif scope == "read":
+        kept = [it for it in items
+                if not (isinstance(it, dict) and it.get("read"))]
+    elif scope == "all":
+        kept = []
+    else:
+        return 0, sum(1 for it in items
+                      if isinstance(it, dict)
+                      and not it.get("read"))
+    removed = len(items) - len(kept)
+    if removed:
+        _put("items:" + uid, kept)
+    return removed, sum(1 for it in kept
+                        if isinstance(it, dict)
+                        and not it.get("read"))
 
 
 def _prefs(uid: str) -> dict:
@@ -900,7 +998,19 @@ async def _json_body(request: Request) -> dict:
 
 
 def _uid_of(request: Request) -> str:
-    return request.cookies.get(UID_COOKIE) or ""
+    """The caller's ONE identity (Round 95): the live
+    session's ACCOUNT uid when signed in, else the
+    presented ogai_uid cookie — og_accounts.session_uid_or,
+    the tierfix resolver. Producers write under the
+    account uid; every surface resolving identity this way
+    reads the same person's pile."""
+    cookie_uid = request.cookies.get(UID_COOKIE) or ""
+    try:
+        import og_accounts as _acct
+        return _acct.session_uid_or(request.cookies,
+                                    cookie_uid)
+    except Exception:
+        return cookie_uid
 
 
 def register_notify_routes(app):
@@ -929,17 +1039,49 @@ def register_notify_routes(app):
             return {"ok": True, "unread": 0}
         body = await _json_body(request)
         items = _items(uid)
+        now = time.time()
         if body.get("all"):
             for it in items:
-                it["read"] = True
+                if isinstance(it, dict) and not it.get("read"):
+                    it["read"] = True
+                    # Round 95: the read moment is stamped —
+                    # the auto-clear ages read records from
+                    # here, not from their arrival.
+                    it["read_ts"] = now
         elif isinstance(body.get("id"), str):
             for it in items:
-                if it.get("id") == body["id"]:
+                if isinstance(it, dict) \
+                        and it.get("id") == body["id"] \
+                        and not it.get("read"):
                     it["read"] = True
+                    it["read_ts"] = now
         _put("items:" + uid, items)
         return {"ok": True,
                 "unread": sum(1 for it in items
                               if not it.get("read"))}
+
+    @app.post("/notifications/clear")
+    async def notifications_clear(request: Request):
+        """Round 95: the manual clear the bell never had —
+        one record by id, or a scope ("read" / "all"),
+        strictly the caller's own list. An id that belongs
+        to someone else matches nothing here (removed 0) —
+        it is never found and never deleted."""
+        uid = _uid_of(request)
+        if not uid:
+            return {"ok": True, "unread": 0, "removed": 0}
+        body = await _json_body(request)
+        item_id = body.get("id")
+        item_id = item_id if isinstance(item_id, str) \
+            and item_id else None
+        scope = body.get("scope")
+        if not item_id and scope not in ("read", "all"):
+            return JSONResponse(
+                {"ok": False, "detail": "bad clear"},
+                status_code=400)
+        removed, unread = _clear(uid, item_id, scope)
+        return {"ok": True, "unread": unread,
+                "removed": removed}
 
     @app.get("/notifications/prefs")
     async def notifications_prefs_get(request: Request):
