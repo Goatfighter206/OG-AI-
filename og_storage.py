@@ -989,9 +989,20 @@ def register_storage_routes(app):
         tier = _tier_of(raw_request, uid)
         quota = quota_bytes(tier)
         used = usage_bytes(uid) if uid else 0
+        # Round 110: a filed record carries its project
+        # name (og_filing's seam — annotation only).
+        _by_item = {}
+        if uid:
+            try:
+                import og_filing as _ogfiling
+                _by_item = _ogfiling.projects_by_item(uid)
+            except Exception:
+                _by_item = {}
         files = [{"id": r["id"], "name": r["name"],
                   "size": int(r["size"]),
                   "date": _fmt_date(r.get("uploaded_at")),
+                  "project": _by_item.get(
+                      f"locker||{r['id']}", ""),
                   "download": f"/storage/download/{r['id']}"}
                  for r in (list_records(uid) if uid else [])]
         return JSONResponse(content={
