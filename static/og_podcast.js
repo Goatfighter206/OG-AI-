@@ -17,7 +17,7 @@
     "width:min(92vw,380px);background:#101010;color:#f5eeda;border:1px solid #c9a227;" +
     "border-radius:14px;padding:12px 14px;font:14px/1.45 system-ui,sans-serif;" +
     "box-shadow:0 8px 30px rgba(0,0,0,.55)}" +
-    "#ogPodcastCard h3{margin:0 24px 6px 0;font-size:15px;color:#e8c766}" +
+    "#ogPodcastCard h3{margin:0 54px 6px 0;font-size:15px;color:#e8c766}" +
     "#ogPodcastCard .ogpc-meta{opacity:.85;font-size:12.5px;margin-bottom:6px}" +
     "#ogPodcastCard pre{white-space:pre-wrap;max-height:110px;overflow:auto;" +
     "background:#000;border-radius:8px;padding:8px;font-size:12px;margin:6px 0}" +
@@ -28,8 +28,11 @@
     "text-decoration:none;font-size:13.5px}" +
     "#ogPodcastCard button.ogpc-no{background:#2a2a2a;color:#f5eeda;" +
     "border:1px solid #555}" +
-    "#ogPodcastCard .ogpc-x{position:absolute;top:6px;right:8px;background:none;" +
-    "border:0;color:#f5eeda;font-size:16px;cursor:pointer;padding:4px}" +
+    "#ogPodcastCard .ogpc-x{position:absolute;top:8px;right:8px;width:42px;height:42px;" +
+    "border-radius:50%;background:#1b1b1b;border:1px solid #333;color:#e8e8e8;" +
+    "display:grid;place-items:center;cursor:pointer;padding:0}" +
+    "#ogPodcastCard .ogpc-x svg{width:21px;height:21px}" +
+    "#ogPodcastCard .ogpc-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}" +
     "#ogPodcastCard .ogpc-err{color:#ff9c9c;font-size:12.5px}";
   document.head.appendChild(css);
 
@@ -53,7 +56,9 @@
   function hide() { card.hidden = true; card.innerHTML = ""; }
   function head(title) {
     card.innerHTML = "";
-    var x = el("button", "ogpc-x", "✕");
+    var x = el("button", "ogpc-x");
+    x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+    x.setAttribute("aria-label", "Close");
     x.addEventListener("click", function () {
       var j = card.getAttribute("data-job");
       var p = card.getAttribute("data-pending");
