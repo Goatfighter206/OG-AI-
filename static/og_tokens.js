@@ -189,6 +189,16 @@
   document.head.appendChild(s);
 })();
 
+/* Round 84: the shit-talking switch row (menu Account card)
+   lives in its own asset (static/og_r84.js); same ride-along
+   loader as Rounds 62/63/65/66 — the page is at its push
+   ceiling. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_r84.js';
+  document.head.appendChild(s);
+})();
+
 /* Generator 7a: the podcast card (script approval + in-chat
    audio player) lives in its own asset (static/og_podcast.js);
    same ride-along loader as Rounds 62/63/65/66 — the page is
