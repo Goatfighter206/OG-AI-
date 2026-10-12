@@ -1368,6 +1368,62 @@ function refreshProgress() {
   });
 }
 
+/* --- 8c. Keyboard-up rules (Round 106; Brent, 2026-10-12) ------------
+   "There extra stuff on the keyboard" + "And the bar
+   that's underneath need to stay down there out of site
+   when I keyboard up." While the on-screen keyboard is
+   up, ONLY the typing bar sits above it: the seat bar
+   stays down (out of sight) and the composer's extra
+   stack (attach chip, Add sheet, picture preview) and
+   the generator cards clear out. og_shell.css carries
+   the body.og-kb-up rules; this section only DETECTS.
+   Detection is the real iOS signal: Safari does not
+   resize the layout viewport for the keyboard — it
+   shrinks the VISUAL viewport — so keyboard-up is
+   innerHeight - visualViewport.height growing past a
+   threshold. A second signal covers layout-resizing
+   browsers (Android Chrome): the window's innerHeight
+   itself drops well below the tallest height seen
+   while no keyboard was up, with a text field focused.
+   Keyboard down -> the class comes off and every rule
+   lifts: the shell is byte-for-byte the old behavior,
+   and hiding the seat bar never changes the active
+   seat. This overrides the R59 "bars never disappear"
+   rule for the keyboard-up state only (Brent's latest
+   word); keyboard-down seat behavior is unchanged. */
+var ogKbBaseH = window.innerHeight, ogKbUp = false;
+function ogKbEval() {
+  var vv = window.visualViewport;
+  var overlap = vv ? (window.innerHeight - vv.height) : 0;
+  var ae = document.activeElement;
+  var typing = !!(ae && (ae.tagName === 'INPUT' ||
+    ae.tagName === 'TEXTAREA'));
+  var up = overlap > 120 ||
+    (typing && window.innerHeight < ogKbBaseH - 150);
+  if (!up && window.innerHeight > ogKbBaseH) {
+    ogKbBaseH = window.innerHeight;
+  }
+  if (up !== ogKbUp) {
+    ogKbUp = up;
+    document.body.classList.toggle('og-kb-up', up);
+  }
+}
+if (window.visualViewport &&
+    window.visualViewport.addEventListener) {
+  window.visualViewport.addEventListener('resize', ogKbEval);
+}
+if (window.addEventListener) {
+  window.addEventListener('resize', ogKbEval);
+}
+if (document.addEventListener) {
+  document.addEventListener('focusin', function () {
+    setTimeout(ogKbEval, 60);
+  });
+  document.addEventListener('focusout', function () {
+    setTimeout(ogKbEval, 60);
+  });
+}
+
 /* --- 9. Boot + polls ------------------------------------------------------ */
 refreshPending();
 refreshFixes();
