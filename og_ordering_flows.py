@@ -87,6 +87,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
+import og_garble
 import og_ordering as O
 
 logger = logging.getLogger(__name__)
@@ -493,14 +494,27 @@ def _clean_dest(raw: str) -> str:
     return dest[:90]
 
 
-def _claim_job(message: str, uid: str) -> Optional[Dict]:
+# Round 75: this seam's garble vocabulary — the three service
+# names and the claim verbs. Destinations and items are payload.
+_GARBLE_VOCAB = (
+    "doordash", "uber", "eats", "order", "ride", "get", "book",
+    "call", "hail", "need", "usual", "my", "from", "on",
+    "through", "via", "save", "remember", "door", "dash", "an",
+    "a", "me", "to", "is", "at", "the",
+)
+
+
+def _claim_job(message: str, uid: str,
+               _repaired: bool = False) -> Optional[Dict]:
     if not uid:
         return None
     text = str(message or "")
     low = " " + re.sub(r"\s+", " ", text.lower()).strip() + " "
     trimmed = low.strip()
     pending = O._get_pending(uid)
-    if pending is not None \
+    # The parked-flow branch reads approve/decline/pay answers:
+    # exact-only, never entered on a repaired reading.
+    if not _repaired and pending is not None \
             and pending.get("stage") in ("flow", "flow_ask"):
         stage = pending.get("stage")
         if stage == "flow" and O._PAY_RE.search(text):
@@ -556,6 +570,18 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
             if key:
                 return {"kind": "ask_food", "service": key,
                         "items": O._parse_items(payload)}
+    if not _repaired:
+        # Round 75: the garble second chance — repair, then let
+        # the EXACT claim logic read the reading (the parked-flow
+        # branch above stays closed in repaired mode, so nothing
+        # approval-shaped can come out of a guess).
+        repaired, info = og_garble.repair_info(text, _GARBLE_VOCAB)
+        if info is not None:
+            job = _claim_job(repaired, uid, _repaired=True)
+            if job is not None:
+                job = dict(job)
+                job["_garble"] = info
+                return job
     return None
 
 
@@ -1150,6 +1176,18 @@ def _flow_ask_approve(uid):
 
 
 def flow_results(job, message, uid) -> Optional[list]:
+    """Run one flow job; (Round 75) a job claimed through the
+    garble repair carries its fixes, and the answer names the
+    reading that was acted on. Clean jobs run byte-identically."""
+    garble = job.pop("_garble", None) \
+        if isinstance(job, dict) else None
+    results = _flow_results(job, message, uid)
+    if garble and results:
+        results = og_garble.annotate(results, garble)
+    return results
+
+
+def _flow_results(job, message, uid) -> Optional[list]:
     if not job or not uid:
         return None
     kind = job.get("kind", "")
