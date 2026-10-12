@@ -326,6 +326,25 @@ def collect_library(uid: str, request: Request):
     counts["images"] = sum(1 for i in locker_items
                            if i["kind"] == "image")
     items.extend(locker_items)
+    # Round 110: filed items carry their project name
+    # (og_filing's seam — a link annotation only; the item
+    # itself never moves). Locker items key by record id,
+    # creations by kind + job id.
+    try:
+        import og_filing
+        by_item = og_filing.projects_by_item(uid)
+        if by_item:
+            for it in items:
+                if (it.get("action_url") or "").startswith(
+                        "/storage/download/"):
+                    key = f"locker||{it.get('id', '')}"
+                else:
+                    key = (f"library|{it.get('kind', '')}"
+                           f"|{it.get('id', '')}")
+                if key in by_item:
+                    it["project"] = by_item[key]
+    except Exception as e:
+        logger.warning(f"Library filing annotation failed: {e}")
     items.sort(key=lambda i: float(i.get("created_at", 0) or 0),
                reverse=True)
     return items[:ITEM_CAP], storage_line, counts
@@ -748,6 +767,16 @@ def register_library_routes(app):
         _ogpm.register_pm_routes(app)
     except Exception as e:
         logger.warning(f"PM routes skipped: {e}")
+    # Round 110: the Project Filing routes (GET /filing —
+    # the caller's projects with file counts + links;
+    # GET /filing/project/<id> — one project's file list,
+    # the Progress row's tap-through target) ride the same
+    # registration.
+    try:
+        import og_filing as _ogfiling
+        _ogfiling.register_filing_routes(app)
+    except Exception as e:
+        logger.warning(f"Filing routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
