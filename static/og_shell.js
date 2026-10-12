@@ -52,8 +52,7 @@ shellRoot.innerHTML =
 '<div id="ogIdeasGenList"></div>' +
 '<h3 class="og-appr-sec" id="ogIdeasFixSec" hidden>Fixes waiting</h3>' +
 '<div id="ogIdeasFixList"></div>' +
-'<h3 class="og-appr-sec" id="ogIdeasOfferSec" hidden>OG\'s system check</h3>' +
-'<div id="ogIdeasOfferList"></div>' +
+
 '<p id="ogIdeasEmpty" class="og-appr-empty" hidden>Nothing waiting on you — when OG has a fix ready or a system upgrade to offer, it lands here.</p>' +
 '</div>' +
 '<div id="ogFeedView" class="og-seat-view" hidden>' +
@@ -187,7 +186,7 @@ function gotoSeat(name) {
     if (iv) iv.hidden = name !== 'ideas';
     if (fv) fv.hidden = name !== 'feed';
     if (name === 'progress') { refreshGoals(); refreshProgress(); }
-    if (name === 'ideas') { renderIdeas(); refreshFixes(); refreshOffers(); refreshGenIdeas(); }
+    if (name === 'ideas') { renderIdeas(); refreshFixes(); refreshGenIdeas(); }
     if (name === 'feed') refreshFeed();
   }
   paintSeats();
@@ -736,11 +735,14 @@ function refreshGoals() {
 }
 
 /* --- 7. Ideas seat: OG's proposals --------------------------------------
-   Open fix proposals (same data as the panel's Fixes section) + the
-   latest self-check's upgrade offers (operator only, GET
-   /system/offers). Approving an upgrade stays the Round 50 chat
-   sentence — the exact sentence is shown with each offer. */
-var offers = [], offersSummary = null;
+   Open fix proposals (same data as the panel's Fixes section) +
+   the Round 70 generated ideas (§7b). Round 70 rule pass
+   (Brent, 2026-10-11): "OG should not be finding things to
+   upgrade — he should be focusing on user tasks." The
+   self-check's upgrade OFFERS are gone from this seat and
+   from the server (the offers route is deleted): the
+   self-check diagnoses, the owner still gets system
+   alerts, but nothing here pitches an upgrade, ever. */
 function renderIdeasAppr() {
   var blk = $('ogIdeasAppr'), desc = $('ogIdeasApprDesc');
   if (!blk) return;
@@ -756,7 +758,7 @@ if (ideasApprBtn) ideasApprBtn.addEventListener('click', function () { openAppro
 function renderIdeasEmpty() {
   var empty = $('ogIdeasEmpty');
   if (!empty) return;
-  var nothing = !pending && openFixCount === 0 && offers.length === 0
+  var nothing = !pending && openFixCount === 0
     && genIdeas.length === 0;
   empty.hidden = !nothing;
   if (nothing && activeSeat === 'ideas' && !isHidden($('ogSeatScreen'))) {
@@ -766,36 +768,16 @@ function renderIdeasEmpty() {
 function renderIdeas() {
   renderIdeasAppr();
   renderFixLists();
-  var list = $('ogIdeasOfferList'), sec = $('ogIdeasOfferSec');
-  if (list) {
-    list.innerHTML = '';
-    if (sec) sec.hidden = offers.length === 0 && !offersSummary;
-    offers.forEach(function (o) {
-      if (!o) return;
-      var sub = (o.what || '') +
-        '\nTo approve it, say in chat: "approve the upgrade for ' + (o.name || '') + '"' +
-        ((o.owner_steps && o.owner_steps.length) ? '\nIt needs steps in the dashboard — OG will walk you through them; approving never charges anything by itself.' : '');
-      list.appendChild(seatRow('⬆️', o.name || 'Upgrade', sub));
-    });
-    if (offersSummary && offers.length === 0) {
-      list.appendChild(seatRow('🩺', 'Latest system check', offersSummary));
-    }
-  }
   renderIdeasEmpty();
-}
-function refreshOffers() {
-  getJSON('/system/offers').then(function (d) {
-    offers = (d && d.offers) || [];
-    offersSummary = (d && d.operator) ? (d.summary || null) : null;
-    renderIdeas();
-  });
 }
 
 /* --- 7b. Ideas for you (Round 70 addition) ------------------------------
    OG-generated ideas from the caller's own signals (GET
    /ideas — og_ideas.py derives them by rule from the
-   caller's watches, notifications, books, locker, and
-   generator history; rules only, nothing executes).
+   caller's watches, notifications, books, and generator
+   history; rules only, nothing executes; user-world
+   signals ONLY — no system-needs ideas, per Brent's
+   2026-10-11 rule).
    Tapping Ask drops the idea's ask into the composer and
    sends it through the page's own send path — the same
    seeded-open pattern as the browser rows. Dismiss parks
@@ -1066,7 +1048,7 @@ setInterval(refreshRecents, 15000);
 setInterval(function () {
   if (isHidden($('ogSeatScreen'))) return;
   if (activeSeat === 'progress') refreshGoals();
-  if (activeSeat === 'ideas') { refreshFixes(); refreshOffers(); refreshGenIdeas(); }
+  if (activeSeat === 'ideas') { refreshFixes(); refreshGenIdeas(); }
   if (activeSeat === 'feed') refreshFeed();
 }, 20000);
 setInterval(function () {
