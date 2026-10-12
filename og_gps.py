@@ -114,7 +114,7 @@ NAME_CAP = 120
 NOTE_CAP = 500
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -170,7 +170,8 @@ def _get(key: str):
                     row = cur.fetchone()
             return row[0] if row else None
         except Exception as e:
-            logger.warning(f"GPS DB load failed, using file: {e}")
+            logger.warning(f"GPS DB load failed: {e}")
+            raise StoreError("gps store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
     return store.get(key)
@@ -189,7 +190,8 @@ def _put(key: str, value):
                 conn.commit()
             return
         except Exception as e:
-            logger.warning(f"GPS DB save failed, using file: {e}")
+            logger.warning(f"GPS DB save failed: {e}")
+            raise StoreError("gps store unavailable (Round 99)") from e
     with _store_lock:
         store = _load_file_store()
         store[key] = value
