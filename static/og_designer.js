@@ -152,15 +152,18 @@
     "border:1px solid #c9a227;border-radius:14px;padding:12px 14px;" +
     "font:14px/1.45 system-ui,sans-serif;" +
     "box-shadow:0 8px 30px rgba(0,0,0,.55)}" +
-    "#ogDesignerCard h3{margin:0 24px 6px 0;font-size:15px;color:#e8c766}" +
+    "#ogDesignerCard h3{margin:0 54px 6px 0;font-size:15px;color:#e8c766}" +
     "#ogDesignerCard img{width:100%;border-radius:10px;margin:6px 0}" +
     "#ogDesignerCard .ogdc-meta{opacity:.85;font-size:12.5px}" +
     "#ogDesignerCard .ogdc-btns{display:flex;gap:8px;margin-top:8px}" +
     "#ogDesignerCard a.ogdc-dl{background:#c9a227;color:#000;" +
     "border-radius:9px;padding:8px 12px;font-weight:700;" +
     "text-decoration:none;font-size:13.5px}" +
-    "#ogDesignerCard .ogdc-x{position:absolute;top:6px;right:8px;" +
-    "background:none;border:0;color:#f5eeda;font-size:16px;cursor:pointer}";
+    "#ogDesignerCard .ogdc-x{position:absolute;top:8px;right:8px;width:42px;height:42px;" +
+    "border-radius:50%;background:#1b1b1b;border:1px solid #333;color:#e8e8e8;" +
+    "display:grid;place-items:center;cursor:pointer;padding:0}" +
+    "#ogDesignerCard .ogdc-x svg{width:21px;height:21px}" +
+    "#ogDesignerCard .ogdc-x:hover{border-color:rgba(255,193,7,.7);color:#ffc107}";
   document.head.appendChild(css);
 
   var card = document.createElement("section");
@@ -188,7 +191,7 @@
         if (j.created && j.created < bootTime - 5) return hide();
         card.innerHTML = "";
         var x = document.createElement("button");
-        x.className = "ogdc-x"; x.textContent = "✕";
+        x.className = "ogdc-x"; x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>'; x.setAttribute("aria-label", "Close");
         x.addEventListener("click", function () {
           dismissed = j.id; hide();
         });
