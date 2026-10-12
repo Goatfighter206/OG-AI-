@@ -244,7 +244,7 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
+        const API_URL = window.location.origin;
         let isLoading = false;
 
         // Check server status on load
@@ -255,7 +255,7 @@
                 document.getElementById('status').textContent = `Connected - ${data.agent_name}`;
             } catch (error) {
                 document.getElementById('status').textContent = 'Server Offline';
-                showError('Could not connect to the server. Please make sure the backend is running on port 8000.');
+                showError('Could not connect to the server. Please try again in a moment.');
             }
         }
 
