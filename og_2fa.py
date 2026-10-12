@@ -40,9 +40,33 @@ this: their login response is byte-identical to before.
 
 STEP-UP. og_store_ready's POST /auth/delete requires a
 current TOTP/recovery code (extra `code` field) when 2FA
-is enabled, on top of the password. There is NO password-
-change endpoint in the tree, so deletion is the step-up
-surface (round-63 NOTES.md).
+is enabled, on top of the password. Round 76 adds the
+signed-in password change to this module (it lives in the
+web's Security section next to these controls): POST
+/auth/password/change {current_password, new_password} —
+the current password is checked with the disable flow's
+throttle + generic-failure idiom, the new hash goes
+through og_accounts' pbkdf2 machinery, every OTHER session
+on the account is revoked, and the caller's own session
+stays signed in.
+
+PASSWORD CHANGE + PASSKEY LIST/REMOVE (Round 76). GET
+/auth/2fa/passkey/list returns the caller's OWN passkeys
+as {id, created} ONLY: the credential id is the client's
+remove handle (register options already returns every
+stored id to the signed-in client in excludeCredentials);
+the public-key halves and sign_count never leave the
+server, and the store holds no label to show. POST
+/auth/2fa/passkey/remove {credential_id, password} takes
+the same password step-up as disable, and the lookup is
+scoped to the caller's own record, so another account's
+passkey id simply isn't there to remove. Removing the last
+passkey follows this module's own 2-step rule —
+twofa_enabled() is TOTP OR any passkey, and disable
+already lets a passkey-only account turn 2-step off with
+the password alone — so a last-passkey removal with TOTP
+off turns 2-step off, and with TOTP on it leaves TOTP +
+recovery codes untouched.
 
 PASSKEYS (WebAuthn). The `cryptography` package is already
 in the deployed environment (a hard dependency of
@@ -561,6 +585,21 @@ def _status_payload(uid: str) -> dict:
     }
 
 
+def _revoke_other_sessions(email: str, keep_token):
+    """Password change (Round 76): every OTHER session on
+    the account dies; the caller's own session record
+    survives, so changing your password never silently logs
+    you out. The same store scan og_accounts' reset flow
+    performs to kill ALL sessions — narrowed to spare the
+    current token's record."""
+    keep = _acct._token_key(keep_token) if keep_token else None
+    for key, data in _acct._all_items():
+        if (key.startswith("sess:") and key != keep
+                and isinstance(data, dict)
+                and data.get("email") == email):
+            _acct._del(key)
+
+
 def _finish_login(request: Request, rec: dict, chal_token: str):
     """Mint the session exactly as password login does."""
     email, uid = rec.get("email") or "", rec.get("uid") or ""
@@ -654,6 +693,38 @@ def register_2fa_routes(app):
                             "recovery code) to turn 2-step off.",
                             status=403)
         _del(_rec_key(uid))
+        return {"ok": True}
+
+    @app.post("/auth/password/change")
+    async def pw_change(request: Request):
+        sess = _session(request)
+        if sess is None:
+            return JSONResponse({"detail": "sign_in_required"},
+                                status_code=401)
+        email = sess.get("email") or ""
+        ip = _acct._client_ip(request)
+        if _acct._throttled(email, ip):
+            return _err(_acct.ERR_THROTTLED, status=429)
+        body = await _json_body(request)
+        current = body.get("current_password")
+        acct = _acct._get("acct:" + email) if email else None
+        stored = acct.get("pw") if isinstance(acct, dict) \
+            else _acct._DUMMY_HASH
+        ok = isinstance(current, str) and _acct._check_password(
+            current, stored)
+        if not isinstance(acct, dict) or not ok:
+            _acct._record_failure(email, ip)
+            return _err(_acct.ERR_GENERIC, status=401)
+        new = body.get("new_password")
+        if not isinstance(new, str) \
+                or len(new) < _acct.MIN_PASSWORD_LEN:
+            return _err("New password needs at least "
+                        f"{_acct.MIN_PASSWORD_LEN} characters.")
+        acct["pw"] = _acct._hash_password(new)
+        _acct._put("acct:" + email, acct)
+        _acct._del(_acct._fail_key(email, ip))
+        _revoke_other_sessions(
+            email, request.cookies.get(SESSION_COOKIE))
         return {"ok": True}
 
     @app.get("/auth/2fa/status")
@@ -771,6 +842,55 @@ def register_2fa_routes(app):
         rec["email"] = sess.get("email") or ""
         _save_record(uid, rec)
         return {"ok": True}
+
+    @app.get("/auth/2fa/passkey/list")
+    async def pk_list(request: Request):
+        sess = _session(request)
+        if sess is None:
+            return JSONResponse({"detail": "sign_in_required"},
+                                status_code=401)
+        uid = sess.get("uid") or ""
+        # Own passkeys only, safe metadata only: the id is
+        # the remove handle (register options already hands
+        # it to the signed-in client); x/y/sign_count never
+        # leave the server.
+        keys = [{"id": p.get("id"),
+                 "created": p.get("created") or 0}
+                for p in get_record(uid).get("passkeys") or []]
+        return {"ok": True, "passkeys": keys}
+
+    @app.post("/auth/2fa/passkey/remove")
+    async def pk_remove(request: Request):
+        sess = _session(request)
+        if sess is None:
+            return JSONResponse({"detail": "sign_in_required"},
+                                status_code=401)
+        uid = sess.get("uid") or ""
+        email = sess.get("email") or ""
+        ip = _acct._client_ip(request)
+        if _acct._throttled(email, ip):
+            return _err(_acct.ERR_THROTTLED, status=429)
+        body = await _json_body(request)
+        password = body.get("password")
+        acct = _acct._get("acct:" + email) if email else None
+        stored = acct.get("pw") if isinstance(acct, dict) \
+            else _acct._DUMMY_HASH
+        ok = isinstance(password, str) and _acct._check_password(
+            password, stored)
+        if not isinstance(acct, dict) or not ok:
+            _acct._record_failure(email, ip)
+            return _err(_acct.ERR_GENERIC, status=401)
+        rec = get_record(uid)
+        keys = rec.get("passkeys") or []
+        kept = [p for p in keys
+                if p.get("id") != body.get("credential_id")]
+        if len(kept) == len(keys):
+            return _err("That passkey isn't on this account.",
+                        status=404)
+        rec["passkeys"] = kept
+        _save_record(uid, rec)
+        return {"ok": True, "passkeys": len(kept),
+                "enabled": twofa_enabled(uid)}
 
     @app.post("/auth/2fa/passkey/options")
     async def pk_assert_options(request: Request):
