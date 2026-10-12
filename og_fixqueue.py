@@ -1863,24 +1863,36 @@ def install_fixqueue_tools(agent_instance, get_uid):
 # --- Routes ---------------------------------------------------------------------------------
 
 
+def _route_uid(request) -> str:
+    """Round 95: the caller's ONE identity — the live
+    session's account uid when signed in, else the
+    presented cookie (og_accounts.session_uid_or, the
+    tierfix resolver every Round 95 surface uses)."""
+    uid = ""
+    try:
+        uid = request.cookies.get("ogai_uid", "") or ""
+    except Exception:
+        uid = ""
+    try:
+        import og_accounts as _acct
+        return _acct.session_uid_or(request.cookies, uid)
+    except Exception:
+        return uid
+
+
 def register_fixqueue_routes(app):
 
     @app.get("/approvals/proposals")
     async def approvals_proposals(request: Request):
-        uid = ""
-        try:
-            uid = request.cookies.get("ogai_uid", "") or ""
-        except Exception:
-            uid = ""
+        uid = _route_uid(request)
         feed = list_proposals(uid)
         return {"ok": True, "proposals": feed["proposals"],
                 "open_count": feed["open_count"]}
 
     @app.post("/approvals/proposals/act")
     async def approvals_proposals_act(request: Request):
-        uid = ""
+        uid = _route_uid(request)
         try:
-            uid = request.cookies.get("ogai_uid", "") or ""
             body = await request.json()
         except Exception:
             body = {}
