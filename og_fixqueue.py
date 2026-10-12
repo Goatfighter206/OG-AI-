@@ -49,7 +49,15 @@ of Round 50's approve-to-upgrade hook:
 
 4. APPROVAL. One notification per new proposal (kind
    "fix_needed", Round 38 alerts-gated family) to the owning
-   uid. In chat: "approve the fix for <name>" / "decline the
+   uid. Round 101 exception (Brent, 2026-10-12 — standing
+   approval for the night shift): while the auto-update
+   gate is ON and the feature has not disabled itself, a
+   fresh proposal the nightly collector would auto-apply
+   (a green code proposal against OG's own repo, touching
+   only auto-eligible paths) sends NO fix_needed — there
+   is nothing to ask. Fenced classes, not-green drafts,
+   other kinds, and everything while the gate is off
+   notify exactly as before. In chat: "approve the fix for <name>" / "decline the
    fix for <name>" — the parser REQUIRES the word "fix", so a
    bare YES is never eaten (the Round 50 posture). Routes:
    GET /approvals/proposals (the caller's own only, behind the
@@ -659,6 +667,52 @@ def _prepare(problem: dict) -> Optional[dict]:
     return proposal
 
 
+def _night_shift_will_apply(problem: dict,
+                            proposal: dict) -> bool:
+    """Round 101: True when the nightly auto-update
+    (og_autoupdate) would collect this fresh proposal at
+    23:00 — a green CODE proposal against OG's own repo,
+    touching only auto-eligible paths, whose approach the
+    lessons book has not already failed — while the gate
+    is ON and the feature has not disabled itself. This
+    mirrors og_autoupdate._collect's per-item tests on
+    purpose (the collector stays the one applier; this
+    only decides whether there is anything to ASK).
+    While True, record_problem sends no fix_needed for
+    the proposal: Brent's standing approval (2026-10-12)
+    means there is nothing to ask. ANY doubt — imports,
+    the autoupdate store (Round 99: a store that cannot
+    answer raises), the gate — answers False: notifying
+    is the safe default. NEVER raises."""
+    try:
+        if proposal.get("fix_kind") != "code":
+            return False
+        if not _is_operator_problem(problem):
+            return False
+        import og_autoupdate as _au
+        if not _au.enabled():
+            return False
+        if _au._state().get("disabled"):
+            return False
+        payload = proposal.get("payload") or {}
+        self_repo = os.getenv("OG_SELF_REPO", "").strip()
+        repo = str(payload.get("repo") or self_repo).strip()
+        if not self_repo or repo != self_repo:
+            return False
+        if not _au._is_green(proposal):
+            return False
+        key = _approach_key(proposal)
+        if key:
+            import og_lessons as _lessons
+            if _lessons.approach_failed(
+                    problem.get("fingerprint"), key):
+                return False
+        return _au.classify_paths(
+            _au._touched_paths(proposal)) is None
+    except Exception:
+        return False
+
+
 def _notify_proposal(owner: str, problem: dict, proposal: dict):
     if not owner or owner == SENTINEL_OWNER:
         return  # never guess a recipient
@@ -760,7 +814,9 @@ def record_problem(owner, source, fingerprint, slug, title,
                             f"Recurrence lesson failed: {e}")
         proposal = _prepare(problem)
         _save_problems(owner_key, problems)
-        if proposal is not None and not _hold_active(problem):
+        if proposal is not None and not _hold_active(problem) \
+                and not _night_shift_will_apply(problem,
+                                                proposal):
             _notify_proposal(owner_key, problem, proposal)
         return str(problem["id"])
     except Exception as e:
@@ -886,16 +942,20 @@ def ingest_report(report: dict) -> int:
                 owner, "selfcheck", fp, _slugify(pkg + " update"),
                 f"{pkg} has an update waiting",
                 f"Pinned at {u.get('pinned')}; the latest "
-                f"release is {u.get('latest')}. Nothing upgrades "
-                f"on its own.",
+                f"release is {u.get('latest')}. A green "
+                f"drafted update applies itself in the 11pm "
+                f"window; nothing upgrades outside it.",
                 verify={"kind": "update", "package": pkg},
                 fix={"kind": "owner_steps",
                      "summary": f"Update {pkg} "
                                 f"{u.get('pinned')} -> "
                                 f"{u.get('latest')}.",
                      "steps": [
-                         "Dependency updates ship as code, "
-                         "never automatically.",
+                         "Dependency updates ship as code — "
+                         "a green drafted one applies itself "
+                         "in the 11pm window; these steps "
+                         "are the manual route when no draft "
+                         "could be prepared.",
                          _code_flow_step(
                              f"the {pkg} update to "
                              f"{u.get('latest')}"),
