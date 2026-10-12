@@ -10,18 +10,19 @@
  * "GPS" section header, and show only while signed in
  * (the R63/R65 visibility sync).
  *
- *   Driving — its own full view with the map (OG70's
- *             hand-rolled OpenStreetMap tiles): the
- *             account's ACTIVE route (GET /gps/route/
- *             active — the same route chat and the app
- *             use), saved points as markers, the visitor's
- *             own position dot from browser geolocation
- *             (honest "Location: Off" when denied), steps
- *             + totals under the map, and the from/to form
- *             (POST /gps/route) for a fresh route. The web
- *             shows map + route only — live turn-by-turn
- *             while driving is the app's job, and the view
- *             says so.
+ *   Driving — its own full view: the account's ACTIVE
+ *             route (GET /gps/route/active — the same
+ *             route chat and the app use) as a summary —
+ *             ends, totals, steps — plus saved points, the
+ *             from/to form (POST /gps/route) for a fresh
+ *             route, and an "Open in Maps" handoff that
+ *             sends the route to the phone's own maps app
+ *             (Apple Maps on Apple devices, Google Maps
+ *             otherwise). Round 82 removed the built-in
+ *             OSM map (Brent's phone-first rule: the phone
+ *             already has a maps app — OG works out the
+ *             route, the phone navigates it; this page is
+ *             a summary + handoff, not a navigator).
  *             Round 73 adds the ACCOUNT location switch
  *             to this view: a toggle button bound to GET/
  *             POST /gps/location — the same one switch the
@@ -74,7 +75,6 @@
     + '.og66-sec{margin:22px 4px 8px;font-size:.74rem;font-weight:700;'
     + 'letter-spacing:1.6px;text-transform:uppercase;color:#8f8f8f}'
     + '.og66-sec:first-child{margin-top:2px}'
-    + '.og66-map{height:46vh;min-height:300px;margin:6px 0 4px}'
     + '.og66-chip{display:inline-block;padding:5px 12px;border-radius:999px;'
     + 'border:1px solid #3a3a3a;color:#d8d8d8;font-size:.85em;margin:4px 0}'
     + '.og66-chip.on{border-color:rgba(255,193,7,.65);color:#ffc107}'
@@ -164,6 +164,54 @@
     });
   }
 
+  function renderDrivingPoints(box) {
+    box.innerHTML = '';
+    if (!points.length) {
+      box.appendChild(el('p', 'og66-note', 'No points saved yet.'));
+      return;
+    }
+    points.forEach(function (pt) {
+      var row = el('div', 'og66-pt');
+      row.appendChild(el('b', 'name', pt.name));
+      row.appendChild(el('div', 'og66-small',
+        pt.lat.toFixed(6) + ', ' + pt.lon.toFixed(6)
+        + (pt.note ? ' · ' + pt.note : '')));
+      box.appendChild(row);
+    });
+  }
+
+  /* Round 82: the "Open in Maps" handoff. The phone
+   * already has a maps app — OG works out the route and
+   * the phone navigates it (Brent's phone-first rule).
+   * Apple devices get maps.apple.com, everything else
+   * gets the Google Maps universal link. Coords ride
+   * raw (numbers are URL-safe); place text is encoded. */
+  function isAppleDevice() {
+    return /iPhone|iPad|iPod|Macintosh|Mac OS X/.test(
+      navigator.userAgent || '');
+  }
+  function mapsEnc(s) {
+    // encode, but keep commas readable — both maps apps
+    // take "lat,lon" and "City, ST" in plain form.
+    return encodeURIComponent(s).replace(/%2C/g, ',');
+  }
+  function mapsUrl(origin, dest) {
+    if (!dest) return '';
+    if (isAppleDevice()) {
+      var a = 'https://maps.apple.com/?daddr=' + mapsEnc(dest);
+      if (origin) a += '&saddr=' + mapsEnc(origin);
+      return a;
+    }
+    var g = 'https://www.google.com/maps/dir/?api=1&destination='
+      + mapsEnc(dest);
+    if (origin) g += '&origin=' + mapsEnc(origin);
+    return g;
+  }
+  function coordText(end) {
+    if (!end || end.lat == null || end.lon == null) return '';
+    return end.lat + ',' + end.lon;
+  }
+
   function buildDriving(body, view) {
     var wrap = el('div', 'og66-body');
     body.appendChild(wrap);
@@ -182,13 +230,16 @@
       + 'leave it — on every device signed into your account — '
       + 'until you tap it again or ask OG to change it. Your '
       + 'browser still has its own location permission '
-      + 'underneath it; the map dot needs both on.'));
+      + 'underneath it; "Use my location" below needs both on.'));
     var here = el('p', 'og66-note', 'You are here: (location not shared yet)');
     here.id = 'og66Here';
-    var mapBox = el('div', 'og70-map og66-map');
     var ends = el('p', 'og66-note', ''); ends.id = 'og66Ends';
     var totals = el('p', 'og66-note', ''); totals.id = 'og66Totals';
     var stepsBox = el('div'); stepsBox.id = 'og66Steps';
+    var mapsLink = el('a', 'og66-btn dim', 'Open in Maps');
+    mapsLink.id = 'og66OpenMaps';
+    mapsLink.target = '_blank';
+    mapsLink.rel = 'noopener';
     var from = el('input'); from.id = 'og66From'; from.placeholder = 'From — place, or lat, lon';
     var to = el('input'); to.id = 'og66To'; to.placeholder = 'To — place, or lat, lon';
     var useMine = el('button', 'og66-btn dim', 'Use my location');
@@ -197,40 +248,77 @@
       if (!navigator.geolocation) return;
       navigator.geolocation.getCurrentPosition(function (p) {
         from.value = p.coords.latitude.toFixed(6) + ', ' + p.coords.longitude.toFixed(6);
+        updateMapsLink();
       });
     });
     var go = el('button', 'og66-btn', 'Get route');
     go.type = 'button';
-    wrap.appendChild(mapBox);
     wrap.appendChild(here);
     wrap.appendChild(ends);
     wrap.appendChild(totals);
     wrap.appendChild(stepsBox);
+    wrap.appendChild(mapsLink);
     wrap.appendChild(from); wrap.appendChild(to);
     wrap.appendChild(useMine); wrap.appendChild(go);
+    wrap.appendChild(el('h3', 'og66-sec', 'Saved points'));
+    var ptsBox = el('div'); ptsBox.id = 'og66DrivePts';
+    wrap.appendChild(ptsBox);
     wrap.appendChild(el('p', 'og66-note',
-      'The web shows your map and route. For live turn-by-turn '
-      + 'while you drive, use the OG app.'));
+      'OG works out the route here. For live turn-by-turn '
+      + 'while you drive, tap Open in Maps — your phone\'s '
+      + 'maps app takes it from there.'));
 
-    var map = null, myPos = null, centeredOnUser = false, alive = true;
+    var alive = true;
     view.track(function () { alive = false; });
-    function ensureMap(lat, lon) {
-      if (!alive || map || lat == null || lon == null) return;
-      map = window.OG70.createMap(mapBox, { lat: lat, lon: lon, zoom: 15 });
-      map.setPoints(points);
-      if (myPos) map.setUser(myPos);
-      view.track(function () { map.destroy(); });
+    var myPos = null;        // the live fix, while the switch is on
+    var currentRoute = null; // the loaded route's ends {from, to}
+
+    /* The handoff link re-arms itself whenever anything
+     * it is built from changes: the route, the fields,
+     * or the live fix. Destination: the route's end,
+     * else the To field. Origin: the route's start,
+     * else the From field, else the live fix, else the
+     * maps app's own current-location default. */
+    function updateMapsLink() {
+      var dest = '', origin = '';
+      if (currentRoute && currentRoute.to) {
+        dest = coordText(currentRoute.to);
+        origin = coordText(currentRoute.from);
+      } else if ((to.value || '').trim()) {
+        dest = (to.value || '').trim();
+        origin = (from.value || '').trim();
+      }
+      if (!origin && myPos) {
+        origin = myPos.lat + ',' + myPos.lon;
+      }
+      var url = mapsUrl(origin, dest);
+      if (url) {
+        mapsLink.setAttribute('href', url);
+        mapsLink.className = 'og66-btn';
+      } else {
+        mapsLink.removeAttribute('href');
+        mapsLink.className = 'og66-btn dim';
+      }
     }
+    from.addEventListener('input', function () {
+      currentRoute = null;
+      updateMapsLink();
+    });
+    to.addEventListener('input', function () {
+      currentRoute = null;
+      updateMapsLink();
+    });
+
     function showRoute(d, stored) {
       if (stored && stored.from && stored.to) {
         ends.textContent = (stored.from.label || 'Start') + ' → '
           + (stored.to.label || 'Destination');
-        ensureMap(stored.from.lat, stored.from.lon);
-        if (map) map.setRoute({ from: stored.from, to: stored.to });
+        currentRoute = stored;
       }
       totals.textContent = 'Total: ' + fmtDist(d.distance_m)
         + ' · ' + fmtDur(d.duration_s);
       renderSteps(stepsBox, d);
+      updateMapsLink();
     }
 
     // The account's active route — the same one chat and
@@ -243,14 +331,16 @@
     api('/gps/points').then(function (res) {
       if (!alive) return;
       points = (res.d && res.d.points) || [];
-      if (map) map.setPoints(points);
-      else if (points.length) ensureMap(points[0].lat, points[0].lon);
-    }).catch(function () { /* map stays as-is */ });
+      renderDrivingPoints(ptsBox);
+    }).catch(function () { /* list stays as-is */ });
+    renderDrivingPoints(ptsBox);
+    updateMapsLink();
 
     /* The position watch runs only while the ACCOUNT
      * switch is on (Round 73). The chip below it reports
      * this browser's own position state — the device gate
-     * under the switch. */
+     * under the switch. The fix also arms the handoff's
+     * origin when no route start is known. */
     var watchId = null;
     function stopWatch() {
       if (watchId !== null && navigator.geolocation) {
@@ -268,18 +358,11 @@
         if (h) h.textContent = 'You are here: ' + myPos.lat.toFixed(5)
           + ', ' + myPos.lon.toFixed(5)
           + ' (±' + Math.round(p.coords.accuracy || 0) + ' m)';
-        ensureMap(myPos.lat, myPos.lon);
-        if (map) {
-          map.setUser(myPos);
-          if (!centeredOnUser) {
-            centeredOnUser = true;
-            map.setCenter(myPos.lat, myPos.lon);
-          }
-        }
+        updateMapsLink();
       }, function () {
         chip.textContent = 'Location: Off — this browser is not '
-          + 'sharing its position. The map still shows your '
-          + 'route and points.';
+          + 'sharing its position. Your route and points '
+          + 'still load.';
       }, { enableHighAccuracy: true });
     }
     view.track(stopWatch);
@@ -304,12 +387,12 @@
       } else {
         stopWatch();
         myPos = null;
-        if (map) map.setUser(null);
         chip.textContent = 'Location: Off — OG\'s location switch '
-          + 'is off. The map still shows your route and points.';
+          + 'is off. Your route and points still load.';
         chip.className = 'og66-chip';
         var h = $('og66Here');
         if (h) h.textContent = 'You are here: (location not shared yet)';
+        updateMapsLink();
       }
     }
     api('/gps/location').then(function (res) {
