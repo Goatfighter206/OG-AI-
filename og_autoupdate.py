@@ -1106,6 +1106,19 @@ def reenable() -> dict:
     return state_view()
 
 
+def _nightly_check_hook() -> None:
+    """Round 72 seam: wake the self-check battery's one
+    nightly run (the activation diet moved it into this
+    window). The entry is stamp-guarded (exactly once per
+    night) and fail-safe; this wrapper only guards the
+    import itself."""
+    try:
+        import og_selfcheck as _sc
+        _sc.run_nightly_if_due()
+    except Exception as e:
+        logger.warning(f"Nightly self-check hook failed: {e}")
+
+
 def register_autoupdate_routes(app):
 
     @app.get("/system/autoupdate")
@@ -1165,6 +1178,11 @@ def register_autoupdate_routes(app):
             while True:
                 await asyncio.sleep(max(30, POLL_SECONDS))
                 try:
+                    # Round 72: the self-check battery runs
+                    # in this window now — sequenced BEFORE
+                    # the tick so tonight's findings feed
+                    # tonight's collect.
+                    await asyncio.to_thread(_nightly_check_hook)
                     await asyncio.to_thread(tick)
                 except Exception as e:
                     logger.warning(f"Autoupdate cycle failed: {e}")
