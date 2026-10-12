@@ -78,6 +78,8 @@ import threading
 import time
 import urllib.parse
 
+import og_garble
+
 logger = logging.getLogger(__name__)
 
 _UA = {"User-Agent": "OG-AI/1.0 (+https://og-ai-service.onrender.com)"}
@@ -1152,6 +1154,80 @@ def maps_search_results(parsed, uid, consume_lookup, coords=None):
 
 
 # ---------------------------------------------------------------------------
+# Garble tolerance (Round 75): the second chance for this seam
+# ---------------------------------------------------------------------------
+# The exact parsers above get first crack, always. Only when
+# they say no does the repair run: tokens one small typo from
+# this seam's vocabulary (route keywords, the place-category
+# trigger words, landmark names, the R73 toggle's words) are
+# rewritten, then the EXACT parsers re-run on the reading. The
+# toggle keeps its whole-message anchor — repair fixes WORDS,
+# never the shape — so compound asks still flip nothing, and
+# place names in the ask are never in the vocabulary, so they
+# reach the geocoder verbatim (it does its own fuzz).
+
+_GARBLE_VOCAB = (
+    # route shapes
+    ["directions", "direction", "how", "far", "distance",
+     "drive", "driving", "get", "to", "from", "between", "long",
+     "take", "takes"]
+    # place-seeking shapes
+    + ["where", "find", "show", "search", "looking", "look",
+       "locate", "give", "nearest", "closest", "nearby", "near",
+       "around", "close", "in", "at", "by", "any", "some"]
+    # category trigger words (the _CATEGORIES regex vocabulary)
+    + ["coffee", "cafe", "espresso", "starbucks", "restaurant",
+       "restaurants", "eatery", "eateries", "diner", "fast",
+       "food", "burger", "joint", "drive-thru", "pizza",
+       "pizzeria", "sushi", "mexican", "tacos", "burritos",
+       "chinese", "bar", "bars", "pub", "pubs", "brewery",
+       "breweries", "tavern", "park", "parks", "gas", "fuel",
+       "petrol", "charging", "station", "stations", "pharmacy",
+       "pharmacies", "drug", "hospital", "hospitals", "clinic",
+       "clinics", "emergency", "urgent", "care", "hotel",
+       "hotels", "motel", "motels", "lodging", "grocery",
+       "groceries", "supermarket", "supermarkets", "parking",
+       "atm", "cashpoint", "cash", "machine", "gym", "gyms",
+       "fitness", "center", "centre", "health", "club", "bank",
+       "banks", "library", "libraries", "post", "office",
+       "offices", "bakery", "bakeries", "liquor", "book",
+       "bookstore", "bookstores", "bookshop", "pet", "stores",
+       "store", "shops", "shop", "laundromat", "laundromats",
+       "laundry", "mechanic", "auto", "repair", "car", "tire",
+       "oil", "change", "movie", "theater", "theaters",
+       "theatre", "cinema", "museum", "museums", "church",
+       "churches", "worship", "barber", "barbers", "barbershop",
+       "salon", "hair", "haircut", "hardware", "home", "depot",
+       "dentist", "dentists", "doctor", "stay", "room", "eat",
+       "places", "place"]
+    # landmark names (phrases resolve through _LANDMARKS)
+    + list(_LANDMARKS)
+    # the R73 location toggle's words
+    + ["turn", "switch", "flip", "set", "location", "sharing",
+       "enable", "disable", "start", "stop", "on", "off", "my",
+       "the"]
+)
+_GARBLE_HOMOPHONES = {"too": "to"}
+
+
+def _garble_parse(message):
+    """(toggle, parsed, info) — this seam's garble second
+    chance. (None, None, None) when the repair changed nothing
+    or the reading still parses to nothing."""
+    repaired, info = og_garble.repair_info(
+        message, _GARBLE_VOCAB, _GARBLE_HOMOPHONES)
+    if info is None:
+        return None, None, None
+    toggle = parse_location_toggle(repaired)
+    if toggle:
+        return toggle, None, info
+    parsed = parse_maps_intent(repaired)
+    if parsed:
+        return None, parsed, info
+    return None, None, None
+
+
+# ---------------------------------------------------------------------------
 # The seam (app.py installs this on the agent, after Rounds 3/4/6)
 # ---------------------------------------------------------------------------
 
@@ -1160,7 +1236,9 @@ def maps_search_results(parsed, uid, consume_lookup, coords=None):
 # single slot is safe — the same reasoning as app.py's own slots.
 # "loctoggle" (Round 73) rides the same slot discipline: the
 # location-switch ask parsed for this exchange, if any.
-_pending = {"parsed": None, "loctoggle": None}
+# "garble" (Round 75) rides it too: the repair's fixes, when the
+# exchange's job was claimed through the second chance.
+_pending = {"parsed": None, "loctoggle": None, "garble": None}
 
 
 def install_maps_tools(agent_instance, get_uid, consume_lookup):
@@ -1182,6 +1260,7 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
         intent = prev_detect(message)
         _pending["parsed"] = None
         _pending["loctoggle"] = None
+        _pending["garble"] = None
         try:
             toggle = parse_location_toggle(str(message))
             if toggle:
@@ -1192,6 +1271,17 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
                 parsed = parse_maps_intent(str(message))
                 if parsed:
                     _pending["parsed"] = parsed
+                else:
+                    # Round 75: the garble second chance — the
+                    # exact parsers said no; re-run them on the
+                    # repaired reading.
+                    toggle, parsed, garble = _garble_parse(
+                        str(message))
+                    if toggle:
+                        _pending["loctoggle"] = toggle
+                    if parsed:
+                        _pending["parsed"] = parsed
+                    _pending["garble"] = garble
             if (toggle or _pending["parsed"]) \
                     and isinstance(intent, dict) \
                     and not intent.get("needs_web_search"):
@@ -1204,6 +1294,8 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
     def search_wrapped(query, num_results=5):
         toggle = _pending.get("loctoggle")
         _pending["loctoggle"] = None
+        garble = _pending.get("garble")
+        _pending["garble"] = None
         if toggle:
             try:
                 results = _location_toggle_results(get_uid(), toggle)
@@ -1211,6 +1303,9 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
                 logger.warning(f"Location toggle failed: {e}")
                 results = None
             if results:
+                if garble:
+                    results = og_garble.annotate(
+                        results, garble, prepend=True)
                 return results[: max(1, num_results)]
         parsed = _pending.get("parsed")
         _pending["parsed"] = None
@@ -1227,6 +1322,9 @@ def install_maps_tools(agent_instance, get_uid, consume_lookup):
                 logger.warning(f"Maps search failed: {e}")
                 results = None
             if results:
+                if garble:
+                    results = og_garble.annotate(
+                        results, garble, prepend=True)
                 return results[: max(1, num_results)]
         return prev_search(query, num_results)
 
