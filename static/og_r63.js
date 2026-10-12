@@ -30,6 +30,12 @@
  *    (password + code), and Add passkey when the browser
  *    supports WebAuthn. Push approval is labelled honestly:
  *    it comes in a later round.
+ *    Round 91 moves this section's home (Brent: "These
+ *    all need to be in security folder."): a "Security"
+ *    row in the menu's Account card opens a dedicated
+ *    Security page on the OG70 scaffold, and the whole
+ *    section renders there, painted on page open. Same
+ *    controls, same endpoints, same step-ups.
  *    Round 76 adds the section's last two controls: Change
  *    password (current + new password -> POST
  *    /auth/password/change; every other session is signed
@@ -212,8 +218,9 @@
     });
   }, true);
 
-  // ------------------------------------------------ account security section
-  var sec = null, statusEl = null, boxEl = null;
+  // ------------------------------------------------ account security page
+  var statusEl = null, boxEl = null;
+  var pageOpen = false;
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -234,11 +241,16 @@
   }
 
   function refreshStatus() {
-    if (!sec) return;
+    if (!pageOpen) return;
     fetch('/auth/2fa/status').then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d || !d.methods) { sec.hidden = true; return; }
-        sec.hidden = false;
+        if (!pageOpen) return;
+        if (!d || !d.methods) {
+          statusEl.textContent = 'Couldn\'t load your security '
+            + 'status \u2014 close this and open it again.';
+          boxEl.innerHTML = '';
+          return;
+        }
         var m = d.methods;
         statusEl.textContent = '2-step: ' + (d.enabled ? 'On' : 'Off')
           + ' \u00b7 Code app: ' + (m.totp ? 'On' : 'Off')
@@ -246,7 +258,12 @@
             ? 'unavailable on this server' : (m.passkey ? 'On' : 'Off'))
           + ' \u00b7 Push approval: comes in a later round';
         buildActions(d);
-      }).catch(function () { /* signed out — section stays hidden */ });
+      }).catch(function () {
+        if (!pageOpen) return;
+        statusEl.textContent = 'Couldn\'t load your security '
+          + 'status \u2014 close this and open it again.';
+        boxEl.innerHTML = '';
+      });
   }
 
   var lastStatus = null;
@@ -457,40 +474,83 @@
     softTimer = setTimeout(refreshStatus, 400);
   }
 
-  function buildSection() {
-    var card = $('menuAccountCard');
-    if (!card || sec) return !!sec;
-    sec = document.createElement('div');
-    var h = el('h3', 'og-menu-sec', 'Security');
-    h.id = 'og2faSecHead';
-    var nav = el('nav', 'og-menu-card', '');
+  /* ---------------- the Security page ----------------
+   * The OG70 scaffold, the Languages recipe: the tap on
+   * the menu row opens the page, the page builder paints
+   * the section into the page's scroll column (the same
+   * card + og2fa-sec markup the menu used to hold), and
+   * refreshStatus fires on page open \u2014 the status
+   * line is live when the page opens, never stale. The
+   * old menu-presence interval is gone with the old home:
+   * it also rebuilt the actions box every ~6 s while the
+   * menu sat open, wiping any in-progress form.
+   * view.track closes the page's world: a fetch that
+   * lands after the page closed paints nothing. */
+  function openView(opts) {
+    if (window.OG70 && window.OG70.openView) {
+      window.OG70.openView(opts);
+      return;
+    }
+    var n = 0;
+    var iv = setInterval(function () {
+      n += 1;
+      if (window.OG70 && window.OG70.openView) {
+        clearInterval(iv);
+        window.OG70.openView(opts);
+      } else if (n > 30) {
+        clearInterval(iv);
+      }
+    }, 100);
+  }
+
+  function buildSecurityPage(body, view) {
+    var card = el('div', 'og-menu-card', '');
     var inner = el('div', 'og2fa-sec', '');
     statusEl = el('p', '', '2-step: \u2026');
     boxEl = el('div', '', '');
     inner.appendChild(statusEl);
     inner.appendChild(boxEl);
-    nav.appendChild(inner);
-    card.parentNode.insertBefore(h, card.nextSibling);
-    card.parentNode.insertBefore(nav, h.nextSibling);
-    sec = nav;
-    sec.hidden = true;
-    h.hidden = true;
-    sec._head = h;
+    card.appendChild(inner);
+    body.appendChild(card);
+    pageOpen = true;
+    view.track(function () { pageOpen = false; });
     refreshStatus();
+  }
+
+  function openSecurity() {
+    openView({ title: 'Security', onOpen: buildSecurityPage });
+  }
+
+  /* ---------------- the menu row ----------------
+   * One row in the menu's Account card (the ACCOUNT
+   * group). The card itself is hidden while signed out,
+   * so the row needs no visibility sync of its own \u2014
+   * the old section's separate show/hide dance was an
+   * artifact of living OUTSIDE the card. */
+  var row = null;
+  function buildRow() {
+    var card = $('menuAccountCard');
+    if (!card || row) return !!row;
+    row = el('button', 'og-menu-item', '');
+    row.type = 'button';
+    row.id = 'og91SecurityRow';
+    var ico = el('span', 'og-mi', '');
+    ico.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z"/><path d="M9 11.6l2.1 2.1 4.2-4.4"/></svg>';
+    row.appendChild(ico);
+    row.appendChild(el('span', '', 'Security'));
+    row.addEventListener('click', openSecurity);
+    card.appendChild(row);
     return true;
   }
 
-  // Show/hide with the Account section + keep status fresh.
+  // Boot: build the row once the Account card exists,
+  // then stop. Nothing here polls anymore \u2014 the
+  // status paints on page open and after each action
+  // (refreshStatusSoft), exactly like the old section's
+  // own action flows did.
   var tries = 0;
   var iv = setInterval(function () {
     tries += 1;
-    if (buildSection()) {
-      var acctSec = $('menuAccountSec');
-      var signedIn = acctSec && !acctSec.hidden;
-      sec.hidden = !signedIn;
-      if (sec._head) sec._head.hidden = !signedIn;
-      if (signedIn && tries % 4 === 0) refreshStatus();
-    }
-    if (tries > 600) clearInterval(iv);
-  }, 1500);
+    if (buildRow() || tries > 300) clearInterval(iv);
+  }, 200);
 })();
