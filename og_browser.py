@@ -154,6 +154,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
 import og_browser_warm as _warm  # noqa: E402
+from og_browser_cdp import (  # noqa: E402,F401  Round 107: the raw
+    _DriveError, _Cdp, _attach_page, _SNAPSHOT_JS, _eval,
+    _wait_ready, _snapshot)  # CDP driver: og_browser_cdp
 
 # Round 72: og_browser_warm takes this module as its deps.
 _SELF = sys.modules[__name__]
@@ -679,6 +682,25 @@ def _alert_signin(uid: str, site: str) -> None:
         pass
 
 
+def _alert_start_outcome(uid: str, title: str, body: str) -> None:
+    """Round 107 (B6b): a BACKGROUND browser start's outcome,
+    delivered as a notification — the start no longer happens
+    inside the chat turn, so the words the old synchronous
+    start returned in-chat (live / could-not-start / the
+    post kickoff's narration) land here instead, through
+    the same fail-safe producer pattern as _alert_signin.
+    The background thread passes the full result bodies —
+    nothing the old narration said is silently lost."""
+    try:
+        import og_notify as _notify
+        if not _notify.alerts_enabled(uid):
+            return
+        _notify.record(uid, "notice", title, body,
+                       target={"view": "browser"})
+    except Exception:
+        pass
+
+
 def _other_pending(uid: str) -> bool:
     """Another module's approval is waiting (ordering / trading /
     storage / unity): never consume a YES/NO meant for them."""
@@ -711,13 +733,20 @@ def _other_pending(uid: str) -> bool:
 
 # --- Steel REST seam (the suite stubs _steel_api / _cdp_connect) --------------
 
+# Round 107: the Steel REST wait, in seconds — a named
+# constant with this seam as its single home. 30 s of
+# urllib on a wedged call was the B4/B7 stall shape; the
+# wait is single digits now, and every caller passing no
+# explicit timeout inherits it from here.
+STEEL_API_TIMEOUT_S = 8
+
 
 class _SteelError(Exception):
     pass
 
 
 def _steel_api(method: str, path: str, body: Optional[Dict] = None,
-               timeout: int = 30) -> Dict:
+               timeout: int = STEEL_API_TIMEOUT_S) -> Dict:
     key = _steel_key()
     if not key:
         raise _SteelError("no Steel API key configured")
@@ -853,9 +882,24 @@ def _steel_release(steel_id: str) -> None:
     _steel_api("POST", f"/sessions/{steel_id}/release", {})
 
 
+# Round 107 (item 9): the viewer URL is cached per Steel
+# session for a few seconds — /browser/status polls about
+# every 6 s and each poll used to re-fetch the session
+# from Steel. Only URLs a successful fetch produced are
+# cached; the constructed fallback is recomputed every
+# time, so a session Steel starts answering for is picked
+# up on the very next poll.
+VIEWER_URL_CACHE_TTL_S = 15
+_viewer_cache: Dict[str, tuple] = {}
+_viewer_cache_lock = threading.Lock()
+
+
 def _viewer_url(steel_id: str) -> str:
-    """The embeddable live-view URL, fetched FRESH from Steel — never
-    stored. Steel's sessionViewerUrl is their account DASHBOARD
+    """The embeddable live-view URL — fetched from Steel and
+    cached for VIEWER_URL_CACHE_TTL_S seconds (Round 107;
+    the fetch itself is still never STORED durably, and the
+    URL is re-read from Steel once the TTL lapses). Steel's
+    sessionViewerUrl is their account DASHBOARD
     (app.steel.dev/sessions/<id>): framed for a visitor with no Steel
     account it renders Steel's own sign-in page (Brent's live test,
     2026-10-09 04:10). The end-user embed is debugUrl — Steel's
@@ -864,11 +908,20 @@ def _viewer_url(steel_id: str) -> str:
     Take control, drive) with no Steel login. Fall back to
     sessionViewerUrl, then to the constructed player URL, so a live
     session never loses its view."""
+    if steel_id:
+        now = time.time()
+        with _viewer_cache_lock:
+            hit = _viewer_cache.get(steel_id)
+        if hit and now - hit[1] < VIEWER_URL_CACHE_TTL_S:
+            return hit[0]
     sess = _steel_get_session(steel_id)
     if sess:
         url = str(sess.get("debugUrl") or sess.get("sessionViewerUrl")
                   or "")
         if url:
+            if steel_id:
+                with _viewer_cache_lock:
+                    _viewer_cache[steel_id] = (url, time.time())
             return url
     if steel_id:
         return f"{_steel_base()}/sessions/{steel_id}/player"
@@ -900,87 +953,6 @@ def _capture_shot(rec: Dict) -> bytes:
 # --- Raw CDP driver (websockets ships with uvicorn[standard]) -----------------
 
 
-class _DriveError(Exception):
-    pass
-
-
-class _Cdp:
-    """Minimal synchronous CDP client: one command at a time,
-    events drained while waiting for the matching response id."""
-
-    def __init__(self, ws_url: str):
-        from websockets.sync.client import connect as _ws_connect
-        try:
-            self._ws = _ws_connect(ws_url, open_timeout=15,
-                                   close_timeout=5,
-                                   max_size=16 * 1024 * 1024)
-        except Exception as e:
-            raise _DriveError(f"CDP connect failed ({e})")
-        self._seq = 0
-        self.session_id = None  # set by _attach_page (flatten mode)
-
-    def call(self, method: str, params: Optional[Dict] = None,
-             timeout: float = 25.0) -> Dict:
-        self._seq += 1
-        mid = self._seq
-        msg = {"id": mid, "method": method, "params": params or {}}
-        if self.session_id:
-            msg["sessionId"] = self.session_id
-        self._ws.send(json.dumps(msg))
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                raw = self._ws.recv(timeout=max(
-                    0.1, deadline - time.time()))
-            except Exception as e:
-                raise _DriveError(f"CDP {method}: connection lost ({e})")
-            try:
-                msg = json.loads(raw)
-            except Exception:
-                continue
-            if msg.get("id") != mid:
-                continue  # an event, not our response
-            if "error" in msg:
-                raise _DriveError(
-                    f"CDP {method}: {msg['error'].get('message', 'error')}")
-            result = msg.get("result")
-            return result if isinstance(result, dict) else {}
-        raise _DriveError(f"CDP {method}: timed out")
-
-    def close(self):
-        try:
-            self._ws.close()
-        except Exception:
-            pass
-
-
-def _attach_page(cdp: _Cdp) -> None:
-    """Steel's websocketUrl is a BROWSER-level CDP endpoint: page
-    commands (Page.navigate, Runtime.evaluate) have no target until
-    one is attached — live drives failed fast on exactly that
-    (2026-10-09: sessions created fine over REST and the panel went
-    live, but no drive ever landed a page). Attach to the first
-    page target in flatten mode; subsequent commands ride that
-    target session. Best-effort by design: if attach is refused
-    (endpoint already page-level), drive sessionless as before."""
-    try:
-        targets = cdp.call("Target.getTargets")
-        page = None
-        for t in targets.get("targetInfos") or []:
-            if t.get("type") == "page":
-                page = t
-                break
-        if not page:
-            return
-        res = cdp.call("Target.attachToTarget",
-                       {"targetId": page.get("targetId"),
-                        "flatten": True})
-        sid = res.get("sessionId")
-        if sid:
-            cdp.session_id = sid
-    except Exception:
-        pass
-
 
 def _cdp_connect(rec: Dict) -> _Cdp:
     """Connect to the session's CDP WebSocket. Steel's websocketUrl
@@ -993,88 +965,6 @@ def _cdp_connect(rec: Dict) -> _Cdp:
     sep = "&" if "?" in ws_url else "?"
     return _Cdp(ws_url + sep + "apiKey=" + _steel_key())
 
-
-_SNAPSHOT_JS = r"""
-(function(){
-  var out = {title: document.title || '', url: location.href,
-             text: '', elements: []};
-  try {
-    out.text = (document.body ? document.body.innerText : '')
-      .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').slice(0, 3000);
-  } catch (e) {}
-  window.__ogEls = [];
-  var nodes = document.querySelectorAll(
-    'a[href],button,input,textarea,select,[role="button"],'
-    + '[role="textbox"]');
-  for (var i = 0; i < nodes.length && out.elements.length < 40; i++) {
-    var el = nodes[i], tag = el.tagName.toLowerCase();
-    var type = (el.getAttribute('type') || '').toLowerCase();
-    var role = (el.getAttribute('role') || '').toLowerCase();
-    if (tag === 'input' && (type === 'hidden' || type === 'password'
-        || type === 'file')) continue;
-    var r = el.getBoundingClientRect();
-    var st = window.getComputedStyle(el);
-    if (st.display === 'none' || st.visibility === 'hidden'
-        || (r.width === 0 && r.height === 0)) continue;
-    var label = '';
-    if (role === 'textbox') {
-      // A composer (contenteditable): its innerText is the DRAFT
-      // VALUE, which is never read — labels come from attributes
-      // only, same as every other field.
-      label = el.getAttribute('aria-label')
-        || el.getAttribute('data-placeholder')
-        || el.getAttribute('placeholder') || 'Text box';
-    } else if (tag === 'input' || tag === 'textarea'
-        || tag === 'select') {
-      label = el.getAttribute('placeholder')
-        || el.getAttribute('aria-label') || el.getAttribute('name')
-        || type || tag;
-    } else {
-      label = (el.innerText || el.getAttribute('aria-label') || '')
-        .trim().replace(/\s+/g, ' ').slice(0, 70);
-    }
-    if (!label && tag !== 'a') continue;
-    var form = el.closest ? el.closest('form') : null;
-    window.__ogEls.push(el);
-    out.elements.push({
-      i: window.__ogEls.length - 1, tag: tag, type: type,
-      role: role,
-      label: String(label).slice(0, 70),
-      href: tag === 'a' ? (el.getAttribute('href') || '').slice(0, 200) : '',
-      in_form: !!form});
-  }
-  return out;
-})()
-"""
-
-
-def _eval(cdp: _Cdp, expression: str):
-    result = cdp.call("Runtime.evaluate", {
-        "expression": expression, "returnByValue": True,
-        "awaitPromise": False})
-    remote = result.get("result") or {}
-    if result.get("exceptionDetails"):
-        raise _DriveError("page script failed")
-    return remote.get("value")
-
-
-def _wait_ready(cdp: _Cdp, seconds: float = 10.0) -> None:
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        try:
-            state = _eval(cdp, "document.readyState")
-        except _DriveError:
-            return
-        if state == "complete":
-            return
-        time.sleep(0.4)
-
-
-def _snapshot(cdp: _Cdp) -> Dict:
-    snap = _eval(cdp, _SNAPSHOT_JS)
-    if not isinstance(snap, dict):
-        raise _DriveError("could not read the page")
-    return snap
 
 
 def _drive(rec: Dict, action: Dict) -> Dict:
@@ -1738,10 +1628,16 @@ def _plan_math_text(plan: Dict, tier: str) -> str:
 
 
 def _do_start(uid: str, job: Dict) -> List[Dict]:
-    """Round 27 AUTO-OPEN: a start ask fires the session and
-    navigates in THIS turn — no proposal, no YES to begin. The
-    refusals are unchanged (dark, hard blocklist, gate, no
-    minutes): those explain themselves plainly and start nothing."""
+    """Round 27 AUTO-OPEN: a start ask fires the session with
+    no proposal, no YES to begin. The refusals are unchanged
+    (dark, hard blocklist, gate, no minutes): those explain
+    themselves plainly and start nothing. Round 107 (B6b):
+    the start itself runs in a BACKGROUND thread (see
+    _start_background) — the fast checks stay in this turn,
+    the starting marker is stamped synchronously, this
+    turn's reply is the starting narration, and the
+    session's arrival (or failure, or the post kickoff's
+    words) lands as a notification."""
     if not enabled():
         return _dark_text()
     url = job.get("url") or ""
@@ -1785,10 +1681,61 @@ def _do_start(uid: str, job: Dict) -> List[Dict]:
             f"Blackout (300 minutes/day): {_pro_url()}")
     pend = {"url": url, "goal": job.get("goal", ""),
             "post": post or None}
-    out = _start_session(uid, pend)
+    # Round 107 (B6b): stamp the starting marker HERE, in
+    # the turn, before the thread spawns — the status poll
+    # shows "starting" from this instant. The thread
+    # re-stamps it inside _start_session as before.
+    _set_starting(uid, url)
+    threading.Thread(target=_start_background, args=(uid, pend),
+                     daemon=True).start()
+    body = (f"Opening {url} — the browser window is coming "
+            "up in the panel under the chat right now: first "
+            "'starting', then the page loading, then the live "
+            "site. The start runs in the background from here "
+            "— creating the session and loading the page "
+            "takes a few seconds — so this reply doesn't "
+            "wait on it. When the page lands, or if the start "
+            "fails, the word arrives as a notification, and "
+            "the panel tells the truth either way.")
     if post:
-        out += _post_kickoff(uid, post, out)
-    return out
+        body += (" Your post words ride along with the "
+                 "start: once the page is up I'll draft "
+                 "them in the box — or park them at a login "
+                 "wall — and that outcome lands as a "
+                 "notification too.")
+    return _result("OG BROWSER", "OG browser — starting", body)
+
+
+def _start_background(uid: str, pend: Dict) -> None:
+    """Round 107 (B6b): the start's slow half, run on a
+    daemon thread off the chat turn — the Steel create +
+    CDP navigate + first snapshot that used to hold the
+    turn's first byte for their full timeouts (the
+    2026-10-12 'Facebook' turn: the reply never left).
+    Runs the EXACT old sequence (_start_session, then the
+    post kickoff) and delivers the joined outcome through
+    _alert_start_outcome. Never touches the claim/job
+    state — search_wrapped consumed that in the turn."""
+    try:
+        out = _start_session(uid, pend)
+        if pend.get("post"):
+            out += _post_kickoff(uid, pend["post"], out)
+    except Exception as e:
+        logger.warning(f"Browser background start failed: {e}")
+        _clear_starting(uid)
+        _alert_start_outcome(
+            uid, "OG browser — start hit a snag",
+            "The browser start ran into trouble partway. "
+            "If the panel shows nothing live, ask me again "
+            "and I'll retry the open.")
+        return
+    failed = any("could not start" in (r.get("title") or "")
+                 for r in out)
+    title = ("OG browser — could not start" if failed
+             else "OG browser — live")
+    body = " ".join((r.get("body") or "") for r in out)
+    body = body.replace("[OG BROWSER] ", "").strip()
+    _alert_start_outcome(uid, title, body or title)
 
 
 def _post_kickoff(uid: str, post: Dict,
@@ -2570,12 +2517,18 @@ def register_browser_routes(app):
                "phase": "idle", "frame_ready": False}
         rec = _get_session(uid) if uid else None
         if rec:
+            # Round 107 (B4): ending a session releases it at
+            # Steel — sync urllib that used to run ON the
+            # event loop inside this poll. Off the loop now;
+            # the end still completes before the answer.
             if _session_minutes_left(rec) <= 0:
-                _end_session(uid, "budget spent")
+                await asyncio.to_thread(_end_session, uid,
+                                        "budget spent")
                 rec = None
             elif time.time() - float(rec.get("last_action", 0)) \
                     > _IDLE_KILL_S:
-                _end_session(uid, "idle 20 minutes")
+                await asyncio.to_thread(_end_session, uid,
+                                        "idle 20 minutes")
                 rec = None
         if rec:
             out["active"] = True
@@ -2663,7 +2616,10 @@ def register_browser_routes(app):
             return JSONResponse({"error": "no session"},
                                 status_code=404)
         if _session_minutes_left(rec) <= 0:
-            _end_session(uid, "budget spent")
+            # Round 107 (B4): the release hops off the loop,
+            # same pattern as /browser/status.
+            await asyncio.to_thread(_end_session, uid,
+                                    "budget spent")
             return JSONResponse({"error": "session ended"},
                                 status_code=404)
         try:
@@ -2848,7 +2804,10 @@ def register_browser_routes(app):
                           "right now."},
                 status_code=409)
         if _session_minutes_left(rec) <= 0:
-            _end_session(uid, "budget spent")
+            # Round 107 (B4): the release hops off the loop,
+            # same pattern as /browser/status.
+            await asyncio.to_thread(_end_session, uid,
+                                    "budget spent")
             return JSONResponse({"ok": False,
                                  "error": "session ended"},
                                 status_code=404)
