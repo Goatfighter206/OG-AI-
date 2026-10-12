@@ -252,7 +252,20 @@ body.og-shell-off #ogSeatScreen { display: none !important; }
       (older suites read it); these later rules win the
       cascade. The Approvals panel is raised above the
       seats (9300/9299) because it opens FROM the Ideas
-      seat. */
+      seat.
+   Round 79 CORRECTS B's bottom edge (Brent, 2026-10-11
+   22:01, from his next recording): the seat bar must
+   STAY on screen — his older standing rule (the R59
+   rule: the bar never disappears on the seats) wins
+   over the full-screen presentation. The seat screen
+   still starts at the very top (full-height content,
+   ✕ head, 880px column, z 9000) but its bottom edge
+   now stops above the dock at the R59 dock-clearing
+   offsets (202px desktop / 186px phone, + safe-area),
+   so the composer + seat bar are never covered and
+   stay tappable while any seat is open. Nothing else
+   about B changes; the Approvals panel keeps its
+   raised 9300/9299 above the seats. */
 #ogStatusLine, #tokenStatus { display: none !important; }
 
 /* Footer line placement (Brent, 2026-10-11, corrected
@@ -268,12 +281,13 @@ body.og-shell-off #ogSeatScreen { display: none !important; }
 .age-footer { display: none !important; }
 
 #ogSeatScreen {
-    top: 0; bottom: 0; left: 0; transform: none;
+    top: 0; bottom: calc(202px + env(safe-area-inset-bottom));
+    left: 0; transform: none;
     width: 100%; z-index: 9000;
-    border-top: none; border-bottom: none;
+    border-top: none; border-bottom: 1px solid rgba(255,193,7,.35);
     background: radial-gradient(120% 90% at 50% 0%, #171307 0%, #0b0b0b 55%);
     padding-top: calc(10px + env(safe-area-inset-top));
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    padding-bottom: 10px;
 }
 #ogSeatScreen .og-seat-screen-head,
 #ogSeatScreen .og-seat-view {
@@ -285,7 +299,7 @@ body.og-shell-off #ogSeatScreen { display: none !important; }
     margin: 0 auto 8px;
 }
 @media (max-width: 768px) {
-    #ogSeatScreen { top: 0; bottom: 0; }
+    #ogSeatScreen { top: 0; bottom: calc(186px + env(safe-area-inset-bottom)); }
 }
 .og-appr-scrim { z-index: 9299; }
 .og-appr-panel { z-index: 9300; }
@@ -367,3 +381,34 @@ body.og-composer-locked #messageInput::placeholder { color: #ffc107; }
 .og-idea-ask { border: 1px solid #ffc107; background: #ffc107; color: #151515; }
 .og-idea-dismiss { border: 1px solid #3a3a3a; background: transparent; color: #cfcfcf; }
 .og-idea-btns button[disabled] { opacity: .5; cursor: default; }
+
+/* --- Round 79: a server blink is not a sign-out ------------------------
+   The page's own session check paints the auth wall on ANY
+   failure of its /auth/me fetch — including a 502, whose
+   HTML error page fails its JSON parse and lands in the
+   same catch as a real sign-out (Brent's 2026-10-11
+   recording: server blinked, the wall came up, his live
+   Remember-me session was treated as dead). The shell's
+   session-truth watcher (og_shell.js §2b) arbitrates:
+   while the answer is only "the server isn't answering",
+   body.og-auth-reconnecting hides the wall (the gate
+   element, its hidden attribute, and the og-shell-off
+   mirror are untouched — only the paint is suppressed)
+   and the neutral chip below is the only surface, until
+   a definitive /auth/me answer lands. A genuinely
+   signed-out visitor's wall is never touched: on a
+   definitive signed-out answer the class never goes on
+   (or comes right back off). */
+body.og-auth-reconnecting #ageGate { display: none !important; }
+#ogReconnectChip {
+    position: fixed; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(400px, 92vw); z-index: 9600;
+    background: rgba(14,14,14,.97);
+    border: 1px solid rgba(255,193,7,.55); border-radius: 16px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.65);
+    padding: 18px 20px; text-align: center; color: #f2f2f2;
+}
+#ogReconnectChip[hidden] { display: none !important; }
+.og-reconnect-title { display: block; font-size: 1.05rem; font-weight: 700; color: #ffd54f; }
+.og-reconnect-sub { display: block; margin-top: 6px; font-size: .88rem; line-height: 1.45; color: #bcbcbc; }
