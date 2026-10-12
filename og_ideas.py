@@ -35,12 +35,30 @@ Semantics:
 - Ideas NEVER execute anything: a card offers Ask (the ask
   is seeded into chat by the client) and Dismiss.
 - Generation refreshes on read (GET /ideas): candidates are
-  re-derived from current records every time, so an idea
-  whose signal went away expires on the next read. A
-  first-seen timestamp is kept while the signal persists.
+  re-derived from current records every time. (Round 95
+  amended what happens when a signal goes away — see the
+  Round 95 note below; a shown idea no longer expires on
+  the next read.) A first-seen timestamp is kept while
+  the signal persists.
 - Dismissal suppresses the idea's key for 30 days.
 - Fix proposals keep their own section and approval
   semantics (og_fixqueue) — untouched by this module.
+
+Round 95 (Brent, 2026-10-12: "in ideas you can see some
+of those notifications pop up and then go away"): the
+vanish was this module's own semantics — an idea was a
+live view of its signal, so the moment the signal
+flipped (the watch-match notification got marked read
+on ANY surface, a watch left waiting_login), the next
+read dropped the card silently, mid-look if a refresh
+landed while the seat was open. Now a SHOWN idea stays:
+live signals take the seats first, and a shown idea
+whose signal went away is retained until the user
+dismisses it or the signal has been gone for a full
+SIGNAL_GRACE_SECONDS (24h) — it expires server-side,
+on a named constant, never mid-look. The routes also
+resolve the caller through og_accounts.session_uid_or
+(Round 95's one identity), like every other surface.
 
 State rides og_notify's key-value store under
 "ideas:<uid>" (the house pattern for small per-user
@@ -58,6 +76,10 @@ logger = logging.getLogger(__name__)
 UID_COOKIE = "ogai_uid"
 MAX_LIVE = 3
 DISMISS_DAYS = 30
+# Round 95: how long a SHOWN idea outlives its signal.
+# The card never vanishes mid-look; it retires on a
+# later read once its signal has been gone this long.
+SIGNAL_GRACE_SECONDS = 24 * 60 * 60
 
 _TRY_IDEAS = (
     ("song", "Try a song",
@@ -214,17 +236,44 @@ def ideas_for(uid: str, request: Request) -> List[Dict]:
     now = time.time()
     dismissed = {k: v for k, v in st["dismissed"].items()
                  if now - float(v or 0) < DISMISS_DAYS * 86400}
-    seen = {i.get("id"): i.get("created")
-            for i in st["ideas"] if isinstance(i, dict)}
+    prev = {i.get("id"): i for i in st["ideas"]
+            if isinstance(i, dict) and i.get("id")}
     live: List[Dict] = []
+    live_ids = set()
     for cand in _candidates(uid, request):
         if cand["id"] in dismissed:
             continue
         cand = dict(cand)
-        cand["created"] = float(seen.get(cand["id"]) or now)
+        old = prev.get(cand["id"]) or {}
+        cand["created"] = float(old.get("created") or now)
+        cand["last_live"] = now
         live.append(cand)
+        live_ids.add(cand["id"])
         if len(live) >= MAX_LIVE:
             break
+    # Round 95: a shown idea whose signal went away does
+    # NOT wink out — it is retained behind the live
+    # signals until the user dismisses it or the signal
+    # has been gone a full SIGNAL_GRACE_SECONDS. Its
+    # last_live stays at the moment the signal last
+    # held, so the grace clock is honest.
+    for old in st["ideas"]:
+        if len(live) >= MAX_LIVE:
+            break
+        if not isinstance(old, dict):
+            continue
+        oid = old.get("id")
+        if not oid or oid in live_ids or oid in dismissed:
+            continue
+        anchor = float(old.get("last_live")
+                       or old.get("created") or 0)
+        if anchor and now - anchor > SIGNAL_GRACE_SECONDS:
+            continue  # truly expired server-side
+        kept = dict(old)
+        kept["created"] = float(old.get("created") or now)
+        kept["last_live"] = anchor or now
+        live.append(kept)
+        live_ids.add(oid)
     st["dismissed"] = dismissed
     st["ideas"] = live
     try:
@@ -250,15 +299,28 @@ def dismiss(uid: str, idea_id: str) -> bool:
     return True
 
 
+def _request_uid(request: Request) -> str:
+    """Round 95: the caller's ONE identity — the live
+    session's account uid when signed in, else the
+    presented cookie (og_accounts.session_uid_or)."""
+    cookie_uid = request.cookies.get(UID_COOKIE) or ""
+    try:
+        import og_accounts as _acct
+        return _acct.session_uid_or(request.cookies,
+                                    cookie_uid)
+    except Exception:
+        return cookie_uid
+
+
 def register_idea_routes(app):
     @app.get("/ideas")
     async def ideas_list(request: Request):
-        uid = request.cookies.get(UID_COOKIE) or ""
+        uid = _request_uid(request)
         return {"ideas": ideas_for(uid, request)}
 
     @app.post("/ideas/dismiss")
     async def ideas_dismiss(request: Request):
-        uid = request.cookies.get(UID_COOKIE) or ""
+        uid = _request_uid(request)
         try:
             body = await request.json()
         except Exception:
