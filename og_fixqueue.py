@@ -72,6 +72,25 @@ of Round 50's approve-to-upgrade hook:
    proposal hands the steps over (numbered) and marks the
    problem acknowledged; the self-check sweep closes it when
    the condition actually clears.
+
+6. THE 11PM HOLD (Round 71; Brent, 2026-10-11: "those
+   should not pop up right now — those should be an 11 o' pm
+   thing"). UPDATE-class problems (verify kind "update" —
+   the package updates the self-check ingest mints) are
+   stamped at creation with hold_until = the next 23:00 in
+   the owner's timezone (og_autoupdate's own clock). While
+   the hold is active the proposal still exists in the
+   queue — the nightly run reads the queue unfiltered and
+   the operator surfaces are untouched — but it is excluded
+   from list_proposals (Ideas / Approvals / the Progress
+   board, which reads the same list) and NO notification is
+   created for it. The hold is purely time-based: it lifts
+   at 23:00 whether or not the auto-update gate is on.
+   Update proposals minted before the hold existed carry no
+   stamp; list_proposals backfills one (next 23:00 from the
+   first read) through this module's own store, so nothing
+   update-class ever surfaces unstamped. Every other class
+   of problem is exactly as it was.
 """
 
 import hashlib
@@ -245,6 +264,95 @@ def _adopt_sentinel(uid: str):
             mine[fp] = prob
     _save_problems(uid, mine)
     _save_problems(SENTINEL_OWNER, {})
+
+
+# --- The 11pm hold for update proposals (Round 71) --------------------------------
+
+RELEASE_HOUR = 23  # owner-local; og_autoupdate's nightly window
+
+
+def _is_update_problem(problem) -> bool:
+    """The UPDATE class, by producer kind: the self-check
+    ingest updates loop is the only producer that stamps
+    verify kind "update" (with the package name). Never
+    title-matching, never fingerprint-matching."""
+    if not isinstance(problem, dict):
+        return False
+    verify = problem.get("verify") or {}
+    return isinstance(verify, dict) \
+        and verify.get("kind") == "update"
+
+
+def _release_ts(ts: float) -> float:
+    """The next 23:00 owner-local strictly after ts — the
+    nightly window, read through og_autoupdate's own
+    _owner_tz so the hold clock and the run clock are the
+    same code (zoneinfo America/Los_Angeles with its
+    fixed-offset fallback)."""
+    from datetime import datetime, timedelta, timezone
+    tz = None
+    try:
+        import og_autoupdate as _au
+        tz, _ = _au._owner_tz()
+    except Exception:
+        tz = None
+    if tz is None:
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("America/Los_Angeles")
+        except Exception:
+            tz = timezone(timedelta(hours=-8))
+    local = datetime.fromtimestamp(ts, tz)
+    cand = local.replace(hour=RELEASE_HOUR, minute=0,
+                         second=0, microsecond=0)
+    if cand <= local:
+        cand = cand + timedelta(days=1)
+    return cand.timestamp()
+
+
+def _hold_active(problem, now: Optional[float] = None) -> bool:
+    """True while an update problem sits inside its 11pm
+    hold: stamped, and the release moment is still ahead."""
+    if not _is_update_problem(problem):
+        return False
+    hold = problem.get("hold_until")
+    if not isinstance(hold, (int, float)):
+        return False
+    return (time.time() if now is None else now) < float(hold)
+
+
+def _ensure_update_holds(owner: str) -> bool:
+    """Backfill (Round 71): update-class problems recorded
+    before the hold existed carry no stamp. The first time
+    they are read for surfacing, stamp them to the next
+    23:00 through this module's own store — a targeted data
+    touch on the live update proposals only (open problem,
+    open proposal, no stamp yet). Idempotent; returns True
+    when anything was stamped. Fail-safe."""
+    try:
+        problems = _problems(owner)
+        now = time.time()
+        changed = False
+        for prob in problems.values():
+            if not _is_update_problem(prob):
+                continue
+            if prob.get("status") != "open":
+                continue
+            prop = prob.get("proposal")
+            if not isinstance(prop, dict) \
+                    or prop.get("status") != "open":
+                continue
+            if isinstance(prob.get("hold_until"), (int, float)):
+                continue
+            prob["hold_until"] = _release_ts(now)
+            _note(prob, "update_hold_stamped")
+            changed = True
+        if changed:
+            _save_problems(owner, problems)
+        return changed
+    except Exception as e:
+        logger.warning(f"Fixqueue hold backfill failed: {e}")
+        return False
 
 
 # --- Helpers ------------------------------------------------------------------------
@@ -567,6 +675,10 @@ def record_problem(owner, source, fingerprint, slug, title,
                 "history": [],
             }
             _note(problem, "recorded", str(source or ""))
+            if _is_update_problem(problem):
+                # Round 71: an update waits for the 11pm
+                # window before it may surface anywhere.
+                problem["hold_until"] = _release_ts(now)
             problems[fp] = problem
         else:
             problem["last_seen"] = now
@@ -610,7 +722,7 @@ def record_problem(owner, source, fingerprint, slug, title,
                             f"Recurrence lesson failed: {e}")
         proposal = _prepare(problem)
         _save_problems(owner_key, problems)
-        if proposal is not None:
+        if proposal is not None and not _hold_active(problem):
             _notify_proposal(owner_key, problem, proposal)
         return str(problem["id"])
     except Exception as e:
@@ -1373,6 +1485,8 @@ def list_proposals(uid: str) -> dict:
     if not uid:
         return {"proposals": [], "open_count": 0}
     _adopt_sentinel(uid)
+    for owner in _owner_keys_for(uid):
+        _ensure_update_holds(owner)
     open_views, decided = [], []
     for owner in _owner_keys_for(uid):
         for prob in _problems(owner).values():
@@ -1382,6 +1496,9 @@ def list_proposals(uid: str) -> dict:
             if prop.get("status") == "open":
                 if time.time() > float(prop.get("expires") or 0):
                     continue  # lazily retired on decide; hidden here
+                if _hold_active(prob):
+                    continue  # Round 71: an update inside its
+                    # 11pm hold does not surface yet
                 open_views.append(_proposal_view(prob, prop))
             elif prop.get("status") in ("executed", "handed_off",
                                         "declined"):
