@@ -2093,6 +2093,34 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogselling.install_selling_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Selling install skipped: {e}")
+    # Round 119: the Coding + Programming specialist
+    # seam rides the same last install, AFTER Selling
+    # (its detect wraps outermost; it defers EXACTLY
+    # first to og_github's own claim — its pendings,
+    # its clarifying questions, every repo-shaped ask:
+    # the R60 path stands untouched — then to the
+    # PM/Filer/crew/Builder/WoodPro/MaintEng/Mechanic/
+    # Blueprint claims, plus Shopping, Buying,
+    # Selling, the R54 marketplace claims, and the
+    # ordering pack's claims). The seat is the
+    # specialist FACE of OG's coding: write-it asks
+    # (drafted server-side + run through the R32
+    # checker when drafting is available), pasted-
+    # error debugging (the ONE best fix first),
+    # plain-words explanations, language/tool picks
+    # (ONE best answer), small-project scaffolds, and
+    # test-it / fix-it on the caller's bench. THE
+    # FENCES: PR-only + approval unchanged — this
+    # seat opens no PR and writes nothing anywhere;
+    # nothing executes on the user's machines (checks
+    # run only in OG's server sandbox, through
+    # og_github.run_python_checks); a check verdict
+    # is reported BY NAME, never dressed.
+    try:
+        import og_coding as _ogcoding
+        _ogcoding.install_coding_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Coding install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
