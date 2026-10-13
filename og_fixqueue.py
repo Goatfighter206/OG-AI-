@@ -2007,6 +2007,23 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogmechanic.install_mechanic_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Mechanic install skipped: {e}")
+    # Round 115: the Blueprint Specialist seam rides the
+    # same last install, AFTER the Car Mechanic (its
+    # detect wraps outermost; it defers to the
+    # PM/Filer/crew/Builder/WoodPro/MaintEng/Mechanic
+    # claims checked exactly first, and claims only
+    # sheet-shaped asks — reads, takeoffs, scale math,
+    # symbol meanings, "what does this call for",
+    # two-sheet cross-checks). The seat READS through
+    # the shipped reader (og_file_read) and the locker;
+    # every answer names its source on the sheet, and
+    # an unreadable part gets "can't read this part",
+    # never a guessed dimension.
+    try:
+        import og_blueprint as _ogblueprint
+        _ogblueprint.install_blueprint_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Blueprint install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
