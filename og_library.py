@@ -914,6 +914,16 @@ def register_library_routes(app):
         _ogmessenger.register_messenger_routes(app)
     except Exception as e:
         logger.warning(f"Messenger routes skipped: {e}")
+    # Round 275: the activity source's one route
+    # (GET /activity/status — the caller's own claim
+    # record + live background work + the composed
+    # header-bubble line; the same snapshot the Crew
+    # Dashboard will read) rides the same registration.
+    try:
+        import og_activity as _ogactivity
+        _ogactivity.register_activity_routes(app)
+    except Exception as e:
+        logger.warning(f"Activity routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
