@@ -836,6 +836,15 @@ def register_library_routes(app):
         _ogbuying.register_buying_routes(app)
     except Exception as e:
         logger.warning(f"Buying routes skipped: {e}")
+    # Round 118: the Selling helper's one route
+    # (GET /selling/status — the caller's own working
+    # listing + book summary + pending state) rides the
+    # same registration.
+    try:
+        import og_selling as _ogselling
+        _ogselling.register_selling_routes(app)
+    except Exception as e:
+        logger.warning(f"Selling routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
