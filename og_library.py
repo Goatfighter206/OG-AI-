@@ -785,6 +785,14 @@ def register_library_routes(app):
         _ogbuilder.register_builder_routes(app)
     except Exception as e:
         logger.warning(f"Builder routes skipped: {e}")
+    # Round 112: the Wood Project Builder Pro's one route
+    # (GET /woodpro/status — the caller's own wood plans)
+    # rides the same registration.
+    try:
+        import og_woodpro as _ogwoodpro
+        _ogwoodpro.register_woodpro_routes(app)
+    except Exception as e:
+        logger.warning(f"WoodPro routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
