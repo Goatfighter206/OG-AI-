@@ -863,6 +863,16 @@ def register_library_routes(app):
         _ogphone.register_phone_routes(app)
     except Exception as e:
         logger.warning(f"Phone routes skipped: {e}")
+    # Round 121: the CarPlay specialist's one route
+    # (GET /carplay/status — the caller's own bench:
+    # the platform on record, the wired/wireless
+    # shape, any open checklist step, the last thing
+    # worked) rides the same registration.
+    try:
+        import og_carplay as _ogcarplay
+        _ogcarplay.register_carplay_routes(app)
+    except Exception as e:
+        logger.warning(f"CarPlay routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
