@@ -1956,6 +1956,21 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogbuilder.install_builder_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Builder install skipped: {e}")
+    # Round 112: the Wood Project Builder Pro seam rides
+    # the same last install, AFTER the Builder (its detect
+    # wraps outermost; it defers to the PM/Filer/crew
+    # claims checked exactly first, and claims only
+    # wood-flavored asks — furniture pieces, cut lists,
+    # joinery, species, finishes, board feet — while
+    # structures like decks and sheds stay the Builder's).
+    # Knowledge + planning only: no ordering machinery —
+    # lumber asks leave with the plan's own lumber sheet
+    # and the ordering pack's approval door.
+    try:
+        import og_woodpro as _ogwoodpro
+        _ogwoodpro.install_woodpro_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"WoodPro install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
