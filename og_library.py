@@ -914,6 +914,18 @@ def register_library_routes(app):
         _ogmessenger.register_messenger_routes(app)
     except Exception as e:
         logger.warning(f"Messenger routes skipped: {e}")
+    # Round 126: the YouTube specialist seat's one route
+    # (GET /youtube/status — the caller's own bench:
+    # the channel + niche on record, any parked draft,
+    # and the connect's state read live) rides the same
+    # registration. The seat extends the Round 15
+    # og_youtube connect module in place; the connect's
+    # own /auth/youtube* routes stay app.py's, untouched.
+    try:
+        import og_youtube as _ogyoutube
+        _ogyoutube.register_youtube_seat_routes(app)
+    except Exception as e:
+        logger.warning(f"YouTube seat routes skipped: {e}")
     # Round 275: the activity source's one route
     # (GET /activity/status — the caller's own claim
     # record + live background work + the composed
