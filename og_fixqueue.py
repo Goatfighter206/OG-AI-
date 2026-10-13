@@ -2024,6 +2024,24 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogblueprint.install_blueprint_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Blueprint install skipped: {e}")
+    # Round 116: the Shopping seam rides the same last
+    # install, AFTER the Blueprint Specialist (its detect
+    # wraps outermost; it defers to the PM/Filer/crew/
+    # Builder/WoodPro/MaintEng/Mechanic/Blueprint claims
+    # checked exactly first, plus the R54 marketplace
+    # claims and the ordering pack's claims). The seat
+    # EXTENDS the shipped lanes — the web search it
+    # harvests through the seam, and the caller's own
+    # R54 Marketplace watch matches read at the data
+    # level — and forks neither. It finds, compares,
+    # refines, and saves picks; it NEVER buys, checks
+    # out, pays, messages, or haggles: those crossings
+    # stop at their approval doors.
+    try:
+        import og_shopping as _ogshopping
+        _ogshopping.install_shopping_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Shopping install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
