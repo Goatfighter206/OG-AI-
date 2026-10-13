@@ -2365,6 +2365,48 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogyoutube.install_youtube_seat_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"YouTube seat install skipped: {e}")
+    # Round 127: the WEBSITE + BROWSER specialist
+    # installs in the same last install, AFTER
+    # Facebook (its detect wraps outermost; it defers
+    # EXACTLY first to og_github's own claim — the
+    # R60 path stands untouched — then to the
+    # PM/Filer/crew/Builder/WoodPro/MaintEng/Mechanic/
+    # Blueprint claims, plus Shopping, Buying,
+    # Selling, Coding, Phone, CarPlay, Tracker,
+    # Marketplace, the R54 marketplace chain,
+    # Messenger, Facebook, og_watch's own claim,
+    # og_monitor's own parse, the ordering pack's
+    # claims, and LAST og_browser's own claim — every
+    # start / post / in-session / YES-NO shape stays
+    # the browser's own door). The seat is the OG
+    # Browser's specialist front door, never a second
+    # browser: it compares two pages side by side
+    # (read-only _drive, each target gated by
+    # _url_gate before it opens, the browser restored
+    # after), reads browser status and the
+    # always-allow list off og_browser's own
+    # surfaces, and fills a form right up to the
+    # commit wall by delegating each field to
+    # og_browser's own act/type hands. THE FENCES —
+    # Brent's standing browser law at full strength:
+    # THE APPROVAL GATE ON EVERY COMMIT ACTION STAYS
+    # THE BROWSER'S OWN (this seat holds no click
+    # machinery and no gate of its own); CHECKPOINTS
+    # AND LOGIN WALLS MEAN NARRATION + STOP (never
+    # solved, never worked around; OG never sees,
+    # types, or stores passwords); TAKEOVER FREEZES
+    # OG'S HANDS — ZERO ACTIONS WHILE THE USER
+    # DRIVES; TIER MINUTE CAPS RIDE OG_BROWSER'S OWN
+    # METER (no second session, no second meter);
+    # reads are reports off the real snapshot, never
+    # invented; the crew Runner's background errands
+    # and the Tracker's page watches stay theirs;
+    # no new loop, no new timer.
+    try:
+        import og_webbrowser as _ogwebbrowser
+        _ogwebbrowser.install_webbrowser_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Webbrowser install skipped: {e}")
     # Round 275: the ACTIVITY OBSERVER installs in
     # the same last install, AFTER Messenger (its
     # web_search wrap is outermost). It routes
