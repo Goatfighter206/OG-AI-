@@ -926,6 +926,17 @@ def register_library_routes(app):
         _ogyoutube.register_youtube_seat_routes(app)
     except Exception as e:
         logger.warning(f"YouTube seat routes skipped: {e}")
+    # Round 127: the Website + Browser specialist's
+    # one route (GET /webbrowser/status — the
+    # caller's own browser picture: session, plan
+    # minutes, parked approval, always-allow hosts,
+    # parked compare, read live off og_browser's own
+    # surfaces) rides the same registration.
+    try:
+        import og_webbrowser as _ogwebbrowser
+        _ogwebbrowser.register_webbrowser_routes(app)
+    except Exception as e:
+        logger.warning(f"Webbrowser routes skipped: {e}")
     # Round 275: the activity source's one route
     # (GET /activity/status — the caller's own claim
     # record + live background work + the composed
