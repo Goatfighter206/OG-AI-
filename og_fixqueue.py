@@ -2042,6 +2042,31 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogshopping.install_shopping_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Shopping install skipped: {e}")
+    # Round 117: the Buying seam rides the same last
+    # install, AFTER Shopping (its detect wraps
+    # outermost; it defers to the PM/Filer/crew/
+    # Builder/WoodPro/MaintEng/Mechanic/Blueprint
+    # claims checked exactly first, plus the R54
+    # marketplace claims and the ordering pack's
+    # claims). ONE takeover, by design: Shopping's
+    # buy-stop claim — the door R116 pointed at — is
+    # taken by this seat, as is a fully-specified
+    # direct ask (price + destination stated whole).
+    # The seat prepares a buy to the approval wall
+    # off the caller's saved pick / shortlist or a
+    # direct ask: destination verified BEFORE any
+    # card (a lookalike is flagged, no card parked),
+    # ONE total only when every line is known, an
+    # approval card, and a hand-off on approval.
+    # OG NEVER PAYS: no payment machinery, no card
+    # entry, no checkout completion — the user's own
+    # hand pays at the merchant (app-store buys run
+    # through Apple/Google billing).
+    try:
+        import og_buying as _ogbuying
+        _ogbuying.install_buying_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Buying install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
