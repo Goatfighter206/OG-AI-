@@ -2067,6 +2067,32 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogbuying.install_buying_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Buying install skipped: {e}")
+    # Round 118: the Selling seam rides the same last
+    # install, AFTER Buying (its detect wraps outermost;
+    # it defers to the PM/Filer/crew/Builder/WoodPro/
+    # MaintEng/Mechanic/Blueprint claims checked exactly
+    # first, plus Shopping, Buying, the R54 marketplace
+    # claims, and the ordering pack's claims). The seat
+    # prices off real comps (the seam harvest parsed by
+    # the Shopping seat's own parser — no fork), drafts
+    # the listing (title, description off stated facts
+    # only, photo plan in order, terms = the user's
+    # call, never promised), and drafts buyer-message
+    # replies. THE FENCES: nothing posts, sends, or
+    # lists without the user's approval of the EXACT
+    # text (approval hands back the same words; any
+    # edit voids it); the price floor is the USER'S —
+    # offers at/over it get a reply drafted inside it,
+    # offers below it park as an ask, never accepted,
+    # never countered under it. OG never completes a
+    # sale or touches payment: posting and sending are
+    # the user's own taps (no poster is built — R54's
+    # buyer-side chain stays whole, untouched).
+    try:
+        import og_selling as _ogselling
+        _ogselling.install_selling_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Selling install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
