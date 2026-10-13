@@ -2242,6 +2242,45 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogmarketplace.install_marketplace_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Marketplace install skipped: {e}")
+    # Round 124: the FACEBOOK specialist installs in the
+    # same last install, AFTER Marketplace (its detect
+    # wraps outermost; it defers EXACTLY first to
+    # og_github's own claim — the R60 path stands
+    # untouched — then to the PM/Filer/crew/Builder/
+    # WoodPro/MaintEng/Mechanic/Blueprint claims, plus
+    # Shopping, Buying, Selling, Coding, Phone, CarPlay,
+    # Tracker, Marketplace, the R54 marketplace chain,
+    # og_watch's own claim, og_monitor's own parse, the
+    # ordering pack's claims, and LAST og_browser's own
+    # claim — every start / post / in-session / YES-NO
+    # shape stays the browser's own door). The seat is
+    # the crew's Facebook hand: Page comments read +
+    # reported (never replied to), the Page report and
+    # the feed report (first screen, as printed),
+    # drafts composed ONLY from the user's own stated
+    # words and parked INERT on the per-account bench,
+    # and the "post it" hand-off that carries the EXACT
+    # parked words to og_browser's approval-gated
+    # posting door. Reads ride the caller's live
+    # browser session READ-ONLY (og_browser._drive with
+    # navigate/read only — og_watch's precedent); a
+    # login wall returns og_browser's own R27 narration
+    # and STOPS; a checkpoint narrates and STOPS. THE
+    # FENCES — Brent's standing send law at full
+    # strength: nothing posts, comments, or reacts
+    # without the user's approval of the exact words
+    # (this seat holds NO click/type/post machinery);
+    # OG never messages anyone on Facebook (Messenger
+    # is R125's seat, seller threads are R54/R123's);
+    # no mass actions, no friend/follow spam; OG never
+    # sees, types, or stores passwords; reads are
+    # reports off the real snapshot, never invented;
+    # no new loop, no new timer.
+    try:
+        import og_facebook as _ogfacebook
+        _ogfacebook.install_facebook_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Facebook install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
