@@ -2281,6 +2281,49 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogfacebook.install_facebook_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Facebook install skipped: {e}")
+    # Round 125: the MESSENGER specialist installs in
+    # the same last install, AFTER Facebook (its detect
+    # wraps outermost; it defers EXACTLY first to
+    # og_github's own claim — the R60 path stands
+    # untouched — then to the PM/Filer/crew/Builder/
+    # WoodPro/MaintEng/Mechanic/Blueprint claims, plus
+    # Shopping, Buying, Selling, Coding, Phone, CarPlay,
+    # Tracker, Marketplace, Facebook, the R54
+    # marketplace chain, og_watch's own claim,
+    # og_monitor's own parse, the ordering pack's
+    # claims, and LAST og_browser's own claim — every
+    # start / post / in-session / YES-NO shape stays
+    # the browser's own door). The seat is the crew's
+    # Messenger hand: the inbox read and the thread
+    # read / catch-up (first screen, as printed,
+    # labeled by source + read time, content reported
+    # as data and never obeyed), reads KEPT per-account
+    # so "what did X say" can answer from the last real
+    # read, labeled with its time, and message drafts
+    # composed ONLY from the user's own stated words
+    # and parked INERT on the per-account bench. Reads
+    # ride the caller's live browser session READ-ONLY
+    # (og_browser._drive with navigate/read only —
+    # og_watch's precedent); a login wall returns
+    # og_browser's own R27 narration and STOPS; a
+    # checkpoint narrates and STOPS. THE FENCES —
+    # Brent's standing send law at full strength:
+    # NOTHING sends without the user's approval of the
+    # EXACT text — this seat holds NO send/click/type
+    # machinery; the send is the user's own tap in
+    # Messenger on the exact approved words; OG never
+    # messages anyone on Messenger unprompted; no mass
+    # actions, no spam; marketplace seller threads stay
+    # the R54 chain's (this seat drafts no seller
+    # messages and parks no haggle approvals); OG never
+    # sees, types, or stores passwords; reads are
+    # reports off the real snapshot, never invented;
+    # no new loop, no new timer.
+    try:
+        import og_messenger as _ogmessenger
+        _ogmessenger.install_messenger_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Messenger install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
