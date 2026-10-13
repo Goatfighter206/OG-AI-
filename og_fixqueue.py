@@ -1971,6 +1971,23 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogwoodpro.install_woodpro_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"WoodPro install skipped: {e}")
+    # Round 113: the Maintenance + Engineer seam rides
+    # the same last install, AFTER the Wood Pro (its
+    # detect wraps outermost; it defers to the
+    # PM/Filer/crew/Builder/WoodPro claims checked
+    # exactly first, and claims only the built-world
+    # upkeep lanes — symptom walks, PM schedules,
+    # engineering math). Emergencies (gas smell, CO
+    # alarm, sparking) claim before every defer: the
+    # answer is the emergency line, full stop.
+    # Knowledge + guidance only: no ordering machinery
+    # — parts asks leave with the context's own parts
+    # sheet and the ordering pack's approval door.
+    try:
+        import og_mainteng as _ogmainteng
+        _ogmainteng.install_mainteng_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"MaintEng install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
