@@ -854,6 +854,15 @@ def register_library_routes(app):
         _ogcoding.register_coding_routes(app)
     except Exception as e:
         logger.warning(f"Coding routes skipped: {e}")
+    # Round 120: the Phone specialist's one route
+    # (GET /phone/status — the caller's own bench: the
+    # phone on record, any open check, the last thing
+    # worked) rides the same registration.
+    try:
+        import og_phone as _ogphone
+        _ogphone.register_phone_routes(app)
+    except Exception as e:
+        logger.warning(f"Phone routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
