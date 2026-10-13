@@ -2209,6 +2209,39 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogtracker.install_tracker_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Tracker install skipped: {e}")
+    # Round 123: the MARKETPLACE specialist installs in the
+    # same last install, AFTER Tracker (its detect wraps
+    # outermost; it defers EXACTLY first to og_github's own
+    # claim — the R60 path stands untouched — then to the
+    # PM/Filer/crew/Builder/WoodPro/MaintEng/Mechanic/
+    # Blueprint claims, plus Shopping, Buying, Selling,
+    # Coding, Phone, CarPlay, Tracker, the R54 marketplace
+    # chain, og_watch's own claim, og_monitor's own parse,
+    # and the ordering pack's claims). The seat is the
+    # crew's Marketplace hand: Marketplace-named searches
+    # nobody claimed (the caller's watched matches via
+    # og_shopping's lane reader + fresh Marketplace
+    # listings off the web harvest, parsed by
+    # og_shopping's own parser — a few in range, BEST
+    # DEAL FIRST, source/as-of on every price), the
+    # per-account hunt book (hunts here; watches +
+    # approvals read live off og_watch/og_mpwatch), and
+    # the pick that hands off to the Buying helper
+    # through the one pick store it already reads. THE
+    # FENCES — Brent's standing marketplace law at full
+    # strength: ask before messaging a seller (the R54
+    # approval; this seat holds NO send machinery and
+    # parks no drafts); ask SEPARATELY before haggling,
+    # inside a ceiling the user sets, no counter past
+    # it; final yes before anything is agreed; OG never
+    # pays, never agrees a price on its own, never
+    # arranges a meetup; listings read, never invented;
+    # no new loop, no new timer.
+    try:
+        import og_marketplace as _ogmarketplace
+        _ogmarketplace.install_marketplace_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Marketplace install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
