@@ -2324,6 +2324,47 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogmessenger.install_messenger_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Messenger install skipped: {e}")
+    # Round 126: the YOUTUBE specialist installs in the
+    # same last install, AFTER Messenger (its detect
+    # wraps outermost; it defers EXACTLY first to
+    # og_github's own claim — the R60 path stands
+    # untouched — then to the CONNECT'S OWN parse
+    # (subscriptions / uploads / playlists / search stay
+    # the Round 15 connect's), then to the PM/Filer/
+    # crew/Builder/WoodPro/MaintEng/Mechanic/Blueprint
+    # claims, plus Shopping, Buying, Selling, Coding,
+    # Phone, CarPlay, Tracker, Marketplace, Facebook,
+    # Messenger, the R54 marketplace chain, og_watch's
+    # own claim, og_monitor's own parse, the ordering
+    # pack's claims, and LAST og_browser's own claim).
+    # The seat EXTENDS the Round 15 og_youtube connect
+    # in place — no second connect, no second token
+    # store: the channel report, the video report, and
+    # the comments read ride the connect's own _request
+    # with the caller's own token, numbers exactly as
+    # the Data API prints them, labeled by source +
+    # read time. Drafts (reply / title / description /
+    # tags) are composed ONLY from the user's own stated
+    # words and parked INERT on the per-account bench.
+    # THE FENCES — Brent's standing law at full
+    # strength: NOTHING uploads, publishes, or posts
+    # without the user's approval of the exact text
+    # (this seat holds NO write machinery: GET reads
+    # only); the connect's scopes bound it plainly —
+    # Analytics numbers name the missing
+    # yt-analytics.readonly scope, a reply post names
+    # the missing youtube.force-ssl scope, an upload
+    # names the missing youtube.upload scope, and none
+    # of them is ever faked; OG never comments as the
+    # user unapproved; no view/sub manipulation, no
+    # spam; reads key on the caller's uid only, so a
+    # cross-account ask surfaces only the caller's own
+    # connection state; no new loop, no new timer.
+    try:
+        import og_youtube as _ogyoutube
+        _ogyoutube.install_youtube_seat_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"YouTube seat install skipped: {e}")
     # Round 275: the ACTIVITY OBSERVER installs in
     # the same last install, AFTER Messenger (its
     # web_search wrap is outermost). It routes
