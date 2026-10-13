@@ -1940,6 +1940,22 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogfiling.install_filing_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Filing install skipped: {e}")
+    # Round 111: the Project Builder seam rides the same
+    # last install, AFTER the Filer (its detect wraps
+    # outermost; its claims require an explicit build frame
+    # — a buildable noun, a build-plan lead, or an
+    # adjustment to an open draft plan — and it defers to
+    # the PM/Filer/crew claims checked exactly first, so
+    # bare YES/NO and every other seam's asks are never
+    # eaten). Knowledge + planning only: no ordering
+    # machinery here — plan ordering asks leave with the
+    # plan's own materials sheet and the ordering pack's
+    # approval door.
+    try:
+        import og_builder as _ogbuilder
+        _ogbuilder.install_builder_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Builder install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
