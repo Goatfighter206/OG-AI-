@@ -809,6 +809,15 @@ def register_library_routes(app):
         _ogmechanic.register_mechanic_routes(app)
     except Exception as e:
         logger.warning(f"Mechanic routes skipped: {e}")
+    # Round 115: the Blueprint Specialist helper's one
+    # route (GET /blueprint/status — the caller's own
+    # sheets + the one on the table) rides the same
+    # registration.
+    try:
+        import og_blueprint as _ogblueprint
+        _ogblueprint.register_blueprint_routes(app)
+    except Exception as e:
+        logger.warning(f"Blueprint routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
