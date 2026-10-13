@@ -1988,6 +1988,25 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogmainteng.install_mainteng_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"MaintEng install skipped: {e}")
+    # Round 114: the Car Mechanic seam rides the same
+    # last install, AFTER Maintenance + Engineer (its
+    # detect wraps outermost; it defers to the
+    # PM/Filer/crew/Builder/WoodPro/MaintEng claims
+    # checked exactly first, and claims only the car
+    # lanes — symptom walks, OBD codes, the shop-job
+    # lane, sounds, the vehicle list, intervals).
+    # Car emergencies (brakes gone, fuel leaking,
+    # steering lost, exhaust in the cabin) claim
+    # before every defer: the answer is the emergency
+    # line, full stop. Knowledge + guidance only: no
+    # ordering machinery — parts asks leave with the
+    # context's own parts sheet and the ordering
+    # pack's approval door.
+    try:
+        import og_mechanic as _ogmechanic
+        _ogmechanic.install_mechanic_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Mechanic install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
