@@ -2324,6 +2324,33 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogmessenger.install_messenger_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Messenger install skipped: {e}")
+    # Round 275: the ACTIVITY OBSERVER installs in
+    # the same last install, AFTER Messenger (its
+    # web_search wrap is outermost). It routes
+    # NOTHING and answers NOTHING: it reads the tag
+    # off the REAL routing result ("[OG SELLING] ..."
+    # — the house result shape) and records which
+    # helper seat claimed this account's turn on the
+    # caller's own bench (og_activity_data) — the
+    # record the header bubble's live line and, later,
+    # the Crew Dashboard read. THE HONESTY LAW
+    # (Brent's, the R275 SPEC's): the bubble never
+    # shows activity that is not happening — no seat
+    # is named unless that seat actually claimed work
+    # for this account, no count is shown that was
+    # not read live from a real store (og_watch /
+    # og_monitor / og_crew, read at answer time,
+    # nothing copied). Fail-soft: an observer error
+    # loses a bubble update, never a chat turn. The
+    # switch is OG_ACTIVITY_ENABLED (unset = ON);
+    # off = nothing records and the bubble falls back
+    # to its static truthful states. No new loop, no
+    # new timer; persona untouched.
+    try:
+        import og_activity as _ogactivity
+        _ogactivity.install_activity_observer(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Activity observer install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
