@@ -2121,6 +2121,30 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogcoding.install_coding_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Coding install skipped: {e}")
+    # Round 120: the Phone specialist seam rides the
+    # same last install, AFTER Coding (its detect wraps
+    # outermost; it defers EXACTLY first to og_github's
+    # own claim — the R60 path stands untouched — then
+    # to the PM/Filer/crew/Builder/WoodPro/MaintEng/
+    # Mechanic/Blueprint claims, plus Shopping, Buying,
+    # Selling, Coding, the R54 marketplace claims, and
+    # the ordering pack's claims). The seat is the
+    # crew's phone hand: settings walks (the exact tap
+    # path for the named phone/OS, dead-simple numbered
+    # steps, ONE action at a time), troubleshooting
+    # (ONE best first check, then the next), backups
+    # and new-phone moves, and OG-on-your-phone answers
+    # read LIVE off Round 90's Permissions store and
+    # Round 73's location switch — never a copied state.
+    # THE FENCE: OG cannot remote-control the user's
+    # phone — the seat GUIDES, the user TAPS; a "do it
+    # for me" ask gets the honest line first, then the
+    # guided steps. No new powers, no new loops.
+    try:
+        import og_phone as _ogphone
+        _ogphone.install_phone_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Phone install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
