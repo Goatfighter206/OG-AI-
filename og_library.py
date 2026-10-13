@@ -845,6 +845,15 @@ def register_library_routes(app):
         _ogselling.register_selling_routes(app)
     except Exception as e:
         logger.warning(f"Selling routes skipped: {e}")
+    # Round 119: the Coding + Programming specialist's
+    # one route (GET /coding/status — the caller's own
+    # bench: last ask, code standing, last check
+    # summary by name) rides the same registration.
+    try:
+        import og_coding as _ogcoding
+        _ogcoding.register_coding_routes(app)
+    except Exception as e:
+        logger.warning(f"Coding routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
