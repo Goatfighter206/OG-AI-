@@ -883,6 +883,16 @@ def register_library_routes(app):
         _ogtracker.register_tracker_routes(app)
     except Exception as e:
         logger.warning(f"Tracker routes skipped: {e}")
+    # Round 123: the Marketplace specialist's one route
+    # (GET /marketplace/status — the caller's own hunt
+    # summary + book count, with watch and open-approval
+    # counts read live off the og_watch / og_mpwatch
+    # stores) rides the same registration.
+    try:
+        import og_marketplace as _ogmarketplace
+        _ogmarketplace.register_marketplace_routes(app)
+    except Exception as e:
+        logger.warning(f"Marketplace routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
