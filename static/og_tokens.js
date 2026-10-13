@@ -340,6 +340,20 @@
   document.head.appendChild(s);
 })();
 
+/* Round 275: the header bubble's live helper line —
+   the activity layer that polls /activity/status and
+   paints what OG / his helpers are really doing into
+   the status pills, over the idle text only (static/
+   og_r275.js); same ride-along loader as Rounds
+   62/63/65/66/84/85/90/97/98/106/108 — the page is at
+   its push ceiling. Loaded before og_stoplisten.js,
+   which stays LAST. */
+(function () {
+  var s = document.createElement('script');
+  s.src = '/static/og_r275.js' + '?v=98';
+  document.head.appendChild(s);
+})();
+
 /* Stop-listening on leave: the Talk kill-switch (mic off
    the moment the user leaves the page, partial dictation
    discarded, no auto-restart on return) lives in its own
