@@ -2176,6 +2176,39 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogcarplay.install_carplay_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"CarPlay install skipped: {e}")
+    # Round 122: the Tracker specialist seam rides the
+    # same last install, AFTER CarPlay (its detect wraps
+    # outermost; it defers EXACTLY first to og_github's
+    # own claim — the R60 path stands untouched — then
+    # to the PM/Filer/crew/Builder/WoodPro/MaintEng/
+    # Mechanic/Blueprint claims, plus Shopping, Buying,
+    # Selling, Coding, Phone, CarPlay, the R54
+    # marketplace chain, og_watch's own claim,
+    # og_monitor's own parse, and the ordering pack's
+    # claims). The seat is the crew's tracker: ONE chat
+    # front-end that unifies OG's tracking asks and
+    # routes each through the machinery that owns it —
+    # price tracks ARE og_monitor watches (its caps,
+    # cadence, fire-once, prepend + og_notify delivery),
+    # page tracks ARE og_watch fbwatches (its slot
+    # ladder, seen-store, states), whereabouts read
+    # Round 73's GPS points live, and package status
+    # answers off the caller's own Buying book. THE
+    # FENCES: a tracker tracks only what belongs to
+    # the signed-in user — tracking another PERSON
+    # (following someone, finding someone's location,
+    # watching their device to locate them) is REFUSED
+    # BY NAME, first; read-only tracking — the seat
+    # never buys, books, messages, or pays, and a
+    # fired price track hands off to the Buying helper
+    # and stops there; states read off the real
+    # stores, never invented; no new loop, no new
+    # timer.
+    try:
+        import og_tracker as _ogtracker
+        _ogtracker.install_tracker_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"Tracker install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
