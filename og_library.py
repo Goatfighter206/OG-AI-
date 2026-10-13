@@ -793,6 +793,14 @@ def register_library_routes(app):
         _ogwoodpro.register_woodpro_routes(app)
     except Exception as e:
         logger.warning(f"WoodPro routes skipped: {e}")
+    # Round 113: the Maintenance + Engineer helper's one
+    # route (GET /mainteng/status — the caller's own walk
+    # + schedules) rides the same registration.
+    try:
+        import og_mainteng as _ogmainteng
+        _ogmainteng.register_mainteng_routes(app)
+    except Exception as e:
+        logger.warning(f"MaintEng routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
