@@ -801,6 +801,14 @@ def register_library_routes(app):
         _ogmainteng.register_mainteng_routes(app)
     except Exception as e:
         logger.warning(f"MaintEng routes skipped: {e}")
+    # Round 114: the Car Mechanic helper's one route
+    # (GET /mechanic/status — the caller's own walk +
+    # their own vehicles) rides the same registration.
+    try:
+        import og_mechanic as _ogmechanic
+        _ogmechanic.register_mechanic_routes(app)
+    except Exception as e:
+        logger.warning(f"Mechanic routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
