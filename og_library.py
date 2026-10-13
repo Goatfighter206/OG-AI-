@@ -818,6 +818,15 @@ def register_library_routes(app):
         _ogblueprint.register_blueprint_routes(app)
     except Exception as e:
         logger.warning(f"Blueprint routes skipped: {e}")
+    # Round 116: the Shopping helper's one route
+    # (GET /shopping/status — the caller's own current
+    # shortlist summary + saved pick) rides the same
+    # registration.
+    try:
+        import og_shopping as _ogshopping
+        _ogshopping.register_shopping_routes(app)
+    except Exception as e:
+        logger.warning(f"Shopping routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
