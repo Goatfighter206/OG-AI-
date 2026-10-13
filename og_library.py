@@ -903,6 +903,17 @@ def register_library_routes(app):
         _ogfacebook.register_facebook_routes(app)
     except Exception as e:
         logger.warning(f"Facebook routes skipped: {e}")
+    # Round 125: the Messenger specialist's one route
+    # (GET /messenger/status — the caller's own bench:
+    # the parked message draft, the last kept thread
+    # read with its time, and the live browser
+    # session's host read live) rides the same
+    # registration.
+    try:
+        import og_messenger as _ogmessenger
+        _ogmessenger.register_messenger_routes(app)
+    except Exception as e:
+        logger.warning(f"Messenger routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
