@@ -777,6 +777,14 @@ def register_library_routes(app):
         _ogfiling.register_filing_routes(app)
     except Exception as e:
         logger.warning(f"Filing routes skipped: {e}")
+    # Round 111: the Project Builder's one route
+    # (GET /builder/status — the caller's own build plans)
+    # rides the same registration.
+    try:
+        import og_builder as _ogbuilder
+        _ogbuilder.register_builder_routes(app)
+    except Exception as e:
+        logger.warning(f"Builder routes skipped: {e}")
     # Round 107 (item 8): the chat-disconnect log — a
     # pure-ASGI middleware in this module (see the class
     # above); registered here because app.py is at its
