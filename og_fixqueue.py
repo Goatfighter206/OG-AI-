@@ -2145,6 +2145,37 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogphone.install_phone_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Phone install skipped: {e}")
+    # Round 121: the CarPlay specialist seam rides the
+    # same last install, AFTER Phone (its detect wraps
+    # outermost; it defers EXACTLY first to
+    # og_github's own claim — the R60 path stands
+    # untouched — then to the PM/Filer/crew/Builder/
+    # WoodPro/MaintEng/Mechanic/Blueprint claims, plus
+    # Shopping, Buying, Selling, Coding, Phone, the
+    # R54 marketplace claims, and the ordering pack's
+    # claims). The seat is the crew's car hand: setup
+    # + pairing walks and connection failures worked
+    # as ONE ordered checklist (cable, port,
+    # permissions, restart order — one check at a
+    # time), apps + arranging the car home screen
+    # (done on the phone), Siri/voice through the
+    # car, maps/music/calls as they ride, and
+    # OG-in-the-car as it honestly is (OG W in the
+    # car's browser where one exists; TALK as the
+    # hands-free path). THE FENCES: guide only — OG
+    # never controls the car or its systems, no car
+    # connection exists and none is built; DRIVING
+    # SAFETY FIRST — setup/fix steps are for when
+    # PARKED, said up front on every such ask, and a
+    # driving ask is deferred to parked. The CarPlay
+    # permission state is read LIVE off Round 90's
+    # folder row, never copied. No new powers, no
+    # new loops.
+    try:
+        import og_carplay as _ogcarplay
+        _ogcarplay.install_carplay_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"CarPlay install skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
