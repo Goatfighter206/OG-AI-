@@ -959,6 +959,17 @@ def register_library_routes(app):
         _oggodmodetester.register_godmodetester_routes(app)
     except Exception as e:
         logger.warning(f"GodModeTester routes skipped: {e}")
+    # Round 280: the God Mode Runset seat's one
+    # route (GET /godmoderunset/status — the
+    # caller's own god-mode runset bench: top
+    # verdicts given by outcome, disputes
+    # settled, the last of each) rides the
+    # same registration.
+    try:
+        import og_godmoderunset as _oggodmoderunset
+        _oggodmoderunset.register_godmoderunset_routes(app)
+    except Exception as e:
+        logger.warning(f"GodModeRunset routes skipped: {e}")
     # Round 275: the activity source's one route
     # (GET /activity/status — the caller's own claim
     # record + live background work + the composed
