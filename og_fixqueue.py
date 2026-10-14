@@ -2494,6 +2494,47 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _oggodmodetester.install_godmodetester_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"GodModeTester install skipped: {e}")
+    # Round 280: GOD MODE AI RUNSET installs in the
+    # same last install, AFTER the landed helper
+    # chain AND the God Mode Coding seat (its
+    # detect wraps outermost among the helper
+    # seats; the Round 275 observer still wraps
+    # outside it). It is the TOP runset seat,
+    # above Master AI Runset (R277): two of its
+    # shapes (the dispute settlement and the
+    # run-level top verdict) are checked BEFORE
+    # its deferral, by design — no other seat
+    # gives a run-level ruling or settles a
+    # new-vs-family dispute — and everything
+    # else defers EXACTLY first to og_github's
+    # own claim, the YouTube connect's own parse
+    # and the R126 seat, PM/Filer/crew/Builder/
+    # WoodPro/MaintEng/Mechanic/Blueprint claims,
+    # plus Shopping, Buying, Selling, CODING,
+    # the God Mode Coding seat (checked exactly),
+    # Phone, CarPlay, Tracker, Marketplace, the
+    # R54 marketplace chain, Facebook, Messenger,
+    # og_watch's own claim, og_monitor's own
+    # parse, the ordering pack's claims, the
+    # R127 Website + Browser seat, the God Mode
+    # Tester seat and Master Runset (both
+    # DEFENSIVE getattr-probed checks wherever
+    # they answer), and LAST og_browser's own
+    # claim. THE FENCES — Brent's law at full
+    # strength: GOD MODE IS A TIER, NOT A BYPASS;
+    # READ-ONLY AT THE TOP (edits nothing,
+    # re-runs nothing, files nothing); IT NEVER
+    # MOVES A BASELINE (baselines move only
+    # through a landing's NOTES); IT NEVER
+    # STAMPS A RUN "100% SAFE"; COMPLETENESS IS
+    # STATED FIRST in every ruling; IT NEVER
+    # RULES FROM NOTHING; per-account bench
+    # isolation; no new loop, no new timer.
+    try:
+        import og_godmoderunset as _oggodmoderunset
+        _oggodmoderunset.install_godmoderunset_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"GodModeRunset install skipped: {e}")
     # Round 275: the ACTIVITY OBSERVER installs in
     # the same last install, AFTER Messenger (its
     # web_search wrap is outermost). It routes
