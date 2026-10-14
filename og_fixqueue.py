@@ -2447,6 +2447,53 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _oggodmodecoding.install_godmodecoding_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"GodModeCoding install skipped: {e}")
+    # Round 279: GOD MODE AI TESTER installs in the
+    # same last install, AFTER the landed helper
+    # chain (its detect wraps outermost among the
+    # helper seats; the Round 275 observer still
+    # wraps outside it). It defers EXACTLY first to
+    # og_github's own claim — the R60 path stands
+    # untouched — then to the YouTube connect's own
+    # parse and the R126 seat, PM/Filer/crew/
+    # Builder/WoodPro/MaintEng/Mechanic/Blueprint
+    # claims, plus Shopping, Buying, Selling,
+    # CODING (the bench's test/fix shapes stay
+    # its), GOD MODE CODING defensively (R278's
+    # plans / rescue reads / splits stay its),
+    # Phone, CarPlay, Tracker, Marketplace, the
+    # R54 marketplace chain, Facebook, Messenger,
+    # og_watch's own claim, og_monitor's own
+    # parse, the ordering pack's claims, the R127
+    # Website + Browser seat, MASTER RUNSET
+    # defensively (R277's baselines / deltas stay
+    # its), and LAST og_browser's own claim. The
+    # stopped test-running seat is NOT in the
+    # chain and NOT referenced — running belongs
+    # to the machinery's owners. The seat is the
+    # crew's TESTING JUDGMENT: test strategy
+    # (what must be tested, how deep, in what
+    # order, sized to the risk), verdicts BY NAME
+    # (real break / known family — the r29/r38
+    # Steel live-profile race, the r61 and r83
+    # timing families / timing-shaped / not
+    # enough proof), escalation reads that name
+    # the one fault the whole picture supports,
+    # and its own per-account bench. THE FENCES —
+    # Brent's law at full strength: GOD MODE IS A
+    # SEAT, NOT A BYPASS; IT FIXES NOTHING ITSELF
+    # AND HOLDS NO RUNNER (findings go to the
+    # fixing seats through the approval door);
+    # IT NEVER STAMPS A BUILD "100% SAFE" (the
+    # stamp ask is claimed and refused); IT NEVER
+    # MOVES A BASELINE; IT NEVER CLAIMS A RUN IT
+    # DID NOT READ; nothing outside testing is
+    # this seat's chair; per-account bench
+    # isolation; no new loop, no new timer.
+    try:
+        import og_godmodetester as _oggodmodetester
+        _oggodmodetester.install_godmodetester_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"GodModeTester install skipped: {e}")
     # Round 275: the ACTIVITY OBSERVER installs in
     # the same last install, AFTER Messenger (its
     # web_search wrap is outermost). It routes
