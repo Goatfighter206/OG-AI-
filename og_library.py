@@ -937,6 +937,17 @@ def register_library_routes(app):
         _ogwebbrowser.register_webbrowser_routes(app)
     except Exception as e:
         logger.warning(f"Webbrowser routes skipped: {e}")
+    # Round 278: the God Mode Coding seat's one
+    # route (GET /godmodecoding/status — the
+    # caller's own god-mode bench: plans parked,
+    # drafts vs filed through the approval door,
+    # rescue reads held) rides the same
+    # registration.
+    try:
+        import og_godmodecoding as _oggodmodecoding
+        _oggodmodecoding.register_godmodecoding_routes(app)
+    except Exception as e:
+        logger.warning(f"GodModeCoding routes skipped: {e}")
     # Round 275: the activity source's one route
     # (GET /activity/status — the caller's own claim
     # record + live background work + the composed
