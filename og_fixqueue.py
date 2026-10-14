@@ -2407,6 +2407,46 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogwebbrowser.install_webbrowser_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Webbrowser install skipped: {e}")
+    # Round 278: GOD MODE AI CODING installs in the
+    # same last install, AFTER the landed helper
+    # chain (its detect wraps outermost among the
+    # helper seats; the Round 275 observer still
+    # wraps outside it). It defers EXACTLY first to
+    # og_github's own claim — the R60 path stands
+    # untouched — then to the YouTube connect's own
+    # parse and the R126 seat, PM/Filer/crew/
+    # Builder/WoodPro/MaintEng/Mechanic/Blueprint
+    # claims, plus Shopping, Buying, Selling,
+    # CODING (the master coders' seat — ordinary
+    # and master coding answer first where the
+    # chains overlap), Phone, CarPlay, Tracker,
+    # Marketplace, the R54 marketplace chain,
+    # Facebook, Messenger, og_watch's own claim,
+    # og_monitor's own parse, the ordering pack's
+    # claims, the R127 Website + Browser seat, and
+    # LAST og_browser's own claim. The seat is the
+    # crew's ESCALATION door for code: whole-build
+    # plans (plans first — the seat writes NO code
+    # itself), rescue reads off the Round 60
+    # codebase map, job splits across the seats,
+    # and its own bench (kept plans file through
+    # og_fixqueue.record_problem — the R53/R101
+    # approval door). THE FENCES — Brent's law at
+    # full strength: GOD MODE IS A SEAT, NOT A
+    # BYPASS (every change rides the fix-approval
+    # pipeline / PR gate / 11pm law); IT NEVER
+    # PUSHES DIRECT AND NEVER LANDS ITS OWN CODE
+    # (no GitHub write machinery lives here);
+    # CODE SAFETY'S STOP STANDS OVER THIS SEAT;
+    # IT NEVER RUNS PASTED CODE ITSELF AND NEVER
+    # STAMPS CODE "100% SAFE"; nothing outside
+    # coding is this seat's chair; per-account
+    # bench isolation; no new loop, no new timer.
+    try:
+        import og_godmodecoding as _oggodmodecoding
+        _oggodmodecoding.install_godmodecoding_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"GodModeCoding install skipped: {e}")
     # Round 275: the ACTIVITY OBSERVER installs in
     # the same last install, AFTER Messenger (its
     # web_search wrap is outermost). It routes
