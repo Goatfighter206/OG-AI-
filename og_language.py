@@ -371,7 +371,10 @@ async def _json_body(request: Request) -> dict:
 def register_language_routes(app):
 
     @app.get("/language")
-    async def language_list(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def language_list(request: Request):
         uid = request.cookies.get(UID_COOKIE) or ""
         return {"current": get_language(uid),
                 "languages": [dict(lang) for lang in LANGUAGES]}
