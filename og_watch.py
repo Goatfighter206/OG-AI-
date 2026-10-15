@@ -1749,7 +1749,10 @@ def register_watch_routes(app):
     ensure_hooks()
 
     @app.get("/watch/status")
-    async def watch_status(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def watch_status(request: Request):
         if not B.enabled():
             return {"enabled": False}
         uid = ""
@@ -1803,7 +1806,10 @@ def register_watch_routes(app):
         return out
 
     @app.get("/watch/logins")
-    async def watch_logins(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def watch_logins(request: Request):
         """Read-only vault listing for the Connections page: the
         caller's own live saved log-ins (site + dates only — the
         profile id itself is never exposed)."""
