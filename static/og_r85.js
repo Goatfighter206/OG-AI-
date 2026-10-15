@@ -150,18 +150,40 @@
     load();
   }
 
-  function load() {
+  function load() { loadAttempt(false); }
+
+  /* Round 321 (V5): ONE automatic retry after ~1.5s
+     before the error shows. The failure this cures is
+     the request landing in a no-healthy-instance moment
+     (the plans payload is a pure in-module answer — it
+     cannot fail on its own); Brent's tap on Try again
+     already proved the retry works, so the first one is
+     free. The manual retry below is untouched. */
+  function loadAttempt(retried) {
     var tiersP = fetch("/tiers", { credentials: "same-origin" })
-      .then(function (r) { return r.ok ? r.json() : null; });
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; });
     var histP = fetch("/history", { credentials: "same-origin" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
     Promise.all([tiersP, histP]).then(function (res) {
       var data = res[0];
-      if (!data || !data.tiers) { renderError(); return; }
+      if (!data || !data.tiers) {
+        if (!retried) {
+          setTimeout(function () { loadAttempt(true); }, 1500);
+          return;
+        }
+        renderError(); return;
+      }
       var current = res[1] && res[1].tier ? res[1].tier : null;
       render(data.tiers, current);
-    }).catch(renderError);
+    }).catch(function () {
+      if (!retried) {
+        setTimeout(function () { loadAttempt(true); }, 1500);
+        return;
+      }
+      renderError();
+    });
   }
 
   function renderError() {
