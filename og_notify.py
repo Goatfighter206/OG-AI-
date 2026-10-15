@@ -136,6 +136,29 @@ bottom"). Three changes:
   piles for the same person.
 The bell itself is GONE from the shell (owner's order);
 these routes remain — the Feed seat consumes them.
+
+ROUND 321 (pointer hygiene; FIX-PLAN Addendum V1/V2):
+signin_needed and approval_needed records POINT at live
+things (a session's wall list / a waiting watch, a parked
+browser pending). When the target dies, the record used to
+live on for up to 30 days and steer surfaces — the gold
+bubble told a signed-in owner "OG needs you to sign in"
+off a corpse record from a dead October session. Now
+_items() re-validates pointer records at read time
+(_pointer_backed, fail-safe toward keeping) and prunes
+the unbacked, persisted like the Round 95 expiry prune.
+The two kinds age by the owner's approved numbers
+(2026-10-15 lock): a signin_needed record dies with its
+target (no live wall / waiting watch behind it, it goes
+at read); an approval_needed record lives by the
+10-minute approval expiry — it is pruned when no live
+pending backs it AND it is older than
+APPROVAL_POINTER_TTL_SECONDS; a live pending always
+backs it, and a fresh record always survives, so an
+in-flight approval is never eaten by the read path.
+fix_needed records are NOT pruned this way: their target
+(og_fixqueue's proposals) is a durable owner-decision
+record with its own lifecycle, not a live pointer.
 """
 
 import base64
@@ -168,6 +191,11 @@ STORAGE_DEDUPE_SECONDS = 24 * 60 * 60
 # after they landed. MAX_ITEMS above stays as backstop.
 READ_TTL_SECONDS = 7 * 24 * 60 * 60
 UNREAD_TTL_SECONDS = 30 * 24 * 60 * 60
+# Round 321: the owner's approved approval expiry
+# (Brent, 2026-10-15: "approvals expire in 10 minutes") —
+# an approval_needed pointer record with no live pending
+# behind it is pruned once it is older than this.
+APPROVAL_POINTER_TTL_SECONDS = 600
 TITLE_CAP = 160
 BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
@@ -357,12 +385,81 @@ def _expired(it, now: float) -> bool:
     return now - ts > UNREAD_TTL_SECONDS
 
 
+def _norm_host(host: str) -> str:
+    """og_browser._norm_host's mirror (strip one leading
+    www./m./mobile. prefix, lowercase) so a record's site
+    and a session's wall list compare in the same form."""
+    h = str(host or "").strip().lower()
+    for pre in ("www.", "m.", "mobile."):
+        if h.startswith(pre):
+            h = h[len(pre):]
+            break
+    return h
+
+
+def _pointer_backed(uid: str, it: dict, now: float) -> bool:
+    """Round 321 pointer hygiene (FIX-PLAN Addendum V1/V2;
+    Brent's no-junk-drawer rule, numbers locked 2026-10-15):
+    does the thing this record POINTS at still exist? A
+    signin_needed record is backed by a live browser
+    session whose wall list holds the site, or by a watch
+    still waiting on its log-in — no backer, it dies at
+    read. An approval_needed record is backed by a live
+    parked browser pending; with no pending it still
+    survives while it is inside the owner's approved
+    10-minute approval expiry (APPROVAL_POINTER_TTL_SECONDS,
+    aged from its ts) and is pruned past it. Every other
+    kind answers True (not a pointer this hygiene judges).
+    FAIL-SAFE: any doubt — an import or store glitch, an
+    unreadable ts — answers True, so a record is only ever
+    pruned on positive evidence its target is gone."""
+    kind = it.get("kind")
+    if kind not in ("signin_needed", "approval_needed"):
+        return True
+    try:
+        import og_browser as _B
+        if kind == "approval_needed":
+            if _B._get_pending(uid) is not None:
+                return True
+            ts = float(it.get("ts") or 0)
+            if ts <= 0:
+                return True
+            return (now - ts) <= APPROVAL_POINTER_TTL_SECONDS
+        tgt = it.get("target")
+        site = ""
+        if isinstance(tgt, dict):
+            site = _norm_host(str(tgt.get("id") or ""))
+        rec = _B._get_session(uid)
+        if site and isinstance(rec, dict) \
+                and site in (rec.get("walls") or []):
+            return True
+        import og_watch as _W
+        for w in _W._watches(uid):
+            if isinstance(w, dict) and w.get("status") in (
+                    "waiting_login", "paused_checkpoint"):
+                return True
+    except Exception:
+        return True
+    return False
+
+
 def _items(uid: str) -> list:
     raw = _get("items:" + uid)
     if not isinstance(raw, list):
         return []
     now = time.time()
     live = [it for it in raw if not _expired(it, now)]
+    # Round 321: pointer hygiene joins expiry in the same
+    # read path — a pointer record whose target has died
+    # (the session ended, the watch parked or was stopped)
+    # is pruned HERE and the prune persisted, so no surface
+    # (the pill, the Feed, the recents list) can act on a
+    # corpse. The mirror of the Round 95 law: clearing a
+    # record never deletes its target; the target dying
+    # clears the record.
+    live = [it for it in live
+            if not isinstance(it, dict)
+            or _pointer_backed(uid, it, now)]
     if len(live) != len(raw):
         # Expiry runs HERE, inside the read path every
         # surface already uses (Round 72 doctrine: no new
