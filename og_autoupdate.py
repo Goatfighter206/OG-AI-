@@ -63,6 +63,35 @@ failed then notification." The law now:
   is nothing to ask. With the gate off, nothing about
   the fix queue's notifications changes.
 
+ROUND 320 (Brent, 2026-10-14): "Let's turn off the
+schedule for now so he can continue fixing himself and
+maybe he clears himself up." The SCHEDULE — the 23:00
+window — is OFF: a run may start at any hour. Nothing
+else in the law moves:
+- The period a run belongs to is now the owner-local
+  CALENDAR DAY (the smallest faithful translation of
+  "the night"): the exactly-once stamp
+  (last_check_night), the durable failure record, the
+  ONE failure notification, and the two-in-a-row
+  self-disable all key on the day, so a failed day
+  still produces exactly one failure notification and
+  two failed days in a row still switch auto-apply off,
+  reported inside the second day's notification.
+- Every fence in classify_paths() stands verbatim;
+  silent success stands; the gate
+  (OG_AUTO_UPDATE_ENABLED) and the self-disabled state
+  still block new batches exactly as before.
+- The way back: set OG_AUTOUPDATE_SCHEDULE=nightly in
+  Render and the 23:00 window governs again. _night_for
+  itself is unchanged — og_fixqueue's 11pm hold and
+  og_selfcheck's nightly battery still read it, and
+  neither is this feature's schedule: the hold gates
+  when update proposals SURFACE to the owner (Round
+  71's separate "don't pop up until 11pm" order), not
+  whether the collector may apply them (it reads the
+  queue unfiltered), and the battery is diagnosis, not
+  fixing. Both stand untouched.
+
 THE RULE, encoded in classify_paths() below — NEVER
 auto-applied, always left in the queue for a human yes, even
 when a prepared fix touches them:
@@ -120,6 +149,10 @@ og_google_hands precedent. If zoneinfo/tzdata is
 unavailable, the fallback is a fixed offset
 (OG_AUTOUPDATE_TZ_OFFSET_MINUTES, default -480): with that
 fallback the wall clock is honest about NOT tracking DST.
+Round 320: the window above binds only when the owner
+restores it (OG_AUTOUPDATE_SCHEDULE=nightly); by default
+the run's period is the owner-local calendar day — see the
+ROUND 320 block and _period_for.
 """
 
 import asyncio
@@ -139,6 +172,7 @@ logger = logging.getLogger(__name__)
 
 STORE_FILE = os.getenv("OG_AUTOUPDATE_STORE", "autoupdate_store.json")
 GATE_ENV = "OG_AUTO_UPDATE_ENABLED"
+SCHEDULE_ENV = "OG_AUTOUPDATE_SCHEDULE"
 POLL_SECONDS = int(os.getenv("OG_AUTOUPDATE_POLL_SECONDS", "60") or "60")
 DEPLOY_WAIT_SECONDS = int(
     os.getenv("OG_AUTOUPDATE_DEPLOY_WAIT_SECONDS", "300") or "300")
@@ -302,6 +336,34 @@ def _night_for(local_dt: datetime) -> Optional[str]:
     if local_dt.hour < 4:
         return (local_dt.date() - timedelta(days=1)).isoformat()
     return None
+
+
+def _schedule_nightly() -> bool:
+    """Round 320: whether the 23:00 window governs. Brent
+    turned the schedule OFF (2026-10-14), so the shipped
+    default is OFF — a run may start at any hour. The
+    owner restores the nightly window by setting
+    OG_AUTOUPDATE_SCHEDULE to "nightly" in Render; any
+    other value (or the var unset) keeps the schedule
+    off."""
+    return os.getenv(SCHEDULE_ENV, "").strip().lower() \
+        == "nightly"
+
+
+def _period_for(local_dt: datetime) -> Optional[str]:
+    """The period key a moment's run belongs to — the one
+    key the exactly-once stamp, the durable failure
+    record, the one failure notification and the
+    bad-period counter all share. With the schedule off
+    (Round 320, the shipped default) it is the owner-local
+    CALENDAR DAY: a run is due at any hour, once per day,
+    and "tonight" in the machinery below reads as that
+    day. With the nightly window restored it is
+    _night_for's night, exactly as before — None outside
+    the window."""
+    if _schedule_nightly():
+        return _night_for(local_dt)
+    return local_dt.date().isoformat()
 
 
 # --- The exclusion classifier (THE RULE) -----------------------------------------
@@ -1276,7 +1338,7 @@ def tick() -> str:
             return "gate_off"
         if state.get("disabled"):
             return "disabled"
-        night = _night_for(_owner_now())
+        night = _period_for(_owner_now())
         if night is None:
             return "outside_window"
         if state.get("last_check_night") == night:
@@ -1312,7 +1374,9 @@ def state_view() -> dict:
             "failure_notice_night"),
         "last_run": state.get("last_run"),
         "pending_verify": pv_view,
-        "window": "23:00 owner time, nightly",
+        "window": ("23:00 owner time, nightly"
+                   if _schedule_nightly() else
+                   "schedule off — any hour (Round 320)"),
         "timezone": tz_label,
         "rule": RULE_TEXT,
         "history": (state.get("history") or [])[-10:],
