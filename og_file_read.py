@@ -513,7 +513,10 @@ def register_file_routes(app):
                          "response": line})
 
     @app.get("/file/status")
-    async def file_status(raw_request: _Req):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def file_status(raw_request: _Req):
         """What's attached for this visitor + uploads left today."""
         uid = _current_uid_of(raw_request)
         tier = _visitor_tier(uid, raw_request)
