@@ -114,6 +114,7 @@
   var mainView = null, confirmView = null, waitView = null;
   var lineEl = null, ownerBox = null, rebootBtn = null;
   var restartBtn = null, reloadBtn = null;
+  var forgetBtn = null, forgetArmed = false;
   var status = null;          // last /reboot/status answer
   var busy = false;
 
@@ -130,6 +131,11 @@
     paintLine('');
     if (reloadBtn) reloadBtn.hidden = true;
     if (rebootBtn) rebootBtn.disabled = false;
+    forgetArmed = false;
+    if (forgetBtn) {
+      forgetBtn.disabled = false;
+      forgetBtn.textContent = 'Reboot + forget saved logins';
+    }
     refreshStatus();
   }
   function closeCard() {
@@ -251,6 +257,62 @@
     });
   }
 
+  /* ----------- reboot + forget saved logins (R321) ----------- */
+  function runForget() {
+    if (busy) return;
+    if (!forgetArmed) {
+      forgetArmed = true;
+      if (forgetBtn) {
+        forgetBtn.textContent = 'Sure? Forget logins + reboot';
+      }
+      paintLine('This deletes your saved browser logins '
+        + 'and stops every watch — you log in fresh next '
+        + 'time. Tap the button again to do it.');
+      return;
+    }
+    busy = true;
+    forgetArmed = false;
+    if (forgetBtn) forgetBtn.disabled = true;
+    if (rebootBtn) rebootBtn.disabled = true;
+    if (restartBtn) restartBtn.disabled = true;
+    paintLine('Rebooting + forgetting…');
+    api('/reboot/forget', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}' }).then(function (res) {
+      busy = false;
+      if (res.ok && res.d && res.d.ok) {
+        var parts = ['OG rebooted.'];
+        if (res.d.browser_ended) {
+          parts.push('His browser session ended.');
+        }
+        if (res.d.forget_body) parts.push(res.d.forget_body);
+        else if (res.d.logins_forgotten) {
+          parts.push('Saved logins forgotten.');
+        }
+        paintLine(parts.join(' ') + ' Reloading fresh…');
+        setTimeout(reloadFresh, 1600);
+      } else {
+        if (forgetBtn) {
+          forgetBtn.disabled = false;
+          forgetBtn.textContent = 'Reboot + forget saved logins';
+        }
+        if (rebootBtn) rebootBtn.disabled = false;
+        paintLine((res.d && res.d.error)
+          || 'OG\u2019s server answered, but it didn\u2019t '
+          + 'go through — try again in a moment.');
+      }
+    }).catch(function () {
+      busy = false;
+      if (forgetBtn) {
+        forgetBtn.disabled = false;
+        forgetBtn.textContent = 'Reboot + forget saved logins';
+      }
+      if (rebootBtn) rebootBtn.disabled = false;
+      paintLine('OG\u2019s server didn\u2019t answer — '
+        + 'nothing was forgotten.');
+    });
+  }
+
   /* ---------------- the server restart ---------------- */
   function runRestart() {
     if (busy) return;
@@ -358,6 +420,24 @@
     reloadBtn.addEventListener('click', reloadFresh);
     btns.appendChild(reloadBtn);
     mainView.appendChild(btns);
+    /* Round 321: the second door — clearly separate from
+       the plain reboot, because the plain reboot cannot
+       reach saved logins (that's how a stuck log-in
+       survived it). Its own two-tap confirm: the first
+       tap arms it and spells out exactly what forgetting
+       means; the second fires POST /reboot/forget. */
+    mainView.appendChild(el('p', 'og108-note',
+      'Stuck on a saved log-in a plain reboot can\'t '
+      + 'reach? The door below reboots AND forgets every '
+      + 'saved browser log-in (and stops your watches) — '
+      + 'you log in fresh next time.'));
+    var fbtns = el('div', 'og108-btns', '');
+    forgetBtn = el('button', 'og108-no',
+      'Reboot + forget saved logins');
+    forgetBtn.type = 'button';
+    forgetBtn.addEventListener('click', runForget);
+    fbtns.appendChild(forgetBtn);
+    mainView.appendChild(fbtns);
     ownerBox = el('div', 'og108-owner', '');
     ownerBox.hidden = true;
     mainView.appendChild(ownerBox);
