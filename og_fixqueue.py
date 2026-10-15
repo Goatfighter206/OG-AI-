@@ -103,6 +103,25 @@ of Round 50's approve-to-upgrade hook:
    first read) through this module's own store, so nothing
    update-class ever surfaces unstamped. Every other class
    of problem is exactly as it was.
+
+   Round 320 ADDENDUM (Brent, 2026-10-14 04:15 PDT: "Go
+   ahead and lift it — if it helps us out"): the hold now
+   rides the auto-update schedule switch (og_autoupdate's
+   OG_AUTOUPDATE_SCHEDULE). While the schedule is OFF —
+   the shipped default since Round 320 — there is NO hold:
+   update proposals surface in list_proposals and their
+   fix_needed notifications fire the moment they are
+   minted, like every other class, and a stamp already
+   sitting on an older problem is treated as released.
+   Restoring OG_AUTOUPDATE_SCHEDULE=nightly restores the
+   hold together with the window, exactly as written
+   above. The stamp itself is still written at creation
+   and backfilled as before — it is data; _hold_active is
+   the only reader that gives it effect, and it answers
+   False for everything while the schedule is off.
+   Fail-safe: if og_autoupdate cannot answer, the hold
+   STANDS (the pre-addendum posture) — a late pop-up is
+   the safe error, a surprise one is not.
 """
 
 import asyncio
@@ -283,8 +302,27 @@ def _adopt_sentinel(uid: str):
 
 
 # --- The 11pm hold for update proposals (Round 71) --------------------------------
+# Round 320 addendum: the hold is LIFTED while the auto-update schedule
+# is off (see _hold_lifted); OG_AUTOUPDATE_SCHEDULE=nightly restores it.
 
 RELEASE_HOUR = 23  # owner-local; og_autoupdate's nightly window
+
+
+def _hold_lifted() -> bool:
+    """Round 320 addendum (Brent, 2026-10-14): True while
+    the 11pm hold is lifted. The hold rides the auto-update
+    schedule switch: og_autoupdate._schedule_nightly() is
+    True only when OG_AUTOUPDATE_SCHEDULE=nightly restores
+    the window, and only then does the hold stand. The
+    shipped default (schedule off) lifts it. Fail-safe: any
+    failure to answer means the hold STANDS — the
+    pre-addendum posture; surfacing late is the safe
+    error."""
+    try:
+        import og_autoupdate as _au
+        return not _au._schedule_nightly()
+    except Exception:
+        return False
 
 
 def _is_update_problem(problem) -> bool:
@@ -358,7 +396,12 @@ def _release_ts(ts: float) -> float:
 
 def _hold_active(problem, now: Optional[float] = None) -> bool:
     """True while an update problem sits inside its 11pm
-    hold: stamped, and the release moment is still ahead."""
+    hold: stamped, and the release moment is still ahead.
+    Round 320 addendum: while the schedule is off the hold
+    is lifted — this answers False for every problem, so
+    an existing stamp reads as released."""
+    if _hold_lifted():
+        return False
     if not _is_update_problem(problem):
         return False
     hold = problem.get("hold_until")
@@ -770,6 +813,12 @@ def record_problem(owner, source, fingerprint, slug, title,
             if _is_update_problem(problem):
                 # Round 71: an update waits for the 11pm
                 # window before it may surface anywhere.
+                # Round 320 addendum: the stamp is still
+                # written, but it takes effect only while
+                # OG_AUTOUPDATE_SCHEDULE=nightly restores
+                # the hold — _hold_active is its only
+                # reader, and it answers False while the
+                # schedule is off.
                 problem["hold_until"] = _release_ts(now)
             problems[fp] = problem
         else:
@@ -943,8 +992,9 @@ def ingest_report(report: dict) -> int:
                 f"{pkg} has an update waiting",
                 f"Pinned at {u.get('pinned')}; the latest "
                 f"release is {u.get('latest')}. A green "
-                f"drafted update applies itself in the 11pm "
-                f"window; nothing upgrades outside it.",
+                f"drafted update applies itself at any hour "
+                f"now (Brent turned the nightly schedule "
+                f"off — Round 320).",
                 verify={"kind": "update", "package": pkg},
                 fix={"kind": "owner_steps",
                      "summary": f"Update {pkg} "
@@ -953,9 +1003,10 @@ def ingest_report(report: dict) -> int:
                      "steps": [
                          "Dependency updates ship as code — "
                          "a green drafted one applies itself "
-                         "in the 11pm window; these steps "
-                         "are the manual route when no draft "
-                         "could be prepared.",
+                         "at any hour now (the nightly "
+                         "schedule is off — Round 320); "
+                         "these steps are the manual route "
+                         "when no draft could be prepared.",
                          _code_flow_step(
                              f"the {pkg} update to "
                              f"{u.get('latest')}"),
