@@ -408,6 +408,37 @@ LOOKUP_METER_CAP = int(os.getenv("OG_LOOKUP_METER_CAP", "2000"))
 _lookup_tokens_stash = {"tokens": 0}
 _current_uid = {"uid": ""}
 _current_tier = {"tier": "free"}
+# Round 321c: the generic-error leg counter — when a chat
+# turn dies, the counter names the LEG that threw
+# (history_load / claims / generation / metering / history_save).
+_CHAT_ERROR_LEGS: Dict[str, int] = {}
+_turn_leg = {"leg": "generation"}
+
+def _note_chat_error(leg: str, err: Exception):
+    _CHAT_ERROR_LEGS[leg] = _CHAT_ERROR_LEGS.get(leg, 0) + 1
+    logger.error(f"Chat error (leg={leg}, count={_CHAT_ERROR_LEGS[leg]}): {err}")
+
+def _load_hist(uid: str):
+    # Fail-soft history load (321c): a throw names the
+    # history_load leg, serves an empty thread, and
+    # marks the uid so the paired save skips.
+    _turn_leg["leg"] = "history_load"
+    try:
+        return _load_visitor_history_locked(uid)
+    except Exception as exc:
+        _note_chat_error("history_load", exc)
+        _hist_load_failed.add(uid)
+        return []
+
+
+def _save_turn_history(agent_instance, uid: str):
+    """A chat worker's history save-back (321c fail-soft: a
+    throw counts the leg and is swallowed)."""
+    try:
+        _save_visitor_history_locked(
+            uid, list(getattr(agent_instance, "conversation_history", []) or []))
+    except Exception as e:
+        _note_chat_error("history_save", e)
 # Raw message being processed; Round 4 data router tries it first.
 _current_message = {"text": ""}
 
@@ -1525,60 +1556,6 @@ except Exception:  # psycopg not installed — DB backend simply unavailable
     psycopg = None
     _Jsonb = None
 
-def _memory_db_connect():
-    """Connect to the durable memory DB, creating the table if needed."""
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
-    with conn.cursor() as cur:
-        cur.execute(
-            "CREATE TABLE IF NOT EXISTS og_visitor_memory ("
-            "uid TEXT PRIMARY KEY, updated TEXT, history JSONB)"
-        )
-    conn.commit()
-    return conn
-
-def _load_memory_store_db():
-    """Load all visitor threads from Postgres; None on any failure."""
-    if psycopg is None:
-        return None
-    try:
-        with _memory_db_connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT uid, updated, history FROM og_visitor_memory")
-                rows = cur.fetchall()
-        return {uid: {"updated": updated, "history": history}
-                for uid, updated, history in rows}
-    except Exception as e:
-        logger.warning(f"Durable memory load failed, using file store: {e}")
-        return None
-
-def _save_memory_store_db(store: Dict) -> bool:
-    """Persist all visitor threads to Postgres; False on any failure."""
-    if psycopg is None:
-        return False
-    try:
-        with _memory_db_connect() as conn:
-            with conn.cursor() as cur:
-                for uid, entry in store.items():
-                    if not isinstance(entry, dict):
-                        continue
-                    cur.execute(
-                        "INSERT INTO og_visitor_memory (uid, updated, history) "
-                        "VALUES (%s, %s, %s) ON CONFLICT (uid) DO UPDATE SET "
-                        "updated = EXCLUDED.updated, history = EXCLUDED.history",
-                        (uid, entry.get("updated", ""),
-                         _Jsonb(entry.get("history", []))),
-                    )
-                cur.execute("SELECT uid FROM og_visitor_memory")
-                existing = {row[0] for row in cur.fetchall()}
-                for stale in existing - set(store.keys()):
-                    cur.execute(
-                        "DELETE FROM og_visitor_memory WHERE uid = %s", (stale,))
-            conn.commit()
-        return True
-    except Exception as e:
-        logger.warning(f"Durable memory save failed, using file store: {e}")
-        return False
-
 def _reset_memory_store():
     """Start the memory store empty on fresh agent creation (NOT reset with the Postgres backend)."""
     if MEMORY_DB_URL:
@@ -1588,12 +1565,7 @@ def _reset_memory_store():
         _save_memory_store({})
 
 def _load_memory_store() -> Dict:
-    """Load per-visitor conversation threads (durable DB when configured,
-    otherwise the JSON memory store)."""
-    if MEMORY_DB_URL:
-        data = _load_memory_store_db()
-        if data is not None:
-            return data
+    """The JSON file store, whole (the no-DB backend's shape)."""
     return _load_memory_store_file()
 
 def _load_memory_store_file() -> Dict:
@@ -1609,10 +1581,7 @@ def _load_memory_store_file() -> Dict:
     return {}
 
 def _save_memory_store(store: Dict):
-    """Save per-visitor conversation threads (durable DB when configured,
-    otherwise the JSON memory store)."""
-    if MEMORY_DB_URL and _save_memory_store_db(store):
-        return
+    """Save the JSON file store (no-DB backend)."""
     _save_memory_store_file(store)
 
 def _save_memory_store_file(store: Dict):
@@ -1625,12 +1594,25 @@ def _save_memory_store_file(store: Dict):
 
 # The *_locked helpers assume the caller holds _memory_lock (/chat
 # holds it across swap-in -> process -> save-back).
+# Round 321c (B6a): uids whose keyed load failed this turn
+# — their paired save SKIPS (see the save helper).
+_hist_load_failed = set()
+
 def _load_visitor_history_locked(uid: str) -> List[Dict]:
     """This visitor's stored thread (most recent last) — Round 135
-    (B6a): KEYED durable read via og_memory_io, whole-store fallback."""
-    entry = _og_memory_io.load_history_entry(uid)
-    if entry is None:
-        entry = _load_memory_store().get(uid)
+    (B6a): KEYED durable read via og_memory_io. Round 321c: the
+    whole-store fallback is GONE (see _hist_load_failed)."""
+    if MEMORY_DB_URL:
+        entry = _og_memory_io.load_history_entry(uid)
+        if entry is not None:
+            if isinstance(entry, dict) and isinstance(entry.get("history"), list):
+                return list(entry["history"])
+            return []
+        _hist_load_failed.add(uid)
+        logger.warning(
+            f"Keyed memory load failed for {uid}; its save will skip.")
+        return []
+    entry = _load_memory_store_file().get(uid)
     if isinstance(entry, dict) and isinstance(entry.get("history"), list):
         return list(entry["history"])
     return []
@@ -1638,9 +1620,15 @@ def _load_visitor_history_locked(uid: str) -> List[Dict]:
 def _save_visitor_history_locked(uid: str, history: List[Dict]):
     """Persist this visitor's thread, trimmed, pruning the stalest threads."""
     trimmed = list(history)[-MEMORY_MAX_MESSAGES:]
-    if MEMORY_DB_URL and _og_memory_io.save_history(uid, trimmed, MEMORY_MAX_VISITORS):
+    if uid in _hist_load_failed:
+        _hist_load_failed.discard(uid)
+        logger.warning(f"Memory save skipped for {uid} (load failed).")
         return
-    store = _load_memory_store()
+    if MEMORY_DB_URL:
+        if not _og_memory_io.save_history(uid, trimmed, MEMORY_MAX_VISITORS):
+            logger.warning(f"Keyed memory save failed for {uid}.")
+        return
+    store = _load_memory_store_file()
     store[uid] = {"updated": datetime.now(timezone.utc).isoformat(), "history": trimmed}
     if len(store) > MEMORY_MAX_VISITORS:
         ordered = sorted(
@@ -1649,15 +1637,18 @@ def _save_visitor_history_locked(uid: str, history: List[Dict]):
         )
         for old_uid, _ in ordered[: len(store) - MEMORY_MAX_VISITORS]:
             store.pop(old_uid, None)
-    _save_memory_store(store)
+    _save_memory_store_file(store)
 
 def _clear_visitor_history(uid: str):
     """Forget one visitor's thread (their /reset or /clear, nobody else's)."""
     with _memory_lock:
-        store = _load_memory_store()
+        # Round 321c: keyed delete first (og_memory_io, DB backend).
+        if _og_memory_io.delete_history(uid):
+            return
+        store = _load_memory_store_file()
         if uid in store:
             del store[uid]
-            _save_memory_store(store)
+            _save_memory_store_file(store)
 
 # --- Business stats: owner scorecard counters in the usage store
 # ("__stats__"); read at GET /stats?key=<OG_STATS_TOKEN>.
@@ -1923,14 +1914,16 @@ async def api_info():
     }
 
 @app.get("/health", response_model=StatusResponse)
-async def health_check():
+async def health_check(response: Response):
     """
     Health check endpoint for monitoring service status.
+    Round 321c (B5): a COLD worker answers WITHOUT paying
+    get_agent(); warmth rides the X-OG-Warm header.
     """
-    agent_instance = get_agent()
+    response.headers["X-OG-Warm"] = "1" if agent is not None else "0"
     return {
         "status": "healthy",
-        "agent_name": agent_instance.name,
+        "agent_name": agent.name if agent is not None else "OG-AI",
         "message": "Service is running"
     }
 
@@ -1946,7 +1939,9 @@ def _generate_reply_streaming(agent_instance, message: str,
     if getattr(agent, 'learning_system', None):
         learned_hint = agent.learning_system.get_learned_response(message)
 
+    _turn_leg["leg"] = "claims"  # Round 321c: detect IS the claim phase
     intent = agent.detect_intent(message)
+    _turn_leg["leg"] = "generation"
 
     context = learned_hint + "\n" if learned_hint else ""
 
@@ -2091,8 +2086,9 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
                         tier: str = "free", coords=None, image=None,
                         token_funded: bool = False):
     """Streaming /chat worker: mirrors classic /chat bookkeeping."""
+    _budget_started = _og_fixqueue.begin_claim_budget()  # Round 321c claim budget
     _memory_lock.acquire()
-    agent_instance.conversation_history = _load_visitor_history_locked(uid)
+    agent_instance.conversation_history = _load_hist(uid)
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
     _og_maps.note_request_coords(coords, uid)
@@ -2138,6 +2134,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         }
         _bump_stat("messages")
         # Metering: record every tier (R55); free meter free-only.
+        _turn_leg["leg"] = "metering"
         _record_chat_usage(uid, tokens_used)
         result["token_balance"] = _og_tokenpacks.settle_chat(
             uid, token_funded, tokens_used)
@@ -2151,7 +2148,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
             result["intelligence"] = report.get("intelligence_level", 1.0)
         sink("done", result)
     except Exception as e:
-        logger.error(f"Error processing streamed message: {str(e)}")
+        _note_chat_error(_turn_leg["leg"], e)
         detail = f"An error occurred while processing your message: {str(e)}" \
             if DEVELOPMENT_MODE else "An error occurred while processing your message"
         sink("error", {"detail": detail})
@@ -2161,10 +2158,10 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         _og_maps.note_request_coords(None, None)
         _og_files.note_attach_image(None)
         try:
-            _save_visitor_history_locked(
-                uid, list(getattr(agent_instance, "conversation_history", []) or []))
+            _save_turn_history(agent_instance, uid)
         finally:
             _memory_lock.release()
+            _og_fixqueue.end_claim_budget(_budget_started)
 
 def _sse_streaming_response(event_gen, http_response, entitled: bool):
     """Build the SSE response, carrying over cookies the handler set."""
@@ -2221,8 +2218,9 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
 
 def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
     """One non-streaming /chat exchange, awaited via to_thread (Round 80)."""
+    _budget_started = _og_fixqueue.begin_claim_budget()
     _memory_lock.acquire()
-    agent_instance.conversation_history = _load_visitor_history_locked(uid)
+    agent_instance.conversation_history = _load_hist(uid)
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
     _og_maps.note_request_coords(request.coords, uid)
@@ -2251,6 +2249,7 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
         _bump_stat("messages")
 
         # Metering (estimate; recorded for every tier, R55).
+        _turn_leg["leg"] = "metering"
         _tokens_used = _estimate_call_tokens(agent_instance, response) \
             + _drain_lookup_tokens()
         _record_chat_usage(uid, _tokens_used)
@@ -2275,7 +2274,7 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
 
         return result
     except Exception as e:
-        logger.error(f"Error processing message: {str(e)}")
+        _note_chat_error(_turn_leg["leg"], e)
         detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
         raise HTTPException(status_code=500, detail=detail)
     finally:
@@ -2286,10 +2285,10 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
         _og_maps.note_request_coords(None, None)
         _og_files.note_attach_image(None)
         try:
-            _save_visitor_history_locked(
-                uid, list(getattr(agent_instance, "conversation_history", []) or []))
+            _save_turn_history(agent_instance, uid)
         finally:
             _memory_lock.release()
+            _og_fixqueue.end_claim_budget(_budget_started)
 
 @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
 async def chat(request: ChatRequest, raw_request: Request, http_response: Response):
@@ -2309,15 +2308,25 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
         )
 
     # Freemium gate (Round 7): paid tiers skip the token cap.
-    # Round 135 (B2): DB-backed tier resolution, off the event loop.
-    tier = await asyncio.to_thread(_tier_of, raw_request.cookies, uid)
+    # Round 135 (B2) + Round 321c: the preamble reads run OFF
+    # the event loop and FAIL SOFT (leg "preamble", defaults).
+    tier, _ent_tier, _pack_balance = "free", None, None
+    _pool_hit = entitled = token_funded = False
+    try:
+        tier = await asyncio.to_thread(_tier_of, raw_request.cookies, uid)
+        # R55 weekly pool; R56: pack balance takes over when dry.
+        _pool_hit = _og_tiers.chat_pool_hit(
+            tier, _week_used(uid, "token_days", "tokens"))
+        _ent_tier = await asyncio.to_thread(_uid_entitlement_tier, uid)
+        if _pool_hit:
+            _pack_balance = await asyncio.to_thread(
+                _og_tokenpacks.balance, uid)
+        entitled = bool(_ent_tier) and not _og_tiers.valid_tier_cookie(
+            raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
+        token_funded = bool(_pool_hit) and (_pack_balance or 0) > 0
+    except Exception as e:
+        _note_chat_error("preamble", e)
     is_pro = tier != "free"
-    entitled = bool(_uid_entitlement_tier(uid)) and not _og_tiers.valid_tier_cookie(
-        raw_request.cookies.get("ogai_tier"), PRO_TOKEN)
-
-    # R55 weekly pool; R56: pack balance takes over when dry.
-    _pool_hit = _og_tiers.chat_pool_hit(tier, _week_used(uid, "token_days", "tokens"))
-    token_funded = bool(_pool_hit) and _og_tokenpacks.balance(uid) > 0
     cap_payload = None
     if _pool_hit and not token_funded:
         _bump_stat("cap_hits")
@@ -2338,7 +2347,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     if entitled:
         http_response.set_cookie(
             "ogai_tier", _og_tiers.cookie_value(
-                _uid_entitlement_tier(uid) or "standard", PRO_TOKEN),
+                _ent_tier or "standard", PRO_TOKEN),
             max_age=COOKIE_MAX_AGE, path="/", httponly=True, samesite="lax"
         )
 
@@ -2452,7 +2461,7 @@ async def generate_image(raw_request: Request):
     try:
         now = datetime.now().isoformat()
         with _memory_lock:
-            history = _load_visitor_history_locked(uid)
+            history = _load_hist(uid)
             history.append({"role": "user", "content": raw_prompt,
                             "timestamp": now})
             history.append({"role": "assistant",
@@ -2693,7 +2702,7 @@ async def get_history(raw_request: Request):
         history: List[Dict] = []
         if uid:
             with _memory_lock:
-                history = _load_visitor_history_locked(uid)
+                history = _load_hist(uid)
         tier = _tier_of(raw_request.cookies, uid or "")
         if tier != "free":
             tokens_left = None
