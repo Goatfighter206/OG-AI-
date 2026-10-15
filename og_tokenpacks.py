@@ -374,7 +374,10 @@ def register_token_routes(app):
     """
 
     @app.get("/tokens")
-    async def tokens_status(raw_request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def tokens_status(raw_request: Request):
         uid = raw_request.cookies.get("ogai_uid") or ""
         tier = "free"
         if uid and _deps.get("tier_of") is not None:
