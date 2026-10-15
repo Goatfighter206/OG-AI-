@@ -115,3 +115,30 @@ def load_history_entry(uid: str):
     except Exception as e:
         logger.warning(f"Keyed memory load failed, using legacy: {e}")
         return None
+
+
+def delete_history(uid: str) -> bool:
+    """Delete ONE visitor's stored thread, keyed — the
+    delete twin of save_history (Round 321, the
+    /chat/leave seam: leaving the site wipes the caller's
+    visible chat thread; account memory is a different
+    store and is never touched here). True when the DB
+    handled it — the row is gone, or was never there
+    (idempotent). False on any failure or when no DB
+    backend is configured, so the caller takes its
+    legacy (JSON file) path, exactly this module's
+    posture since Round 80."""
+    if not uid or not (MEMORY_DB_URL and psycopg is not None):
+        return False
+    try:
+        with _db_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM og_visitor_memory "
+                    "WHERE uid = %s", (uid,))
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.warning(f"Keyed memory delete failed, "
+                       f"using legacy: {e}")
+        return False
