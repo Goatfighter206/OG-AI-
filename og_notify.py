@@ -1113,7 +1113,10 @@ def _uid_of(request: Request) -> str:
 def register_notify_routes(app):
 
     @app.get("/notifications")
-    async def notifications_list(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def notifications_list(request: Request):
         uid = _uid_of(request)
         if not uid:
             return {"items": [], "unread": 0}
