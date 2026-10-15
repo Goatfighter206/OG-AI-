@@ -60,6 +60,25 @@ og_watch_data when OG_MEMORY_DB_URL is set, else a JSON file.
 Per-visitor blobs: 'watches' (each carrying its seen-store),
 'alerts' (matches + notices, delivered-flagged), 'vault',
 'minusage'. Persona files are never touched.
+
+ROUND 321 (FIX-PLAN Piece 1 — the wedge cure). Three additions,
+all under Brent's no-junk-drawer rule (every parked thing is a
+written record with a visible state, an owner door, and an
+expiry / cleanup-on-target-death rule):
+- STALLED WATCHDOG: a watch in waiting_login /
+  paused_checkpoint for 7 days (state_ts, stamped at every
+  transition; legacy records read their state age from
+  last_check / created, or start their clock at first
+  sighting) parks to "stalled": the scheduler stops spinning
+  paid sessions for it, ONE notice is queued, and 'resume my
+  watch' revives it through the existing resume claim.
+- WALL-SIGHTING VAULT DROP: when og_browser sights a NEW
+  log-in wall for a host the vault vouches for, the `wall`
+  profile hook drops the vault's site record (profile kept),
+  so no surface keeps claiming a log-in the wall disproves.
+- ALERT RE-VALIDATION: _pending_alerts drops undelivered
+  alerts whose watch no longer exists — a notice never
+  outlives the watch it points at.
 """
 
 import asyncio
@@ -90,6 +109,12 @@ CHECK_BUDGET_S = 110          # wall-clock deadline inside one visitor run
 SESSION_BUDGET_MIN = 3        # Steel creation cap for a check session
 SEEN_CAP = 300                # seen listing ids kept per watch
 SITE_IDLE_DAYS = 30           # Brent's house rule for unused log-ins
+# Round 321 (FIX-PLAN Piece 1): a watch stuck in waiting_login /
+# paused_checkpoint for this long is parked to "stalled" by the
+# watchdog in run_due_checks — the scheduler stops spinning paid
+# Steel sessions for it, ONE notice is queued, and the owner's
+# 'resume my watch' (or a fresh log-in + resume) revives it.
+STALLED_AFTER_S = 7 * 86400
 
 CADENCE_MIN = {"standard": 360, "pro": 180, "blue": 60, "blackout": 30}
 
@@ -288,7 +313,29 @@ def _alerts(uid: str) -> list:
 
 
 def _pending_alerts(uid: str) -> list:
-    return [a for a in _alerts(uid) if not a.get("delivered")]
+    alerts = _alerts(uid)
+    pending = [a for a in alerts if not a.get("delivered")]
+    # Round 321 (no-junk-drawer rule): an alert that points at a
+    # watch re-validates against the live watch list at read
+    # time — when the watch is gone (stopped / forgotten), its
+    # undelivered alerts die with it instead of surfacing at
+    # the top of a later chat as if the watch still existed.
+    # The prune is persisted, the og_notify _items precedent.
+    try:
+        ids = {w.get("id") for w in _watches(uid)
+               if isinstance(w, dict)}
+        live = [a for a in pending
+                if not a.get("watch_id")
+                or a.get("watch_id") in ids]
+        if len(live) != len(pending):
+            dead = ({a.get("id") for a in pending}
+                    - {a.get("id") for a in live})
+            _put_blob(uid, "alerts",
+                      [a for a in alerts
+                       if a.get("id") not in dead])
+        return live
+    except Exception:
+        return pending
 
 
 def _queue_alert(uid: str, text: str, kind: str = "notice",
@@ -440,6 +487,7 @@ def _hook_note_site(uid: str, host: str) -> None:
         if host == "facebook.com" and w.get("status") in (
                 "waiting_login", "paused_checkpoint"):
             w["status"] = "active"
+            w["state_ts"] = time.time()
             w["next_due"] = time.time()
             woke += 1
     if woke:
@@ -453,6 +501,26 @@ def _hook_note_site(uid: str, host: str) -> None:
         text += (" Your Marketplace watch is ON now — the first "
                  "check runs within about a minute.")
     _queue_alert(uid, text)
+
+
+def _hook_note_wall(uid: str, host: str) -> None:
+    """Round 321 (FIX-PLAN Piece 1): a log-in wall was sighted
+    for host in a live session while the vault still vouches
+    for that site's saved log-in. The sighting is the truth —
+    the vault's site record is dropped (the profile itself
+    stays), so the next ask takes the honest 'not logged in'
+    path instead of re-landing on a corpse the system vouches
+    for. The mirror of _hook_note_site's wall-clear path;
+    when the visitor logs back in, that path re-records the
+    site. A wall for a site the vault does not list changes
+    nothing."""
+    v = _vault(uid)
+    live, _dropped = _live_sites(v)
+    if host not in live:
+        return
+    live.pop(host, None)
+    v["sites"] = live
+    _save_vault(uid, v)
 
 
 def _hook_vault_summary(uid: str) -> str:
@@ -476,6 +544,7 @@ def ensure_hooks() -> None:
                              note=_hook_note_profile,
                              gone=_hook_profile_gone,
                              site=_hook_note_site,
+                             wall=_hook_note_wall,
                              summary=_hook_vault_summary)
 
 
@@ -483,11 +552,35 @@ def _forget_all(uid: str) -> List[Dict]:
     """'Forget my logins': DELETE the Steel profile, drop the
     vault record, stop every watch (they depended on the log-ins).
     Honest about a failed Steel delete — never claim Steel-side
-    deletion that did not happen."""
-    v = _vault(uid)
+    deletion that did not happen.
+
+    Round 321 fail-soft (Brent's live drill, 2026-10-15
+    04:58: the phrase answered the bare generic error and
+    NOTHING was forgotten — a store leg threw on a cold DB
+    and the whole command stranded): EVERY leg is guarded
+    on its own — the vault read, the Steel delete, the
+    vault wipe, the watch stop. A store leg that throws
+    gets ONE immediate retry (the post-drop warm-up case:
+    the first touch fails, the second lands); a leg that
+    still fails is NAMED in the reply, the legs that DID
+    land still land, and the command never propagates a
+    throw into the chat's generic error. The reply only
+    claims what actually happened, leg by leg."""
+    read_failed = False
+    try:
+        v = _vault(uid)
+    except Exception as e:
+        logger.warning(f"Forget: vault read failed: {e}")
+        v = {}
+        read_failed = True
     pid = v.get("profile_id")
-    watches = _watches(uid)
-    n = len(watches)
+    try:
+        watches = _watches(uid)
+        n = len(watches)
+    except Exception as e:
+        logger.warning(f"Forget: watch read failed: {e}")
+        watches = None
+        n = None
     steel_state = "none"
     if pid:
         try:
@@ -496,12 +589,43 @@ def _forget_all(uid: str) -> List[Dict]:
         except Exception as e:
             logger.warning(f"Steel profile delete failed: {e}")
             steel_state = "failed"
-    _save_vault(uid, {"profile_id": None, "sites": {},
-                      "profile_gone": False, "created": _now_iso()})
-    if n:
-        _put_blob(uid, "watches", [])
+    vault_wiped = False
+    for _try in range(2):
+        try:
+            _save_vault(uid, {"profile_id": None, "sites": {},
+                              "profile_gone": False,
+                              "created": _now_iso()})
+            vault_wiped = True
+            break
+        except Exception as e:
+            logger.warning(f"Forget: vault wipe failed: {e}")
+    watches_stopped = False
+    if n == 0:
+        watches_stopped = True
+    else:
+        for _try in range(2):
+            try:
+                _put_blob(uid, "watches", [])
+                watches_stopped = True
+                break
+            except Exception as e:
+                logger.warning(f"Forget: watch stop failed: {e}")
     watch_line = (f" I also stopped all {n} watch(es) — they "
                   "depended on those log-ins.") if n else ""
+    if not (vault_wiped and watches_stopped):
+        stuck = []
+        if not vault_wiped:
+            stuck.append("the saved-login record itself")
+        if not watches_stopped:
+            stuck.append("your watches")
+        body = ("That only half went through — my store "
+                "hiccuped mid-forget, so " + " and ".join(stuck)
+                + " didn't save as forgotten. Nothing was "
+                "deleted at Steel yet either. Give it a few "
+                "seconds and say 'forget my logins' again — "
+                "I'll finish it.")
+        return _result("OG WATCH", "OG Watch — forget hit a "
+                       "snag", body)
     if steel_state == "deleted":
         body = ("Done — your saved browser profile is deleted at "
                 "Steel and every log-in in it is gone." + watch_line
@@ -514,6 +638,14 @@ def _forget_all(uid: str) -> List[Dict]:
                 "profile may still exist on Steel's side — nothing "
                 "here can reach it anymore, and Steel auto-deletes "
                 "profiles unused for 30 days.")
+    elif read_failed:
+        body = ("Forgotten on my side — every saved log-in "
+                "record here is dropped." + watch_line + " One "
+                "honest catch: I couldn't read the vault to "
+                "get the profile's ID, so I couldn't call "
+                "Steel's delete for it — nothing here can "
+                "reach that profile anymore, and Steel "
+                "auto-deletes profiles unused for 30 days.")
     else:
         body = ("You had no saved log-ins to forget — the vault "
                 "was already empty." + watch_line)
@@ -729,6 +861,10 @@ def _create_watch(uid: str, tier: str, item: str,
          "cadence_min": _cadence_min(tier), "created": _now_iso(),
          "last_check": None, "next_due": time.time(),
          "status": "active" if has_fb else "waiting_login",
+         # Round 321: when the current status began (epoch) —
+         # the stalled watchdog's clock. Stamped at creation
+         # and at every status transition the module makes.
+         "state_ts": time.time(),
          "seen": {}, "checks": 0, "login_notice_sent": False,
          # Round 54: the watch kind. Legacy records carry no kind
          # and read as "fbwatch"; kind="mpwatch" records (created
@@ -782,6 +918,9 @@ def _list_watches(uid: str, tier: str) -> List[Dict]:
         "waiting_login": "WAITING for your Facebook log-in",
         "paused_checkpoint": "PAUSED — Facebook wants a fresh "
                              "log-in",
+        "stalled": "PARKED — it never got its log-in, so "
+                   "checks stopped; log in, then say "
+                   "'resume my watch'",
     }
     rows = []
     for w in watches:
@@ -859,16 +998,22 @@ def _resume_watches(uid: str) -> List[Dict]:
     watches = _watches(uid)
     changed = 0
     for w in watches:
-        if w.get("status") == "paused_checkpoint":
+        if w.get("status") in ("paused_checkpoint", "stalled"):
+            # Round 321: a parked ("stalled") watch resumes
+            # through this same claim — to active when the
+            # log-in is there, else back to waiting (with a
+            # fresh watchdog clock and a fresh login notice).
             if has_fb:
                 w["status"] = "active"
             else:
                 w["status"] = "waiting_login"
                 w["login_notice_sent"] = False
+            w["state_ts"] = time.time()
             w["next_due"] = time.time()
             changed += 1
         elif w.get("status") == "waiting_login" and has_fb:
             w["status"] = "active"
+            w["state_ts"] = time.time()
             w["next_due"] = time.time()
             changed += 1
     if changed:
@@ -1041,6 +1186,7 @@ def _check_one(rec: Dict, uid: str, w: Dict, alerts: list,
         if has_fb_login:
             if w.get("status") == "active":
                 w["status"] = "paused_checkpoint"
+                w["state_ts"] = time.time()
                 alerts.append({
                     "id": uuid.uuid4().hex[:12], "ts": _now_iso(),
                     "delivered": False, "kind": "notice",
@@ -1054,7 +1200,9 @@ def _check_one(rec: Dict, uid: str, w: Dict, alerts: list,
                              "hand back, then say 'resume my "
                              "watch' and it picks back up.")})
         else:
-            w["status"] = "waiting_login"
+            if w.get("status") != "waiting_login":
+                w["status"] = "waiting_login"
+                w["state_ts"] = time.time()
             if not w.get("login_notice_sent"):
                 w["login_notice_sent"] = True
                 alerts.append({
@@ -1185,6 +1333,71 @@ def _run_visitor_checks(uid: str, due: list, watches: list) -> int:
     return done
 
 
+def _iso_epoch(text) -> float:
+    """Epoch seconds for an ISO stamp this module wrote, else 0."""
+    try:
+        return datetime.fromisoformat(str(text)).timestamp()
+    except Exception:
+        return 0.0
+
+
+def _state_since(w: Dict) -> float:
+    """When the watch's CURRENT status began, best evidence:
+    the state_ts the module stamps at every transition; for a
+    legacy record without one, a paused watch reads from its
+    last check (the check that hit the checkpoint froze it —
+    paused watches are not due, so last_check stops moving),
+    and a waiting watch from its creation (a watch that has
+    only ever waited entered the state when it was created)."""
+    ts = w.get("state_ts")
+    if isinstance(ts, (int, float)) and ts > 0:
+        return float(ts)
+    if w.get("status") == "paused_checkpoint":
+        return (_iso_epoch(w.get("last_check"))
+                or _iso_epoch(w.get("created")))
+    return _iso_epoch(w.get("created"))
+
+
+def _park_stalled(uid: str, watches: list, now: float) -> bool:
+    """Round 321 stalled-watchdog (FIX-PLAN Piece 1): a watch
+    in waiting_login / paused_checkpoint whose state is older
+    than STALLED_AFTER_S parks to "stalled" — it leaves the
+    due set, so the scheduler stops spinning paid Steel
+    sessions on a profile that cannot pass the wall, and ONE
+    notice is queued. A legacy record with no readable clock
+    gets its clock STARTED at first sighting (state_ts=now),
+    never parked on a guess. Returns True when anything
+    changed (the caller list is mutated in place; the change
+    is persisted here)."""
+    changed = False
+    for w in watches:
+        if not isinstance(w, dict):
+            continue
+        if w.get("status") not in ("waiting_login",
+                                   "paused_checkpoint"):
+            continue
+        since = _state_since(w)
+        if not since:
+            w["state_ts"] = now
+            changed = True
+            continue
+        if now - since >= STALLED_AFTER_S:
+            w["status"] = "stalled"
+            w["state_ts"] = now
+            changed = True
+            _queue_alert(
+                uid,
+                f"Your watch for {_criteria_text(w)} never "
+                "got its Facebook log-in — after 7 days I've "
+                "parked it, so it stops using check time. "
+                "Log into Facebook in my browser, then say "
+                "'resume my watch' and it picks back up.",
+                watch_id=w.get("id") or "")
+    if changed:
+        _put_blob(uid, "watches", watches)
+    return changed
+
+
 def run_due_checks(now: Optional[float] = None) -> int:
     """One scheduler cycle. Due watches are claimed ahead (their
     next_due moves forward BEFORE any session opens — two app
@@ -1199,6 +1412,10 @@ def run_due_checks(now: Optional[float] = None) -> int:
     for uid in _all_uids():
         try:
             watches = _watches(uid)
+            # Round 321: the stalled-watchdog sweeps BEFORE
+            # the due set is computed — a watch it parks is
+            # never spun up again.
+            _park_stalled(uid, watches, now)
             due = [w for w in watches
                    if w.get("status") in ("active", "waiting_login")
                    and float(w.get("next_due") or 0) <= now]
@@ -1376,7 +1593,22 @@ def watch_results(job: Dict, uid: str, tier: str) -> List[Dict]:
     reading that was acted on. Clean jobs run byte-identically."""
     garble = job.pop("_garble", None) \
         if isinstance(job, dict) else None
-    results = _watch_results(job, uid, tier)
+    try:
+        results = _watch_results(job, uid, tier)
+    except Exception as e:
+        # Round 321: an owner command never strands silently.
+        # Before this guard, a store throw inside any op fell
+        # out of the seam's search wrapper as a bare fall-
+        # through to a web search — the command vanished and
+        # the owner got an unrelated answer (or, upstream,
+        # the generic error). The command now answers for
+        # itself: it didn't go through, say it again.
+        logger.warning(f"Watch job {job.get('op')!r} failed: {e}")
+        results = _result(
+            "OG WATCH", "OG Watch — that didn't go through",
+            "That watch command didn't go through — my store "
+            "hiccuped before it landed, so nothing changed. "
+            "Give it a few seconds and say it again.")
     if garble and results:
         results = og_garble.annotate(results, garble)
     return results
