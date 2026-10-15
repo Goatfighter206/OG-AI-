@@ -1542,7 +1542,10 @@ def _job_view(rec: Optional[Dict]) -> Optional[Dict]:
 
 def register_song_routes(app):
     @app.get("/song/status")
-    async def song_status(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def song_status(request: Request):
         if not enabled():
             return {"enabled": False}
         uid = _route_uid(request)
