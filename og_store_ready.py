@@ -226,10 +226,19 @@ def _purge_app_stores(uid: str, results: dict):
 
     def memory():
         with _appmod._memory_lock:
-            store = _appmod._load_memory_store()
+            # Round 321c: app.py's whole-store DB load/save
+            # are gone (B6a) — the purge deletes through the
+            # keyed door (og_memory_io, the DB backend) plus
+            # the file store's own row, same two backends the
+            # chat path writes.
+            try:
+                _appmod._og_memory_io.delete_history(uid)
+            except Exception:
+                pass
+            store = _appmod._load_memory_store_file()
             if uid in store:
                 del store[uid]
-                _appmod._save_memory_store(store)
+                _appmod._save_memory_store_file(store)
 
     def usage():
         with _appmod._usage_lock:
