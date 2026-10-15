@@ -401,12 +401,31 @@ def feed_score(src: str, kind: str, ts: float, read: bool,
 
 
 def feed_rows(uid: str, request: Request):
-    """(rows in feed order, storage_line_text, unread).
-    Rows mirror the shape the shell has always rendered:
-    {src, id, kind, title, sub, ts, read, target, action,
-    action_url, status, score}."""
+    """(rows in feed order, storage_line_text, unread,
+    degraded). Rows mirror the shape the shell has always
+    rendered: {src, id, kind, title, sub, ts, read, target,
+    action, action_url, status, score}.
+
+    Round 321 (FIX-PLAN Addendum V4): PER-LEG FAIL-SOFT.
+    The Feed seat 500'd whole when ONE leg raised — the
+    og_notify leg had no guard at all, so a stalled DB
+    (og_notify._items raising StoreError under the R99
+    law) killed the seat while the fail-soft Ideas and
+    Progress seats rendered. Now the library aggregate
+    and the notify leg each degrade to absent on failure
+    and the payload carries degraded=True, so the seat
+    can say "some of the Feed couldn't load" instead of
+    failing whole. Mirrors og_activity.background_for's
+    per-leg pattern."""
     import og_notify
-    items, storage_line, _counts = collect_library(uid, request)
+    degraded = False
+    try:
+        items, storage_line, _counts = collect_library(
+            uid, request)
+    except Exception as e:
+        logger.warning(f"Feed library leg failed: {e}")
+        items, storage_line = [], None
+        degraded = True
     rows: list = []
     for it in items:
         ts = float(it.get("created_at", 0) or 0)
@@ -425,7 +444,15 @@ def feed_rows(uid: str, request: Request):
                                 True, status),
         })
     unread = 0
-    for it in og_notify._items(uid):
+    try:
+        notify_items = og_notify._items(uid)
+    except Exception as e:
+        # Round 321 (V4): the notify leg degrades to
+        # absent — never sinks the whole seat again.
+        logger.warning(f"Feed notify leg failed: {e}")
+        notify_items = []
+        degraded = True
+    for it in notify_items:
         if not isinstance(it, dict):
             continue
         ts = float(it.get("ts", 0) or 0)
@@ -448,7 +475,59 @@ def feed_rows(uid: str, request: Request):
     if isinstance(storage_line, dict):
         line = (f"Locker: {storage_line.get('used_human', '0 B')} "
                 f"of {storage_line.get('quota_human', '0 B')} used")
-    return rows[:ITEM_CAP], line, unread
+    return rows[:ITEM_CAP], line, unread, degraded
+
+
+# ===========================================================================
+# Round 321 (D2): POST /chat/leave — leaving wipes the thread.
+#
+# Brent's rule (2026-10-15, D2 approved as proposed): if a user
+# backs out of the website, the chat resets. ONLY the visible
+# thread — account/long-term memory is a different store and
+# survives untouched, and this is deliberately NOT POST /reset's
+# shape (that also clears the shared agent's in-memory history
+# wholesale). The durable thread store is og_visitor_memory,
+# which /chat reads keyed-first since Round 135, so the clear
+# rides og_memory_io's keyed delete. When no DB is configured,
+# the JSON file store is cleared with app.py's own
+# _clear_visitor_history shape, mirrored here (app.py is not
+# editable from a seam). One known limit, shared with every
+# cross-tab race in the app: a chat turn already in flight on
+# another tab can save its thread back after the clear.
+# ===========================================================================
+
+_thread_clear_lock = threading.Lock()
+
+
+def _clear_thread(uid: str) -> bool:
+    """Remove ONLY uid's stored chat thread. True when no
+    thread remains for uid afterwards (the row is deleted,
+    or there never was one and the delete was handled);
+    False on a store failure — the answer never claims a
+    clear that did not happen."""
+    import og_memory_io as _memio
+    if _memio.MEMORY_DB_URL:
+        return bool(_memio.delete_history(uid))
+    import json
+    import os
+    path = "memory_store.json"
+    try:
+        with _thread_clear_lock:
+            store = {}
+            if os.path.exists(path):
+                with open(path) as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    store = data
+            if uid not in store:
+                return True
+            del store[uid]
+            with open(path, "w") as f:
+                json.dump(store, f)
+            return True
+    except Exception as e:
+        logger.warning(f"Chat-leave thread clear failed: {e}")
+        return False
 
 
 def _request_uid(request: Request) -> str:
@@ -698,10 +777,51 @@ def register_library_routes(app):
         uid = _request_uid(request)
         if not uid:
             return {"rows": [], "storage_line": None,
-                    "unread": 0}
-        rows, line, unread = feed_rows(uid, request)
+                    "unread": 0, "degraded": False}
+        rows, line, unread, degraded = feed_rows(uid, request)
         return {"rows": rows, "storage_line": line,
-                "unread": unread}
+                "unread": unread, "degraded": degraded}
+
+    @app.post("/chat/leave")
+    async def chat_leave(request: Request):
+        """Round 321 (D2): the page's pagehide beacon lands
+        here — the caller's visible chat THREAD is wiped
+        (account memory untouched; see _clear_thread).
+        Idempotent, own-thread only (the uid is the
+        session-resolved identity every route here uses);
+        an anonymous beacon is a clean no-op."""
+        import asyncio
+        uid = _request_uid(request)
+        if not uid:
+            return {"ok": True, "cleared": False}
+        cleared = await asyncio.to_thread(_clear_thread, uid)
+        return {"ok": True, "cleared": cleared}
+
+    @app.post("/browser/leave")
+    async def browser_leave(request: Request):
+        """Round 321 (Piece 1, Req 2): the pagehide beacon's
+        other landing — the caller's browser session ends
+        NOW through og_browser's one funnel (_end_session:
+        Steel released, minutes metered, record + parked
+        approval cleared) instead of lingering to the idle
+        kill. Mounted here, not in og_browser, because that
+        module sits at the push ceiling; the handler is
+        three lines of og_browser calls. Cookie-scoped:
+        a caller ends only their OWN session; leaving with
+        no live session is a clean no-op."""
+        import asyncio
+
+        import og_browser as _ogb
+        from fastapi.responses import JSONResponse
+        if not _ogb.enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _ogb._route_uid(request)
+        if not uid:
+            return {"ok": True, "ended": False}
+        rec = await asyncio.to_thread(_ogb._end_session, uid,
+                                      "page left")
+        return {"ok": True, "ended": rec is not None}
 
     # Round 70 (addition): OG-generated ideas (og_ideas.py)
     # ride the same registration.
