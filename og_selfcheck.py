@@ -201,6 +201,111 @@ def _state() -> dict:
     return st if isinstance(st, dict) else {}
 
 
+# ===========================================================================
+# Round 321 (Step 2): stability instrumentation (FIX-PLAN Piece 2).
+#
+# The offline-drop evidence was a pile of timestamps with no
+# discriminator. Three instruments, all module-side:
+# 1. LOOP-LAG PROBE: every minute the stability loop times an
+#    asyncio.to_thread round-trip; a stalled event loop delays
+#    the resumption, and that delay IS the lag. The max lag per
+#    hour is kept as ONE bounded record (48 hours) in this
+#    module's store + memory — a drop with high lag points at
+#    loop stalls (S1/S3); a drop with no lag record at all
+#    means the worker died (S4/crash family).
+# 2. STOREERROR COUNTERS: og_db counts every StoreError raise
+#    per store per hour; run_check surfaces the snapshot, so
+#    Neon stalls become countable (S3 vs S1).
+# 3. NEON KEEP-WARM: one SELECT 1 every ~5 minutes so the
+#    shared compute rarely suspends during waking hours (S3).
+# ===========================================================================
+
+_LAG_KEY = "loop_lag"
+LAG_KEEP_HOURS = 48
+KEEPWARM_EVERY_S = 300
+_lag_hours: Dict = {}
+_lag_lock = threading.Lock()
+_warm_state = {"last": 0.0}
+_stab_started = {"on": False}
+
+
+def _lag_record(lag_s: float, now: Optional[float] = None) -> None:
+    now = time.time() if now is None else now
+    hour = int(now // 3600)
+    with _lag_lock:
+        if lag_s > float(_lag_hours.get(hour) or 0):
+            _lag_hours[hour] = lag_s
+        cutoff = hour - LAG_KEEP_HOURS
+        for h in [h for h in _lag_hours if h < cutoff]:
+            del _lag_hours[h]
+
+
+def _lag_snapshot() -> dict:
+    """{"<hour-epoch>": max lag seconds} — memory merged
+    with the durable record, pruned to the keep window."""
+    merged: Dict = {}
+    try:
+        stored = _get(_LAG_KEY)
+        if isinstance(stored, dict):
+            for k, v in stored.items():
+                try:
+                    merged[int(k)] = float(v)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    with _lag_lock:
+        for h, v in _lag_hours.items():
+            if float(v) > float(merged.get(h) or 0):
+                merged[h] = float(v)
+    now_h = int(time.time() // 3600)
+    merged = {h: v for h, v in merged.items()
+              if h >= now_h - LAG_KEEP_HOURS}
+    return {str(h): round(v, 3)
+            for h, v in sorted(merged.items())}
+
+
+def _lag_flush() -> None:
+    """Persist the merged hourly lag record (one small
+    dict; the store stays a record, never a pile)."""
+    try:
+        _put(_LAG_KEY, _lag_snapshot())
+    except Exception as e:
+        logger.warning(f"Loop-lag flush failed: {e}")
+
+
+def _neon_keepwarm() -> bool:
+    """One lightweight SELECT 1 against the shared
+    Postgres (FIX-PLAN Piece 2, S3: the failure alerts
+    cluster at idle hours, when the compute has
+    suspended). Sync — callers run it off the event
+    loop. No-op when no DB is configured."""
+    if not (MEMORY_DB_URL and psycopg is not None):
+        return False
+    try:
+        with _db_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+        return True
+    except Exception as e:
+        logger.warning(f"Neon keep-warm failed: {e}")
+        return False
+
+
+async def _stability_tick() -> None:
+    """One stability-loop minute: the lag probe, and on
+    the keep-warm cadence the Neon ping + lag flush."""
+    t0 = time.perf_counter()
+    await asyncio.to_thread(lambda: None)
+    _lag_record(time.perf_counter() - t0)
+    now = time.time()
+    if now - _warm_state["last"] >= KEEPWARM_EVERY_S:
+        _warm_state["last"] = now
+        await asyncio.to_thread(_neon_keepwarm)
+        await asyncio.to_thread(_lag_flush)
+
+
 def _reports() -> list:
     reps = _get("reports")
     return reps if isinstance(reps, list) else []
@@ -775,6 +880,18 @@ def _summarize(report: dict) -> str:
     if report["overload"]["not_measurable"]:
         lines.append("Not measurable from inside: " + "; ".join(
             report["overload"]["not_measurable"]) + ".")
+    # Round 321 (Step 2): the stability readouts speak only
+    # when they measured something worth the owner's eye.
+    stab = report.get("stability") or {}
+    se_total = stab.get("store_error_total") or 0
+    if se_total:
+        lines.append(f"Database stalls counted (StoreError, "
+                     f"this process): {se_total}.")
+    lag_max = stab.get("loop_lag_max_s") or 0
+    if lag_max and float(lag_max) > 1.0:
+        lines.append(f"Event-loop lag peaked at "
+                     f"{float(lag_max):.1f}s in the recorded "
+                     f"hours.")
     return "\n".join(lines)
 
 
@@ -817,6 +934,28 @@ def run_check(trigger: str = "scheduled") -> dict:
         state["sizes"] = overload["sizes"]
     _put("state", state)
 
+    # Round 321 (Step 2): the stability instruments'
+    # readouts ride the report — loop-lag hours (this
+    # module's record) and og_db's StoreError counters
+    # (per-process; each worker counts its own raises).
+    stability = {"loop_lag_hours": {}, "loop_lag_max_s": 0.0,
+                 "store_errors": {}, "store_error_total": 0}
+    try:
+        lag_hours = _lag_snapshot()
+        stability["loop_lag_hours"] = lag_hours
+        stability["loop_lag_max_s"] = (
+            max(lag_hours.values()) if lag_hours else 0.0)
+    except Exception as e:
+        logger.warning(f"Loop-lag readout failed: {e}")
+    try:
+        import og_db as _ogdb
+        se = _ogdb.store_error_snapshot()
+        stability["store_errors"] = se
+        stability["store_error_total"] = sum(
+            sum(h.values()) for h in se.values()
+            if isinstance(h, dict))
+    except Exception as e:
+        logger.warning(f"StoreError readout failed: {e}")
     report = {
         "ts": started,
         "date": datetime.fromtimestamp(
@@ -828,6 +967,7 @@ def run_check(trigger: str = "scheduled") -> dict:
                      ("measures", "not_measurable", "upgrades",
                       "owner_burn")},
         "upgrades": overload.get("upgrades") or [],
+        "stability": stability,
     }
     report["summary"] = _summarize(report)
 
@@ -1053,3 +1193,23 @@ def register_selfcheck_routes(app):
                     logger.warning(f"Selfcheck cycle failed: {e}")
 
         asyncio.create_task(_loop())
+
+    @app.on_event("startup")
+    async def _start_stability_loop():
+        # Round 321 (Step 2): the stability instruments'
+        # own one-minute loop — the nightly loop above
+        # polls hourly by design (POLL_SECONDS), far too
+        # slow to catch a stall or keep Neon warm.
+        if _stab_started["on"]:
+            return
+        _stab_started["on"] = True
+
+        async def _stab():
+            while True:
+                await asyncio.sleep(60)
+                try:
+                    await _stability_tick()
+                except Exception as e:
+                    logger.warning(f"Stability tick failed: {e}")
+
+        asyncio.create_task(_stab())
