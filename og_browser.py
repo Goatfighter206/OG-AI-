@@ -2511,6 +2511,17 @@ def _reap_once() -> None:
 def register_browser_routes(app):
     @app.get("/browser/status")
     async def browser_status(request: Request):
+        # Round 321 (Step 3.1): the body is sync store work
+        # (session / tier / pending reads, Steel release +
+        # viewer calls) that used to run ON the event loop
+        # inside this poll — under a stalled DB each poll
+        # froze the loop for seconds-to-tens-of-seconds and
+        # the page-load burst wedged the whole instance. It
+        # now runs whole in a thread; answers are unchanged.
+        return await asyncio.to_thread(_browser_status_sync,
+                                       request)
+
+    def _browser_status_sync(request: Request):
         if not enabled():
             return {"enabled": False}
         uid = _route_uid(request)
@@ -2535,21 +2546,18 @@ def register_browser_routes(app):
             # event loop inside this poll. Off the loop now;
             # the end still completes before the answer.
             if _session_minutes_left(rec) <= 0:
-                await asyncio.to_thread(_end_session, uid,
-                                        "budget spent")
+                _end_session(uid, "budget spent")
                 rec = None
             elif time.time() - float(rec.get("last_action", 0)) \
                     > _IDLE_KILL_S:
-                await asyncio.to_thread(_end_session, uid,
-                                        "idle 20 minutes")
+                _end_session(uid, "idle 20 minutes")
                 rec = None
             elif time.time() - float(
                     rec.get("steel_born") or rec.get("started")
                     or 0) > _STEEL_SESSION_CAP_MS // 1000:
                 # Round 321: past Steel's 15-minute cap the
                 # record is a corpse — end it, tell the truth.
-                await asyncio.to_thread(_end_session, uid,
-                                        "steel session cap")
+                _end_session(uid, "steel session cap")
                 rec = None
         if rec:
             out["active"] = True
@@ -2570,7 +2578,7 @@ def register_browser_routes(app):
             out["phase"] = "ready" if out["frame_ready"] \
                 else "loading"
             # Fresh from Steel on every poll — never stored anywhere.
-            out["viewer_url"] = await asyncio.to_thread(_viewer_url, rec.get("steel_id", ""))
+            out["viewer_url"] = _viewer_url(rec.get("steel_id", ""))
         if not rec and uid:
             # Round 61 (additive): a start in flight — the
             # session record does not exist yet (the Steel
@@ -2621,6 +2629,13 @@ def register_browser_routes(app):
     # Round 321: POST /browser/leave mounts from og_library
     # (this module is at the push ceiling).
 
+    def _screenshot_prologue(request):
+        # Round 321 (Step 3.1): uid resolution pays a DB
+        # connect — it and the session read run in a thread,
+        # never on the event loop (see /browser/status).
+        uid = _route_uid(request)
+        return uid, (_get_session(uid) if uid else None)
+
     @app.get("/browser/screenshot")
     async def browser_screenshot(request: Request):
         """The panel's still view: one frame of the visitor's own
@@ -2634,8 +2649,8 @@ def register_browser_routes(app):
         if not enabled():
             return JSONResponse({"error": "not found"},
                                 status_code=404)
-        uid = _route_uid(request)
-        rec = _get_session(uid) if uid else None
+        uid, rec = await asyncio.to_thread(
+            _screenshot_prologue, request)
         if not rec:
             return JSONResponse({"error": "no session"},
                                 status_code=404)
@@ -2715,7 +2730,10 @@ def register_browser_routes(app):
                          f"won't ask again.\n" + body)}
 
     @app.get("/browser/allowed")
-    async def browser_allowed(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def browser_allowed(request: Request):
         """Read-only always-allow listing for the Connections
         page's Browser connect folder (/watch/logins family)."""
         if not enabled():
