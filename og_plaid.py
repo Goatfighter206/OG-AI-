@@ -499,7 +499,10 @@ def register_plaid_routes(app):
                 "institution": entry.get("institution", "")}
 
     @app.get("/plaid/status")
-    async def plaid_status(raw_request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def plaid_status(raw_request: Request):
         """Enabled? Connected? As which bank? (Never tokens.)"""
         entry = None
         if PLAID_ENABLED:
