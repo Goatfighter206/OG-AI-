@@ -83,6 +83,10 @@ house shape — no uid -> 401 sign_in_required):
         "server_restart": {"wired": bool, "enabled": bool,
         "cooldown_s": int}}
     POST /reboot        -> the soft-reboot report
+    POST /reboot/forget -> Round 321: the soft reboot PLUS
+        the saved-login wipe (the door that can actually
+        un-wedge a stuck log-in; the plain reboot cannot
+        reach the vault, by its own never-touch-data law)
     POST /reboot/server -> the gate chain's answer
 
 Every handler does its store/Steel work through
@@ -321,6 +325,38 @@ def soft_reboot(uid: str) -> dict:
     return report
 
 
+def reboot_and_forget(uid: str) -> dict:
+    """Round 321 (FIX-PLAN Piece 1): the second door on the
+    Reboot card — the soft reboot AND the saved-login wipe
+    (og_watch._forget_all: Steel profile DELETE, vault
+    dropped, every watch stopped). It exists because the
+    plain reboot provably cannot reach the vault: the
+    wedge that stranded the owner in October 2026 was a
+    stuck saved log-in, and every visible control left it
+    exactly where it was. The two halves are independent
+    — the report states each truthfully, and a forget
+    glitch never masks the reboot's own result."""
+    report = soft_reboot(uid)
+    report["logins_forgotten"] = False
+    report["forget_body"] = ""
+    if not uid:
+        report["ok"] = False
+        return report
+    try:
+        import og_watch
+        blocks = og_watch._forget_all(uid)
+        body = "\n".join(str(b.get("body") or "")
+                         for b in blocks)
+        report["forget_body"] = body.replace("[OG WATCH] ",
+                                             "", 1)
+        report["logins_forgotten"] = True
+        report["cleared"].append("saved logins")
+    except Exception as e:
+        logger.warning(
+            f"Reboot+forget: forget failed for {uid}: {e}")
+    return report
+
+
 # ===========================================================================
 # Part 2 — restart OG's server (owner only)
 # ===========================================================================
@@ -476,6 +512,24 @@ def register_reboot_routes(app):
             return JSONResponse({"detail": "sign_in_required"},
                                 status_code=401)
         report = await asyncio.to_thread(soft_reboot, uid)
+        return report
+
+    @app.post("/reboot/forget")
+    async def reboot_forget(request: Request):
+        """Round 321: Reboot + forget saved logins — the
+        soft reboot plus og_watch._forget_all for the
+        CALLER's own account only (same session-resolved
+        uid discipline as every route here)."""
+        cookies = dict(request.cookies)
+        uid, _email = _resolve(cookies)
+        if not uid:
+            return JSONResponse({"detail": "sign_in_required"},
+                                status_code=401)
+        try:
+            report = await asyncio.to_thread(
+                reboot_and_forget, uid)
+        except StoreError:
+            return JSONResponse(_R99_BODY, status_code=503)
         return report
 
     @app.post("/reboot/server")
