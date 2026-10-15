@@ -982,7 +982,10 @@ def register_storage_routes(app):
         return _og_tiers.tier_of(raw_request.cookies, uid or "")
 
     @app.get("/storage/status")
-    async def storage_status(raw_request: _Req):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def storage_status(raw_request: _Req):
         if not storage_enabled():
             raise _not_found()
         uid = _uid_of(raw_request)
