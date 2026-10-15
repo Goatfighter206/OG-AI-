@@ -801,7 +801,10 @@ def register_account_routes(app):
         return resp
 
     @app.get("/auth/me")
-    async def auth_me(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def auth_me(request: Request):
         sess = _session_for(request.cookies.get(SESSION_COOKIE))
         if sess is None:
             return {"signed_in": False, "email": None}
