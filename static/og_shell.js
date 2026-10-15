@@ -456,6 +456,18 @@ function getJSON(url) {
    an activity text can never paint over each other. */
 var composerLocked = false, lastBrowserStatus = null, sendWrapped = false;
 var signinNeeded = false, browserNeeded = false, pillNeedsActive = false;
+/* Round 321 (V2): the pill names the SITE that needs the
+   sign-in — a bare account-flavored claim while the owner
+   IS signed in was the lie Brent's video caught. The site
+   strings ride alongside the booleans (null = unknown). */
+var signinSite = null, watchSite = null, browserSite = null;
+function pillSiteName(host) {
+  var h = String(host || '').toLowerCase()
+    .replace(/^(www\.|m\.|mobile\.)/, '');
+  var first = h.split('.')[0];
+  if (!first) return null;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
 
 /* --- 4c. The pill's ONE writer (Round 79) ------------------------------
    Two painters used to write the status pills
@@ -567,7 +579,10 @@ function wrapSend() {
 }
 function needsPillText() {
   if (pending) return 'OG needs approval';
+  if (signinSite) return signinSite + ' needs you to sign in';
   if (signinNeeded) return 'OG needs you to sign in';
+  if (watchSite) return watchSite + ' needs you to sign in';
+  if (browserSite) return browserSite + ' needs you in the browser';
   if (browserNeeded) return 'OG needs you in the browser';
   return null;
 }
@@ -757,6 +772,19 @@ function refreshRecents() {
       signinNeeded = allItems.some(function (it) {
         return it && it.kind === 'signin_needed' && !it.read;
       });
+      /* Round 321 (V2): name the site off the record's own
+         target (the wall's host, written by og_browser's
+         sign-in alert) — the pill never speaks for the
+         OG account, only for the site asking. */
+      signinSite = null;
+      for (var si = 0; si < allItems.length; si++) {
+        var sit = allItems[si];
+        if (sit && sit.kind === 'signin_needed' && !sit.read
+            && sit.target && sit.target.id) {
+          signinSite = pillSiteName(sit.target.id);
+          if (signinSite) break;
+        }
+      }
       updateNeedsPill();
       if (!list) return;
       var items = allItems.filter(function (it) { return it && it.kind === 'approval_needed'; }).slice(0, 5);
@@ -789,10 +817,25 @@ function refreshRecents() {
      momentary ones. */
   getJSON('/watch/status').then(function (wst) {
     var ws = (wst && wst.watches) || [];
-    browserNeeded = ws.some(function (w) {
-      return w && (w.status === 'waiting_login'
-                   || w.status === 'paused_checkpoint');
+    var wWait = ws.some(function (w) {
+      return w && w.status === 'waiting_login';
     });
+    var wChk = ws.some(function (w) {
+      return w && w.status === 'paused_checkpoint';
+    });
+    browserNeeded = wWait || wChk;
+    /* Round 321 (V2): og_watch's watches are Facebook
+       Marketplace watches, so the site a waiting watch
+       names is Facebook. A watch waiting on a log-in is
+       a SIGN-IN need and names the site as one; a watch
+       paused at a checkpoint is a BROWSER need (the
+       owner takes over to clear it) and names the site
+       as one — the two claims never borrow each other's
+       words. (A parked 'stalled' watch no longer counts
+       as needing: the watchdog owns it until the owner
+       resumes it.) */
+    watchSite = wWait ? 'Facebook' : null;
+    browserSite = wChk ? 'Facebook' : null;
     updateNeedsPill();
   });
 }
@@ -1255,6 +1298,17 @@ function refreshFeed() {
       }
       var noteOk = $('ogFeedNote');
       if (noteOk) noteOk.hidden = true;
+      /* Round 321 (V4): the server degraded one leg of
+         the payload instead of failing the seat whole —
+         say so on the same note line, over the rows that
+         DID load. */
+      if (d.degraded) {
+        var noteDeg = $('ogFeedNote');
+        if (noteDeg) {
+          noteDeg.hidden = false;
+          noteDeg.textContent = 'Some of the Feed couldn\'t load just now — showing what I could get.';
+        }
+      }
       if (typeof d.unread === 'number') { feedUnread = d.unread; paintFeedDot(); }
       feedLibIds = {};
       feedRows = (d.rows || []).map(function (r) {
