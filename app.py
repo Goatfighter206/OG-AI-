@@ -2694,7 +2694,10 @@ the server and reset if the service gets rebuilt from scratch.</p>
     return HTMLResponse(content=html)
 
 @app.get("/history", response_model=HistoryResponse)
-async def get_history(raw_request: Request):
+# Round 321 (Step 3.1): def, not async def — the body is
+# sync store work; FastAPI runs def handlers in its
+# threadpool, so a stalled DB can never freeze the loop.
+def get_history(raw_request: Request):
     """The requesting visitor's own conversation history (ogai_uid cookie)."""
     get_agent()  # a fresh agent instance starts with a fresh memory store
     try:
@@ -2908,7 +2911,10 @@ async def google_auth_callback(raw_request: Request, code: str = "",
     return response
 
 @app.get("/auth/google/status")
-async def google_auth_status(raw_request: Request):
+# Round 321 (Step 3.1): def, not async def — the body is
+# sync store work; FastAPI runs def handlers in its
+# threadpool, so a stalled DB can never freeze the loop.
+def google_auth_status(raw_request: Request):
     """What the slide-over menu needs: is connect enabled, and if this
     visitor is connected, as whom? (Never returns tokens.)"""
     entry = None
