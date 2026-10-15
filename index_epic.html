@@ -79,6 +79,7 @@
 <h3 class="og-menu-sec">Connections</h3>
 <nav class="og-menu-card">
 <button class="og-menu-item" id="menuConnectionsBtn" type="button"><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connections</button>
+<button class="og-menu-item" id="menuLoginsBtn" type="button"><span class="og-mi"><svg><use href="#i-globe"/></svg></span> Saved logins</button>
 </nav>
 </div>
 <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
@@ -717,7 +718,12 @@ cur += s;
 if (cur.trim()) out.push(cur.trim());
 return out.filter(Boolean);
 }
-const OG_TTS_VOICE = 'onyx';
+let OG_TTS_VOICE = 'onyx';
+/* Round 321 (V3): stored voice pick via GET /voice. */
+fetch(`${API_URL}/voice`, { credentials: 'same-origin' })
+.then(r => r.ok ? r.json() : null)
+.then(d => { if (d && d.voice) OG_TTS_VOICE = d.voice; })
+.catch(() => {});
 function fetchTTSPromise(text) {
 return fetch(`${API_URL}/tts`, {
 method: 'POST',
@@ -730,12 +736,16 @@ function ogAudio() {
 if (!ogAudioEl) { ogAudioEl = new Audio(); ogAudioEl.preload = 'auto'; }
 return ogAudioEl;
 }
+let audioUnlocked = false;
+const OG_SILENT_CLIP = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
 function unlockAudio() {
+/* Round 321 (V3): silent-clip unlock (real content). */
+if (audioUnlocked) return;
 try {
 const a = ogAudio();
+a.src = OG_SILENT_CLIP;
 const p = a.play();
-if (p && p.catch) p.catch(() => {});
-a.pause();
+if (p && p.then) p.then(() => { audioUnlocked = true; }).catch(() => {});
 } catch (e) {}
 }
 async function playBlob(blob) {
@@ -745,7 +755,7 @@ const a = ogAudio();
 currentAudio = a;
 let settled = false;
 const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
-a.onended = () => { URL.revokeObjectURL(url); if (window.ogWaveMeter) ogWaveMeter.stop(); done(true); };
+a.onended = () => { URL.revokeObjectURL(url); if (window.ogWaveMeter) ogWaveMeter.stop(); audioUnlocked = true; done(true); };
 a.onerror = () => { URL.revokeObjectURL(url); if (window.ogWaveMeter) ogWaveMeter.stop(); done(false); };
 try { a.src = url; } catch (e) { done(false); return; }
 if (window.ogWaveMeter) ogWaveMeter.start(a);
@@ -755,9 +765,13 @@ if (p && p.catch) p.catch(() => { if (window.ogWaveMeter) ogWaveMeter.stop(); do
 currentAudio = null;
 return heard;
 }
+let lastReplyText = '';
+let speakFailKind = '';
 async function speakReply(text) {
 const clean = cleanForSpeech(text);
 if (!clean) { maybeResumeListening(); return; }
+lastReplyText = text;
+speakFailKind = '';
 const passages = speechPassages(clean);
 speakingNow = true;
 const gen = speechGen;
@@ -766,21 +780,41 @@ updateStatus('OG is talking...');
 setMood('talking');
 let nextFetch = passages.length ? fetchTTSPromise(passages[0]) : null;
 let speakBlocked = false;
+let failKind = 'play';
 for (let i = 0; i < passages.length; i++) {
 if (gen !== speechGen) break;
 try {
 const blob = await (nextFetch || fetchTTSPromise(passages[i]));
 nextFetch = (i + 1 < passages.length) ? fetchTTSPromise(passages[i + 1]) : null;
 const heard = await playBlob(blob);
-if (!heard) { speakBlocked = true; break; }
-} catch (e) { speakBlocked = true; break; }
+if (!heard) { speakBlocked = true; failKind = 'play'; break; }
+} catch (e) { speakBlocked = true; failKind = 'fetch'; break; }
 }
 speakingNow = false;
 document.getElementById('voiceBtn').classList.remove('speaking');
 setMood(voiceChatOn ? 'listening' : '');
-updateStatus(speakBlocked ? '🔇 Sound blocked — tap 🔊 on my reply to hear me' : (voiceChatOn ? 'Listening...' : 'Online & Ready'));
+/* Round 321 (V3): fetch failure vs play() block labels. */
+speakFailKind = speakBlocked ? failKind : '';
+updateStatus(speakBlocked ? (failKind === 'fetch' ? '🔇 Voice service hiccup — tap 🔊 to retry' : '🔇 Sound blocked — tap 🔊 on my reply to hear me') : (voiceChatOn ? 'Listening...' : 'Online & Ready'));
 maybeResumeListening();
 }
+/* Round 321 (V3): status line replays; a tap retries. */
+function replayLastReply() {
+if (!lastReplyText) return;
+unlockAudio();
+speakReply(lastReplyText);
+}
+['ogStatusLine', 'status-text'].forEach(function (id) {
+const el = document.getElementById(id);
+if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', replayLastReply); }
+});
+document.addEventListener('pointerdown', function () {
+if (speakFailKind === 'play' && lastReplyText) {
+speakFailKind = '';
+unlockAudio();
+speakReply(lastReplyText);
+}
+});
 function escapeCodeText(text) {
 const div = document.createElement('div');
 div.textContent = text;
@@ -865,6 +899,7 @@ spkBtn.title = 'Hear OG say this';
 spkBtn.setAttribute('aria-label', 'Hear OG say this reply');
 spkBtn.textContent = '🔊';
 const spkText = String(content);
+lastReplyText = spkText;
 spkBtn.addEventListener('click', () => { unlockAudio(); speakReply(spkText); });
 const mc = messageDiv.querySelector('.message-content');
 if (mc) mc.appendChild(spkBtn);
@@ -2035,5 +2070,16 @@ paint();
 <script src="/static/og_browser_input.js?v=98"></script>
 <script src="/static/og_shell.js?v=98"></script>
 <script src="/static/og_tokens.js?v=98"></script>
+<script>
+/* Round 321: pagehide leave beacons (browser + chat). */
+window.addEventListener('pagehide', function () {
+  try {
+    ['/browser/leave', '/chat/leave'].forEach(function (u) {
+      if (navigator.sendBeacon) navigator.sendBeacon(u, '');
+      else if (window.fetch) fetch(u, { method: 'POST', keepalive: true }).catch(function () {});
+    });
+  } catch (e) {}
+});
+</script>
 </body>
 </html>
