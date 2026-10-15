@@ -113,3 +113,71 @@ class StoreError(Exception):
     found", never as a user's failed attempt, never as
     signed-out. og_accounts registers one app-wide
     handler that answers it with an honest 503."""
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        _count_store_error()
+
+
+# ===========================================================================
+# Round 321 (Step 2): StoreError counters — the stability instrumentation.
+#
+# Every StoreError raise is counted per raising store per hour, in
+# memory, so the self-check report can turn "the database stalled"
+# from a guess into a number (FIX-PLAN Piece 2, suspect S3 vs S1).
+# The counters are a bounded record, not a pile: at most ~48 hours of
+# buckets are kept, pruned on write. Counting NEVER raises — a
+# failure inside the counter must not break the raise it rides on.
+# The store name is the module that raised (the first stack frame
+# outside this file). A store that catches a StoreError and re-wraps
+# it in a new StoreError counts twice; the number is a stall
+# indicator, not an audit ledger.
+# ===========================================================================
+
+import sys as _sys
+import threading as _threading
+import time as _time
+
+_SE_LOCK = _threading.Lock()
+_SE_COUNTS: dict = {}
+_SE_KEEP_HOURS = 48
+
+
+def _raising_store() -> str:
+    try:
+        frame = _sys._getframe(3)
+        while frame is not None:
+            name = str(frame.f_globals.get("__name__") or "")
+            if name and name != __name__:
+                return name
+            frame = frame.f_back
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _count_store_error() -> None:
+    try:
+        hour = int(_time.time() // 3600)
+        store = _raising_store()
+        with _SE_LOCK:
+            key = (store, hour)
+            _SE_COUNTS[key] = _SE_COUNTS.get(key, 0) + 1
+            if len(_SE_COUNTS) > _SE_KEEP_HOURS * 8:
+                cutoff = hour - _SE_KEEP_HOURS
+                for k in [k for k in _SE_COUNTS if k[1] < cutoff]:
+                    del _SE_COUNTS[k]
+    except Exception:
+        pass
+
+
+def store_error_snapshot() -> dict:
+    """{store: {"<hour-epoch>": count}} — the self-check
+    report's read of the counters (this process only; each
+    worker counts its own raises)."""
+    with _SE_LOCK:
+        items = dict(_SE_COUNTS)
+    out: dict = {}
+    for (store, hour), n in items.items():
+        out.setdefault(store, {})[str(hour)] = n
+    return out
