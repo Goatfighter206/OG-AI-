@@ -2722,7 +2722,10 @@ def _route_uid(request) -> str:
 def register_fixqueue_routes(app):
 
     @app.get("/approvals/proposals")
-    async def approvals_proposals(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def approvals_proposals(request: Request):
         uid = _route_uid(request)
         feed = list_proposals(uid)
         return {"ok": True, "proposals": feed["proposals"],
