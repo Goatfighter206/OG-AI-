@@ -537,7 +537,10 @@ def register_activity_routes(app):
     composed bubble line."""
 
     @app.get("/activity/status")
-    async def activity_status_route(request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def activity_status_route(request: Request):
         uid = _route_uid(request)
         return {"ok": True,
                 "enabled": activity_enabled(),
