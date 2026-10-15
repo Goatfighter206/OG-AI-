@@ -159,7 +159,8 @@ refresh();
 (function () {
 function $(id) { return document.getElementById(id); }
 var scrim = $('connectionsScrim'), panel = $('ogConnections'),
-openBtn = $('menuConnectionsBtn'), closeBtn = $('connectionsCloseBtn'),
+openBtn = $('menuConnectionsBtn'), loginsBtn = $('menuLoginsBtn'),
+closeBtn = $('connectionsCloseBtn'),
 siteInput = $('browserConnectSite'), browserBtn = $('browserConnectBtn'),
 list = $('browserLoginsList'), empty = $('browserLoginsEmpty'),
 forgetAllBtn = $('forgetAllLoginsBtn'), msg = $('browserLoginsMessage');
@@ -223,6 +224,11 @@ refreshLogins();
 }).catch(function () {  });
 }
 if (openBtn) openBtn.addEventListener('click', openConnections);
+/* Round 321: the ☰ menu's own "Saved logins" door opens
+   this same panel — the per-site Forget + Forget-all
+   surface above is the one implementation; the menu row
+   is only a shorter path to it. */
+if (loginsBtn) loginsBtn.addEventListener('click', openConnections);
 if (closeBtn) closeBtn.addEventListener('click', closeConnections);
 if (scrim) scrim.addEventListener('click', closeConnections);
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeConnections(); });
