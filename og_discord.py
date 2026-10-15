@@ -642,7 +642,10 @@ def register_discord_routes(app):
         return response
 
     @app.get("/auth/discord/status")
-    async def discord_auth_status(raw_request: Request):
+    # Round 321 (Step 3.1): def, not async def — the body is
+    # sync store work; FastAPI runs def handlers in its
+    # threadpool, so a stalled DB can never freeze the loop.
+    def discord_auth_status(raw_request: Request):
         """What the slide-over menu needs: is connect enabled, and
         if this visitor is connected, as whom? (Never returns
         tokens.)"""
