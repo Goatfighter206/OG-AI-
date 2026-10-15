@@ -1812,6 +1812,15 @@ def fixqueue_results(job: Dict, uid: str) -> List[Dict]:
     return _result("OG FIX", "Fix queue", "Nothing to run for that one.")
 
 
+# Round 321c: the wall-clock claim budget lives in
+# og_claimbudget; the dispatcher hub stays here — this
+# module's detect wrapper opens/closes it per turn and
+# its install runs the funnel census LAST.
+from og_claimbudget import (  # noqa: E402
+    CLAIM_BUDGET_SECONDS, begin_claim_budget,
+    end_claim_budget, claim_budget_open, _wrap_claim_funnels)
+
+
 def install_fixqueue_tools(agent_instance, get_uid):
     """Wrap detect_intent + web_search AFTER selfcheck (outermost):
     an 'approve the fix for X' must win over every other door,
@@ -1825,22 +1834,28 @@ def install_fixqueue_tools(agent_instance, get_uid):
         return
 
     def detect_wrapped(message):
-        intent = prev_detect(message)
-        _pending["job"] = None
+        # Round 321c: the OUTERMOST detect — its entry opens
+        # the turn's claim budget, its exit closes it.
+        _budget_started = begin_claim_budget()
         try:
-            uid = get_uid()
-            job = _claim_job(str(message)) if uid else None
-            if job:
-                _pending["job"] = job
-                if isinstance(intent, dict):
-                    intent["needs_code_generation"] = False
-                    if not intent.get("needs_web_search"):
-                        intent["needs_web_search"] = True
-                        intent["search_query"] = str(message).strip()
-        except Exception as e:
-            logger.warning(f"Fixqueue trigger check failed: {e}")
+            intent = prev_detect(message)
             _pending["job"] = None
-        return intent
+            try:
+                uid = get_uid()
+                job = _claim_job(str(message)) if uid else None
+                if job:
+                    _pending["job"] = job
+                    if isinstance(intent, dict):
+                        intent["needs_code_generation"] = False
+                        if not intent.get("needs_web_search"):
+                            intent["needs_web_search"] = True
+                            intent["search_query"] = str(message).strip()
+            except Exception as e:
+                logger.warning(f"Fixqueue trigger check failed: {e}")
+                _pending["job"] = None
+            return intent
+        finally:
+            end_claim_budget(_budget_started)
 
     def search_wrapped(query, num_results=5):
         job = _pending.get("job")
@@ -2586,6 +2601,68 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _oggodmoderunset.install_godmoderunset_tools(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"GodModeRunset install skipped: {e}")
+    # Round 281: GOD MODE AI MAKE MONEY FAST
+    # installs in the same last install, AFTER
+    # the landed helper chain (its detect wraps
+    # outermost among the helper seats; the
+    # Round 275 observer still wraps outside
+    # it). It checks its two fence shapes FIRST
+    # (the scam read and the guarantee
+    # correction — both require money context),
+    # then defers EXACTLY first to og_github's
+    # own claim — the R60 path stands untouched
+    # — then to the YouTube connect's own parse
+    # and the R126 seat, PM/Filer/crew/Builder/
+    # WoodPro/MaintEng/Mechanic/Blueprint
+    # claims, plus Shopping, Buying, Selling,
+    # CODING, GOD MODE CODING defensively,
+    # Phone, CarPlay, Tracker, Marketplace, the
+    # R54 marketplace chain, Facebook,
+    # Messenger, og_watch's own claim,
+    # og_monitor's own parse, the ordering
+    # pack's claims, TRADING's own claim (the
+    # per-trade approval door stands untouched),
+    # og_plaid's own parse (the bank-read door),
+    # the R127 Website + Browser seat, GOD MODE
+    # TESTER and GOD MODE RUNSET defensively,
+    # the unbuilt MONEY CLUSTER defensively
+    # (R261/R271/R262/R263/R265 — this seat's
+    # claims sit after theirs where they
+    # overlap, per its SPEC), GOD MODE MONEY
+    # (R305, the keeping side) and GOD MONEY
+    # MAKER (R319, Brent's owner-only mode)
+    # defensively, and LAST og_browser's own
+    # claim. The seat is the TOP OF THE MONEY
+    # CLUSTER: the ranked fast-money plan
+    # (fastest legitimate routes to real cash,
+    # ranked by honest time-to-first-dollar,
+    # every lane carrying its realistic take —
+    # labeled ESTIMATED with its basis — its
+    # real cost, and its real catch), the scam
+    # read (fee-first / keys-first /
+    # signature-first / too-good-to-be-true
+    # NAMED A SCAM and refused), the guarantee
+    # correction, and its own per-account
+    # bench. THE FENCES — Brent's law at full
+    # strength: GOD MODE IS A TIER OF SEATS,
+    # NOT A BYPASS (every lower seat's fence
+    # and approval door stands over this one);
+    # LEGITIMATE ONLY (theft, fraud, deception
+    # refused by name); IT MOVES NO MONEY,
+    # CLAIMS NOTHING, AND SIGNS NOTHING (every
+    # tap stays the user's at the official
+    # door, through the owning seat's approval
+    # chain); NO GUARANTEED-INCOME CLAIMS,
+    # EVER; the keeping side is R305's chair
+    # and never blurs into this seat; nothing
+    # outside making-money-fast is this seat's
+    # chair; per-account bench isolation; no
+    # new loop, no new timer.
+    try:
+        import og_godmodemoneyfast as _oggodmodemoneyfast
+        _oggodmodemoneyfast.install_godmodemoneyfast_tools(agent_instance, get_uid)
+    except Exception as e:
+        logger.warning(f"GodModeMoneyFast install skipped: {e}")
     # Round 275: the ACTIVITY OBSERVER installs in
     # the same last install, AFTER Messenger (its
     # web_search wrap is outermost). It routes
@@ -2613,6 +2690,12 @@ def install_fixqueue_tools(agent_instance, get_uid):
         _ogactivity.install_activity_observer(agent_instance, get_uid)
     except Exception as e:
         logger.warning(f"Activity observer install skipped: {e}")
+    # Round 321c: LAST — every seat module is imported by
+    # now, so the claim-budget census wraps their funnels.
+    try:
+        _wrap_claim_funnels()
+    except Exception as e:
+        logger.warning(f"Claim-budget wrap skipped: {e}")
     agent_instance._og_fixqueue_installed = True
 
 
