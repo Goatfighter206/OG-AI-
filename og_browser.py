@@ -184,7 +184,7 @@ def _pro_url() -> str:
     return base.rstrip("/") + "/pro"
 
 
-# --- Dark-posture switches ---------------------------------------------------
+# --- Dark-posture switches --------
 
 
 def browser_enabled() -> bool:
@@ -206,7 +206,7 @@ def enabled() -> bool:
     return browser_enabled() and bool(_steel_key())
 
 
-# --- Site gates: narrow allowlist, hard blocklist (plan 6.3) -----------------
+# --- Site gates: narrow allowlist, hard blocklist (plan 6.3) ----
 
 _ALLOW_DEFAULT = (
     "wikipedia.org", "duckduckgo.com", "google.com", "bing.com",
@@ -301,7 +301,7 @@ def _url_gate(url: str):
     return True, ""
 
 
-# --- Usage-store state: minutes, taste, live sessions -------------------------
+# --- Usage-store state: minutes, taste, live sessions ----
 
 def _today() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -391,7 +391,7 @@ def _all_sessions() -> Dict[str, Dict]:
     return out
 
 
-# --- Round 61: the starting marker -------------------------------------------
+# --- Round 61: the starting marker --------
 # Brent's open order (2026-10-10): the browser comes UP first,
 # then the site opens inside it. The marker logic lives in
 # og_browser_starting.py (code motion, the Round 46 precedent —
@@ -494,7 +494,7 @@ def _end_session(uid: str, why: str = "") -> Optional[Dict]:
     return rec
 
 
-# --- Pending proposals / gated actions (per visitor, 10-min TTL) ------------
+# --- Pending proposals / gated actions (per visitor, 10-min TTL) ----
 # Round 36 hygiene (Brent's stuck "Needs approval", 2026-10-09):
 # (1) a pending dies with its session — _end_session clears it in
 # the same operation, and _get_pending sweeps an ACTION pending
@@ -537,7 +537,7 @@ def _clear_pending(uid: str):
     _warm.clear_pending(uid, _SELF)
 
 
-# --- Round 49: the always-allow list -------------------------------------------
+# --- Round 49: the always-allow list --------
 # The owner's approval-fatigue fix: sites the visitor has said
 # "always allow this site" for skip the approval park. Durable,
 # per-visitor, in the SAME usage store as sessions/pendings —
@@ -624,7 +624,7 @@ def _do_disallow(uid: str, host: str) -> List[Dict]:
         "as everywhere else.")
 
 
-# --- Round 38: approval + sign-in alerts (og_notify producers) ---------------
+# --- Round 38: approval + sign-in alerts (og_notify producers) ----
 # When OG needs the visitor — a parked approval, or a login
 # wall only they can pass — the event ALSO lands in their
 # Round 31 notification center (+ the alert kinds' own email /
@@ -731,7 +731,7 @@ def _other_pending(uid: str) -> bool:
     return False
 
 
-# --- Steel REST seam (the suite stubs _steel_api / _cdp_connect) --------------
+# --- Steel REST seam (the suite stubs _steel_api / _cdp_connect) ----
 
 # Round 107: the Steel REST wait, in seconds — a named
 # constant with this seam as its single home. 30 s of
@@ -788,16 +788,15 @@ def _steel_api(method: str, path: str, body: Optional[Dict] = None,
 
 
 # Round 47: Steel's Launch plan caps a single session at 15
-# minutes ("Max session time" on the Steel dashboard) no matter
-# what timeout the create asks for — and an over-cap ask is
-# REFUSED outright (HTTP 400), which is exactly what killed
-# every Blackout start: the full 600-minute daily budget was
-# being sent as one session's timeout (36,000,000 ms). The
-# clamp below is only a backstop: OG's own accounting (elapsed
-# accrual, _session_minutes_left, _end_session, the 20-minute
-# idle kill) owns the visitor's daily budget and never reads
-# this value; if Steel releases a session at the cap, the next
-# touch ends it and accrues the minutes actually used.
+# minutes no matter what timeout the create asks for — and
+# an over-cap ask is REFUSED outright (HTTP 400), which is
+# what killed every Blackout start (the full daily budget
+# was being sent as one session's timeout). The clamp below
+# is only a backstop: OG's own accounting (elapsed accrual,
+# _session_minutes_left, _end_session, the 20-minute idle
+# kill) owns the daily budget and never reads this value;
+# if Steel releases a session at the cap, the next touch
+# ends it and accrues the minutes actually used.
 _STEEL_SESSION_CAP_MIN = 15
 _STEEL_SESSION_CAP_MS = _STEEL_SESSION_CAP_MIN * 60 * 1000
 
@@ -838,7 +837,7 @@ def _steel_create_session(budget_minutes: int,
     return sess
 
 
-# --- Round 29: vault profile hooks (registered by og_watch) ------------------
+# --- Round 29: vault profile hooks (registered by og_watch) ----
 # og_browser owns the Steel seams; og_watch owns the vault store.
 # The hooks keep the dependency one-way: this module never imports
 # og_watch. get(uid) -> profile_id|None; note(uid, profile_id) --
@@ -847,13 +846,16 @@ def _steel_create_session(budget_minutes: int,
 # auto-deleted), the vault drops it and tells the visitor once;
 # site(uid, host) -- a log-in wall cleared for host during a
 # session: the vault records the kept log-in; summary(uid) -> the
-# plain-words vault line for the session-end narration.
+# plain-words vault line for the session-end narration;
+# wall(uid, host) -- Round 321: a NEW wall sighting drops
+# the vault's site record for that host.
 
 _profile_hooks: Dict = {}
 
 
 def register_profile_hooks(get=None, note=None, gone=None,
-                           site=None, summary=None) -> None:
+                           site=None, summary=None,
+                           wall=None) -> None:
     if get is not None:
         _profile_hooks["get"] = get
     if note is not None:
@@ -864,6 +866,9 @@ def register_profile_hooks(get=None, note=None, gone=None,
         _profile_hooks["site"] = site
     if summary is not None:
         _profile_hooks["summary"] = summary
+    # Round 321: the wall hook (og_watch._hook_note_wall).
+    if wall is not None:
+        _profile_hooks["wall"] = wall
 
 
 def _hook(name: str):
@@ -950,7 +955,7 @@ def _capture_shot(rec: Dict) -> bytes:
         cdp.close()
 
 
-# --- Raw CDP driver (websockets ships with uvicorn[standard]) -----------------
+# --- Raw CDP driver (websockets ships with uvicorn[standard]) ----
 
 
 
@@ -1044,7 +1049,7 @@ def _drive(rec: Dict, action: Dict) -> Dict:
         cdp.close()
 
 
-# --- Round 43: the visitor's own hands (panel input) -------------------------
+# --- Round 43: the visitor's own hands (panel input) ----
 
 _FOCUS_JS = ("(function(){var a=document.activeElement;"
              " if(!a) return '';"
@@ -1196,7 +1201,7 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
 # _find_element, _find_field, _find_composer,
 # _find_post_button and their label regexes live there.
 
-# --- Narration (grounded result blocks the persona voices) ---------------------
+# --- Narration (grounded result blocks the persona voices) ----
 
 
 def _result(tag: str, title: str, body: str, href: str = "") -> List[Dict]:
@@ -1347,6 +1352,14 @@ def _update_rec_from_snap(uid: str, rec: Dict, snap: Dict) -> None:
                 # Round 38: a NEW sign-in episode starts here —
                 # alert once (the wall list dedupes the rest).
                 _alert_signin(uid, wall)
+                # Round 321: a NEW wall drops the vault's
+                # site record via the wall hook.
+                wall_hook = _hook("wall")
+                if wall_hook is not None:
+                    try:
+                        wall_hook(uid, h)
+                    except Exception:
+                        pass
         else:
             host = _norm_host(urllib.parse.urlparse(
                 snap.get("url") or "").hostname or "")
@@ -1467,7 +1480,7 @@ def _run_action(uid: str, rec: Dict, action: Dict,
         _meter_bank(uid)
 
 
-# --- Chat parsing ---------------------------------------------------------------
+# --- Chat parsing --------
 # Round 46 code motion (push ceiling): the pure claim-parsing
 # block below this header moved to og_browser_claim.py
 # byte-identically; every name is imported back so callers
@@ -1604,7 +1617,7 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
     return _garble_claim(raw, low, False)  # Round 75
 
 
-# --- Results execution ----------------------------------------------------------
+# --- Results execution --------
 
 
 # _dark_text lives in og_browser_claim.py (R75 motion).
@@ -2199,7 +2212,7 @@ def _do_act(uid: str, job: Dict) -> List[Dict]:
                    + _session_footer(uid))
 
 
-# --- Posting (Round 27 WS3): draft -> YES -> post, confirmed ----------------
+# --- Posting (Round 27 WS3): draft -> YES -> post, confirmed ----
 
 
 def _attempt_post_draft(uid: str) -> List[Dict]:
@@ -2410,7 +2423,7 @@ def _browser_results(job: Dict, message: str, uid: str) -> List[Dict]:
     return _dark_text()
 
 
-# --- Chat seam (installed LAST, after storage) -----------------------------------
+# --- Chat seam (installed LAST, after storage) --------
 
 _pending: Dict = {"job": None, "message": ""}
 
@@ -2468,7 +2481,7 @@ def install_browser_tools(agent_instance, get_uid):
     agent_instance._og_browser_installed = True
 
 
-# --- Routes: status (panel), takeover + end (panel buttons), reaper ------------
+# --- Routes: status (panel), takeover + end (panel buttons), leave, reaper -----
 
 
 def _route_uid(request: Request) -> str:
@@ -2529,6 +2542,14 @@ def register_browser_routes(app):
                     > _IDLE_KILL_S:
                 await asyncio.to_thread(_end_session, uid,
                                         "idle 20 minutes")
+                rec = None
+            elif time.time() - float(
+                    rec.get("steel_born") or rec.get("started")
+                    or 0) > _STEEL_SESSION_CAP_MS // 1000:
+                # Round 321: past Steel's 15-minute cap the
+                # record is a corpse — end it, tell the truth.
+                await asyncio.to_thread(_end_session, uid,
+                                        "steel session cap")
                 rec = None
         if rec:
             out["active"] = True
@@ -2596,6 +2617,9 @@ def register_browser_routes(app):
                                          / 60.0))),
                 }
         return out
+
+    # Round 321: POST /browser/leave mounts from og_library
+    # (this module is at the push ceiling).
 
     @app.get("/browser/screenshot")
     async def browser_screenshot(request: Request):
