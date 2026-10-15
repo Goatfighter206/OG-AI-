@@ -101,6 +101,11 @@ _activity_lock = threading.RLock()
 # as ongoing work.
 CURRENT_WINDOW = 600.0
 
+# Round 321 (Step 2): a turn whose detect+claim chains
+# together take longer than this is logged at WARN with
+# the claiming seat (FIX-PLAN Piece 2, suspect S5).
+CLAIM_SLOW_S = 2.0
+
 # The seats the bubble may name, by the tag their
 # routed results carry, with the plain name the
 # bubble uses. An unmapped tag is NEVER recorded —
@@ -132,6 +137,18 @@ SEAT_NAMES = {
     "OG WOOD PROJECT BUILDER PRO": "Wood Builder",
     "OG CREW": "The crew",
     "OG WATCH": "Watch",
+    # Round 321 (FIX-PLAN Piece 4): the seats the bubble
+    # could not name — the panel/YouTube seats and the
+    # God Mode tier. Standing rule from this round on:
+    # every future seat landing adds its _TAG entry HERE
+    # in its own seam edit, and the r321 census test
+    # fails any landing that forgets.
+    "OG YOUTUBE": "YouTube",
+    "OG BROWSER SPECIALIST": "Browser",
+    "OG GOD MODE CODING": "God Mode Coding",
+    "OG GOD MODE TESTER": "God Mode Tester",
+    "OG GOD MODE RUNSET": "God Mode Runset",
+    "OG GOD MODE MAKE MONEY FAST": "God Mode Make Money Fast",
 }
 
 # Whole-line specials where "<Name> is on it" would
@@ -429,9 +446,42 @@ def install_activity_observer(agent_instance, get_uid):
                           None)
     if prev_search is None:
         return
+    prev_detect = getattr(agent_instance, "detect_intent",
+                          None)
+
+    # Round 321 (Step 2): claim-phase timing. The plan
+    # (FIX-PLAN Piece 2, suspect S5) prices the claim
+    # chain per turn: the detect chain's wall time is
+    # stashed per thread by the timing wrapper below and
+    # added to the search chain's; a turn whose combined
+    # detect+claim wall time passes CLAIM_SLOW_S logs ONE
+    # WARN line naming the claiming seat (read off the
+    # routed results, the same read record_claim makes).
+    # Timing only — the wrappers route nothing, answer
+    # nothing, and pass every value through untouched.
+    import threading as _threading
+    _timing = _threading.local()
 
     def search_wrapped(query, num_results=5):
+        _t0 = time.time()
         results = prev_search(query, num_results)
+        _elapsed = time.time() - _t0
+        try:
+            _detect_s = float(getattr(_timing, "detect_s", 0.0)
+                              or 0.0)
+        except Exception:
+            _detect_s = 0.0
+        _timing.detect_s = 0.0
+        if _detect_s + _elapsed > CLAIM_SLOW_S:
+            try:
+                _hit = seat_for_results(results)
+                _seat = (_hit or {}).get("seat") or "unclaimed"
+            except Exception:
+                _seat = "unclaimed"
+            logger.warning(
+                f"Claim phase slow: {_detect_s + _elapsed:.2f}s "
+                f"(detect {_detect_s:.2f}s + claim "
+                f"{_elapsed:.2f}s), seat: {_seat}")
         try:
             if activity_enabled():
                 uid = ""
@@ -446,6 +496,18 @@ def install_activity_observer(agent_instance, get_uid):
         return results
 
     agent_instance.web_search = search_wrapped
+    if prev_detect is not None:
+        def detect_wrapped(message):
+            _t0 = time.time()
+            try:
+                return prev_detect(message)
+            finally:
+                try:
+                    _timing.detect_s = time.time() - _t0
+                except Exception:
+                    pass
+
+        agent_instance.detect_intent = detect_wrapped
     agent_instance._og_activity_installed = True
 
 
