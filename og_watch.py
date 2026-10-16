@@ -1871,7 +1871,7 @@ def register_watch_routes(app):
                 "body": "\n".join(b.get("body", "") for b in blocks)}
 
     @app.post("/watch/forget")
-    async def watch_forget(request: Request):
+    def watch_forget(request: Request):
         if not B.enabled():
             return JSONResponse({"error": "not found"},
                                 status_code=404)
