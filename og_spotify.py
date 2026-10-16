@@ -566,7 +566,7 @@ def register_spotify_routes(app):
     Mirrors the Round 3 Google routes one for one."""
 
     @app.get("/auth/spotify")
-    async def spotify_auth_start(raw_request: Request):
+    def spotify_auth_start(raw_request: Request):
         """
         Begin Spotify connect: bounce the visitor to Spotify's own
         consent page. Answers 404 while the feature is dark (keys not
@@ -684,7 +684,7 @@ def register_spotify_routes(app):
         }
 
     @app.post("/auth/spotify/disconnect")
-    async def spotify_auth_disconnect(raw_request: Request):
+    def spotify_auth_disconnect(raw_request: Request):
         """Forget this visitor's Spotify connection — tokens deleted
         server-side."""
         if not SPOTIFY_ENABLED:
