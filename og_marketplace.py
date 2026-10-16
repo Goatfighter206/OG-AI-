@@ -1452,7 +1452,7 @@ def register_marketplace_routes(app):
     counts read live off the stores that own them."""
 
     @app.get("/marketplace/status")
-    async def marketplace_status_route(request: Request):
+    def marketplace_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "hunt": None, "book": 0, "watches": 0,
