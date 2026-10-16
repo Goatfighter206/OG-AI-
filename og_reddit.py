@@ -660,7 +660,7 @@ def register_reddit_routes(app):
     Mirrors the Round 10/14 routes one for one."""
 
     @app.get("/auth/reddit")
-    async def reddit_auth_start(raw_request: Request):
+    def reddit_auth_start(raw_request: Request):
         """
         Begin Reddit connect: bounce the visitor to Reddit's own
         consent page. Answers 404 while the feature is dark (keys
@@ -783,7 +783,7 @@ def register_reddit_routes(app):
         }
 
     @app.post("/auth/reddit/disconnect")
-    async def reddit_auth_disconnect(raw_request: Request):
+    def reddit_auth_disconnect(raw_request: Request):
         """Forget this visitor's Reddit connection — tokens
         deleted server-side."""
         if not REDDIT_ENABLED:
