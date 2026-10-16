@@ -1100,7 +1100,7 @@ def install_pm_tools(agent_instance, get_uid):
 def register_pm_routes(app):
 
     @app.get("/pm/status")
-    async def pm_status_route(request: Request):
+    def pm_status_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         if uid:
             _advance(uid)
