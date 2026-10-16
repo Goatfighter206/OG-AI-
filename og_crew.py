@@ -1181,7 +1181,7 @@ def install_crew_tools(agent_instance, get_uid):
 def register_crew_routes(app):
 
     @app.get("/crew/status")
-    async def crew_status_route(request: Request):
+    def crew_status_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         data = crew_status(uid)
         return {"ok": True, "enabled": crew_enabled(),
