@@ -1240,7 +1240,7 @@ def register_monitor_routes(app):
     from fastapi import Request
 
     @app.get("/monitor/status")
-    async def monitor_status(request: Request):
+    def monitor_status(request: Request):
         # Round 59: the caller's own price watches for the shell's
         # Goals seat. Read-only over the EXISTING per-uid blob (no
         # new store); gated by the Round 44 sign-in gate like every
