@@ -1049,7 +1049,7 @@ def register_tier_routes(app):
         return commercial_grid()
 
     @app.get("/pro", response_class=HTMLResponse)
-    async def pro_upgrade(raw_request: Request):
+    def pro_upgrade(raw_request: Request):
         _DEPS["bump_stat"]("pro_clicks")
         links = {t: tier_link(t, _DEPS["pro_link"]) for t in PAID_TIERS}
         uid = raw_request.cookies.get("ogai_uid") \
@@ -1057,7 +1057,7 @@ def register_tier_routes(app):
         return HTMLResponse(content=ladder_page_html(links, uid))
 
     @app.get("/pro/success")
-    async def pro_success(raw_request: Request):
+    def pro_success(raw_request: Request):
         # v1 (default): the payment link redirects buyers here after
         # checkout; set the ogai_tier cookie for the tier bought
         # (?tier=...; the legacy $9.99 link grants standard).
