@@ -786,7 +786,7 @@ def _blocks_text(blocks) -> str:
 def register_mp_routes(app):
 
     @app.get("/mpwatch/approvals")
-    async def mp_approvals(request: Request):
+    def mp_approvals(request: Request):
         uid = _uid_of(request)
         if not uid:
             return {"approvals": []}
