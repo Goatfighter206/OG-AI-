@@ -445,7 +445,7 @@ def _read_samples(uid: str, metas: List[Dict]):
 # --- Voices store (per-uid {voice_id, name, created} only) ------
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo
 try:
     import psycopg
 except Exception:
@@ -469,7 +469,7 @@ def _vstore_load(uid: str) -> Dict:
                 "clone_state": dict(rec.get("clone_state") or {})}
     if MEMORY_DB_URL and psycopg is not None:
         try:
-            conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT)
+            conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
             _apply_bounds(conn)
             with conn:
                 with conn.cursor() as cur:
@@ -514,7 +514,7 @@ def _vstore_save(uid: str, data: Dict) -> None:
         _vstore_mem[owner] = rec
     if MEMORY_DB_URL and psycopg is not None:
         try:
-            conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT)
+            conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
             _apply_bounds(conn)
             with conn:
                 with conn.cursor() as cur:
@@ -598,7 +598,7 @@ def _json_store_path() -> str:
 
 
 def _db_connect():
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT)
+    conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
     _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
@@ -791,7 +791,7 @@ def purge_owner(uid: str):
         except Exception as e:
             logger.warning(f"Voice lab DB purge failed: {e}")
         try:
-            conn = psycopg.connect(MEMORY_DB_URL,
+            conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL),
                                    connect_timeout=_DB_CT)
             _apply_bounds(conn)
             with conn:
