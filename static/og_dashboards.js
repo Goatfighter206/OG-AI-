@@ -8,15 +8,21 @@
      swipe RIGHT -> 'fin'     (Financial Smart Agent,
                                og_markets.js)
      Progress    -> 'manager' (Crew Dashboard, this file)
-   The Manager's door is the #ogManagerBtn button
-   og_shell.js seats at the bottom of the Progress
-   panel (Brent, 2026-10-16 09:21). The Profile Sheet's
-   door is the avatar tap alone (Brent, 2026-10-16 10:13:
-   the sheet is not the Manager).
+   The Manager's home is the Progress panel ITSELF:
+   og_shell.js mounts this renderer into the panel via
+   OGDS.mount (Brent, 2026-10-16 16:09 — the panel's
+   only content is the live Manager; the old progress
+   lists and the bottom #ogManagerBtn button are
+   retired). The Profile Sheet's door is the avatar tap
+   alone (Brent, 2026-10-16 10:13: the sheet is not
+   the Manager).
 
    The contract other renderers code against:
      window.OGDS = {
        open(name), close(),
+       mount(name, el),   // render into a host element
+                          // (the Progress panel); resolves
+                          // to the cleanup fn or null
        registerSurface(name, rendererFn),
        state   // the last /dashboards/state payload
      }
@@ -46,8 +52,26 @@ var surfaces = {};   // name -> {renderer, el, bodyEl, cleanup}
 var openName = null;
 var profileArmed = false;
 
+/* fetch with a hard timeout (Drill 5 fix, 2026-10-16):
+   a fetch whose promise never settles — a dead pooled
+   connection on a moving phone — otherwise leaves the
+   surface on its "Loading…" paint forever, because a
+   hung fetch never rejects and the .catch never runs.
+   The abort turns the hang into the ordinary failure
+   path every caller already paints honestly. */
+function fetchTO(url, ms) {
+  if (typeof AbortController === 'undefined') {
+    return fetch(url);
+  }
+  var ctl = new AbortController();
+  var t = setTimeout(function () { ctl.abort(); }, ms);
+  return fetch(url, { signal: ctl.signal })
+    .then(function (r) { clearTimeout(t); return r; },
+          function (e) { clearTimeout(t); throw e; });
+}
+
 function fetchState() {
-  return fetch('/dashboards/state')
+  return fetchTO('/dashboards/state', 10000)
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (d && typeof d === 'object') OGDS.state = d;
@@ -124,6 +148,33 @@ function close() {
   OGDS.current = null;
 }
 
+/* mount(name, el): render a surface into a HOST element
+   instead of the full-screen overlay — the Manager's
+   home inside the Progress panel (Brent, 2026-10-16
+   16:09). Same state gate as open(). Resolves to the
+   renderer's cleanup function (or null when the surface
+   is unavailable / the renderer returned none); the
+   HOST owns the cleanup and must call it when it stops
+   showing the surface, so the renderer's timers die
+   with the panel exactly as they die with the overlay. */
+function mount(name, el) {
+  var rec = surfaces[name];
+  if (!rec || typeof rec.renderer !== 'function' || !el) {
+    return Promise.resolve(null);
+  }
+  return fetchState().then(function (st) {
+    if (!st || !st[name]) return null;
+    var ret = null;
+    try { ret = rec.renderer(el); } catch (e) { ret = null; }
+    if (ret && typeof ret.then === 'function') {
+      return ret.then(function (cleanup) {
+        return typeof cleanup === 'function' ? cleanup : null;
+      });
+    }
+    return typeof ret === 'function' ? ret : null;
+  });
+}
+
 function registerSurface(name, rendererFn) {
   var rec = surfaces[name];
   if (!rec) rec = surfaces[name] = { renderer: null };
@@ -133,6 +184,7 @@ function registerSurface(name, rendererFn) {
 var OGDS = {
   open: open,
   close: close,
+  mount: mount,
   registerSurface: registerSurface,
   state: null,
   current: null
@@ -175,15 +227,14 @@ fetchState().then(function (st) {
   profileArmed = !!(st && st.profile);
 });
 
-/* --- Entry (b): the Progress panel's bottom button ------------------------
-   og_shell.js builds #ogManagerBtn inside #ogGoalsView; a
-   delegated listener catches it whenever it exists. */
-document.addEventListener('click', function (e) {
-  var t = e.target;
-  if (t && t.closest && t.closest('#ogManagerBtn')) {
-    open('manager');
-  }
-});
+/* --- Entry (b): RETIRED 2026-10-16 (Brent, 16:09) -------------------------
+   The #ogManagerBtn button at the bottom of the Progress
+   panel is gone: the Manager Dashboard now lives INSIDE
+   the Progress panel as its only content. og_shell.js
+   mounts the 'manager' renderer into the panel through
+   OGDS.mount when the Progress seat opens and runs its
+   cleanup when the seat closes. No click path opens the
+   manager overlay any more. */
 
 /* --- Entry (c): swipes on the main chat surface ----------------------------
    Horizontal swipe >= 70px; a vertical-dominant gesture is
@@ -320,7 +371,7 @@ function renderManager(bodyEl) {
 
   function load() {
     if (closed) return;
-    fetch('/crewdash/data')
+    fetchTO('/crewdash/data', 15000)
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) { if (!closed) paint(data); })
       .catch(function () { if (!closed) paint(null); });
@@ -613,7 +664,7 @@ function renderProfileSheet(bodyEl) {
 
   function load() {
     if (closed) return;
-    fetch('/crewdash/sheet?tzoff=' + (-new Date().getTimezoneOffset()))
+    fetchTO('/crewdash/sheet?tzoff=' + (-new Date().getTimezoneOffset()), 15000)
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) { if (!closed) paint(data); })
       .catch(function () { if (!closed) paint(null); });
@@ -767,8 +818,13 @@ function renderProfileSheet(bodyEl) {
       meta += (meta ? ' \u00b7 ' : '') + controlText;
       card.appendChild(h('div', 'og-sheet-card-meta', meta));
       if (session.last_action) {
+        /* the builder emits last_action as epoch SECONDS
+           (og_crewdash._f) — paint it as a clock time,
+           never the raw number (Drill 5 clientfix). */
+        var la = fmtClock(session.last_action);
         card.appendChild(h('div', 'og-sheet-card-line',
-          String(session.last_action)));
+          la ? 'Last action ' + la
+             : String(session.last_action)));
       }
       panel.appendChild(card);
     }
