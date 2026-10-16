@@ -1157,7 +1157,7 @@ def _job_view(rec: Optional[Dict]) -> Optional[Dict]:
 
 def register_motion_routes(app):
     @app.get("/motion/status")
-    async def motion_status(request: Request):
+    def motion_status(request: Request):
         if not enabled():
             return {"enabled": False, "provider": PROVIDER_NAME}
         uid = _route_uid(request)
@@ -1196,7 +1196,7 @@ def register_motion_routes(app):
                 "job": _job_view(_store_latest_for_owner(_key(uid)))}
 
     @app.post("/motion/approve")
-    async def motion_approve(request: Request):
+    def motion_approve(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "motion is off"},
@@ -1210,7 +1210,7 @@ def register_motion_routes(app):
                 "error": "" if ok else msg}
 
     @app.post("/motion/decline")
-    async def motion_decline(request: Request):
+    def motion_decline(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "motion is off"},
@@ -1222,7 +1222,7 @@ def register_motion_routes(app):
         return {"ok": ok, "error": "" if ok else msg}
 
     @app.get("/motion/download/{job_id}")
-    async def motion_download(job_id: str, request: Request):
+    def motion_download(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
@@ -1237,7 +1237,7 @@ def register_motion_routes(app):
             filename=_slug(rec.get("title", "motion")) + ".mp4")
 
     @app.post("/motion/save/{job_id}")
-    async def motion_save(job_id: str, request: Request):
+    def motion_save(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
