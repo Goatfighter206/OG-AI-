@@ -88,7 +88,7 @@ FILING_STORE_FILE = "filing_store.json"
 _filing_lock = threading.RLock()
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError, apply_bounds as _apply_bounds
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -111,6 +111,7 @@ def filing_enabled() -> bool:
 
 def _db_connect():
     conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_filing_data ("
