@@ -1344,7 +1344,7 @@ def register_utils_routes(app):
     only, 24 h) and GET /s/<code> (short-link redirect)."""
 
     @app.get("/utils/qr/{qr_id}.png")
-    async def utils_qr_png(qr_id: str, raw_request: Request):
+    def utils_qr_png(qr_id: str, raw_request: Request):
         if not re.fullmatch(r"[0-9a-f]{32}", qr_id or ""):
             raise HTTPException(status_code=404, detail="Not found")
         ppath = os.path.join(UTILS_STORE_DIR, f"qr_{qr_id}.png")
@@ -1365,7 +1365,7 @@ def register_utils_routes(app):
                             filename="qr.png")
 
     @app.get("/s/{code}")
-    async def utils_shortlink(code: str, raw_request: Request):
+    def utils_shortlink(code: str, raw_request: Request):
         if not re.fullmatch(r"[A-Za-z0-9]{7}", code or ""):
             raise HTTPException(status_code=404, detail="Not found")
         with _short_lock:
