@@ -1278,7 +1278,7 @@ def register_messenger_routes(app):
     session's host, read live."""
 
     @app.get("/messenger/status")
-    async def messenger_status_route(request: Request):
+    def messenger_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "draft": None, "last_read": None,
