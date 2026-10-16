@@ -747,7 +747,7 @@ def register_youtube_routes(app):
     Mirrors the Round 10/14 routes one for one."""
 
     @app.get("/auth/youtube")
-    async def youtube_auth_start(raw_request: Request):
+    def youtube_auth_start(raw_request: Request):
         """
         Begin YouTube connect: bounce the visitor to Google's own
         consent page. Answers 404 while the feature is dark (keys
@@ -867,7 +867,7 @@ def register_youtube_routes(app):
         }
 
     @app.post("/auth/youtube/disconnect")
-    async def youtube_auth_disconnect(raw_request: Request):
+    def youtube_auth_disconnect(raw_request: Request):
         """Forget this visitor's YouTube connection — tokens
         deleted server-side."""
         if not YOUTUBE_ENABLED:
@@ -2379,7 +2379,7 @@ def register_youtube_seat_routes(app):
     / as whom — never tokens)."""
 
     @app.get("/youtube/status")
-    async def youtube_status_route(request: Request):
+    def youtube_status_route(request: Request):
         uid = _seat_route_uid(request)
         view = youtube_seat_status_for(uid) if uid else {
             "channel": None, "niche": "", "draft": None,
