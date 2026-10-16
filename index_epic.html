@@ -565,6 +565,35 @@ cta.innerHTML = '<a href="/pro" style="display: inline-block; padding: 10px 26px
 document.getElementById('messagesArea').appendChild(cta);
 ogFollowBottom(false);
 }
+/* Drill 5 fix (2026-10-16): POST /chat with a hard
+   client-side timeout. A fetch whose promise never
+   settles — the request dispatched onto a dead pooled
+   connection on a moving phone never reaches the server
+   and never rejects — otherwise leaves the turn on
+   "Thinking..." forever with the composer latched.
+   The abort turns the hang into sendMessage's ordinary
+   error path: a visible error line and an unlocked
+   composer. The timer covers time-to-headers only;
+   once a stream is flowing, streamReply's own idle
+   guard watches the reads. */
+function ogChatFetch(payload, timeoutMs) {
+if (typeof AbortController === 'undefined') {
+return fetch(`${API_URL}/chat`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(payload)
+});
+}
+const ctl = new AbortController();
+const timer = setTimeout(() => ctl.abort(), timeoutMs);
+return fetch(`${API_URL}/chat`, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(payload),
+signal: ctl.signal
+}).then(r => { clearTimeout(timer); return r; },
+e => { clearTimeout(timer); throw e; });
+}
 async function sendMessage(speakResponse = false, coords = null) {
 const input = document.getElementById('messageInput');
 let message = input.value.trim();
@@ -594,11 +623,7 @@ async function classicReply(message, coords = null, image = false) {
 const payload = { message: message };
 if (coords) payload.coords = coords;
 if (image) payload.image = true;
-const response = await fetch(`${API_URL}/chat`, {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify(payload)
-});
+const response = await ogChatFetch(payload, 45000);
 if (!response.ok) throw new Error(`Server error: ${response.status}`);
 const data = await response.json();
 addMessage('ai', data.response, data.timestamp);
@@ -613,11 +638,7 @@ try {
 const payload = { message: message, stream: true };
 if (coords) payload.coords = coords;
 if (image) payload.image = true;
-response = await fetch(`${API_URL}/chat`, {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify(payload)
-});
+response = await ogChatFetch(payload, 30000);
 } catch (e) {
 return false;
 }
@@ -646,8 +667,17 @@ const reader = response.body.getReader();
 const decoder = new TextDecoder();
 let buffer = '';
 let reading = true;
+/* Drill 5 fix: a stream read that never settles (the
+   connection died mid-stream) must fail into the catch
+   below, not sit on "OG is typing..." forever. 120s
+   without a chunk is a dead stream, not a slow answer. */
+const ogReadChunk = () => Promise.race([
+reader.read(),
+new Promise((_, reject) => setTimeout(
+() => reject(new Error('Stream idle too long')), 120000))
+]);
 while (reading) {
-const { done, value } = await reader.read();
+const { done, value } = await ogReadChunk();
 if (done) break;
 buffer += decoder.decode(value, { stream: true });
 let cut;
@@ -677,6 +707,7 @@ reading = false;
 }
 }
 } catch (e) {
+try { reader.cancel(); } catch (e2) {}
 if (!full) { bubble.remove(); setMood(''); throw new Error('Stream dropped'); }
 streamError = true;
 }
