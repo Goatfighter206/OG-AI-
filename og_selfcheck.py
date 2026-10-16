@@ -1152,7 +1152,7 @@ def register_selfcheck_routes(app):
     # pushed at users.
 
     @app.get("/system/check")
-    async def system_check_latest(key: str = ""):
+    def system_check_latest(key: str = ""):
         if not _key_ok(key):
             return JSONResponse({"detail": "Owner key required"},
                                 status_code=401)
