@@ -2056,7 +2056,7 @@ def register_woodpro_routes(app):
     caller's cookie uid, like every Round 95+ surface."""
 
     @app.get("/woodpro/status")
-    async def woodpro_status_route(request: Request):
+    def woodpro_status_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         return {"ok": True, "enabled": woodpro_enabled(),
                 "plans": plans_for(uid) if uid else []}
