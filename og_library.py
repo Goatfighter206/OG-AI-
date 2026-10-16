@@ -754,7 +754,7 @@ def register_library_routes(app):
         logger.warning(f"Autoupdate routes skipped: {e}")
 
     @app.get("/library")
-    async def library_list(request: Request):
+    def library_list(request: Request):
         uid = _request_uid(request)
         if not uid:
             return {"items": [], "storage": None,
@@ -769,7 +769,7 @@ def register_library_routes(app):
                 "counts": counts}
 
     @app.get("/feed")
-    async def feed_list(request: Request):
+    def feed_list(request: Request):
         """Round 70 (addition): the Feed seat's one payload —
         the caller's rows in feed_rows() order (the ordering
         lives server-side; the client renders it verbatim).
