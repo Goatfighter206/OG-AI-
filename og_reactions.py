@@ -205,7 +205,7 @@ def _uid_of(request: Request) -> str:
 def register_reaction_routes(app):
 
     @app.get("/reactions")
-    async def reactions_list(request: Request):
+    def reactions_list(request: Request):
         uid = _uid_of(request)
         if not uid:
             return {"reactions": {}}
