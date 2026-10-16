@@ -314,7 +314,7 @@ def _request_uid(request: Request) -> str:
 
 def register_idea_routes(app):
     @app.get("/ideas")
-    async def ideas_list(request: Request):
+    def ideas_list(request: Request):
         uid = _request_uid(request)
         return {"ideas": ideas_for(uid, request)}
 
