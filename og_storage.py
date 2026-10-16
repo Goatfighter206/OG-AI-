@@ -1066,7 +1066,7 @@ def register_storage_routes(app):
                         f"locker for good. 🗄️"})
 
     @app.post("/storage/save-temp")
-    async def storage_save_temp(raw_request: _Req):
+    def storage_save_temp(raw_request: _Req):
         """Copy the current temp upload into the locker."""
         if not storage_enabled():
             raise _not_found()
@@ -1105,7 +1105,7 @@ def register_storage_routes(app):
                         f"locker for good. 🗄️"})
 
     @app.get("/storage/download/{fid}")
-    async def storage_download(fid: str, raw_request: _Req):
+    def storage_download(fid: str, raw_request: _Req):
         if not storage_enabled():
             raise _not_found()
         uid = _uid_of(raw_request)
@@ -1123,7 +1123,7 @@ def register_storage_routes(app):
                      f'attachment; filename="{rec["name"]}"'})
 
     @app.post("/storage/delete/{fid}")
-    async def storage_delete(fid: str, raw_request: _Req):
+    def storage_delete(fid: str, raw_request: _Req):
         if not storage_enabled():
             raise _not_found()
         uid = _uid_of(raw_request)
