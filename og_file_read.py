@@ -529,7 +529,7 @@ def register_file_routes(app):
         return JSONResponse(content=payload)
 
     @app.get("/file/image")
-    async def file_image(raw_request: _Req):
+    def file_image(raw_request: _Req):
         """The visitor's OWN attached image bytes — the inline
         thumbnail the composer shows in their message bubble. Owner-
         only by construction: the path is derived from the caller's
@@ -552,7 +552,7 @@ def register_file_routes(app):
                         headers={"Cache-Control": "private, no-store"})
 
     @app.post("/file/remove")
-    async def file_remove(raw_request: _Req):
+    def file_remove(raw_request: _Req):
         """Clear this visitor's attached file server-side."""
         uid = _current_uid_of(raw_request)
         meta = get_meta(uid) if uid else None
