@@ -1139,27 +1139,30 @@ def register_notify_routes(app):
         if not uid:
             return {"ok": True, "unread": 0}
         body = await _json_body(request)
-        items = _items(uid)
-        now = time.time()
-        if body.get("all"):
-            for it in items:
-                if isinstance(it, dict) and not it.get("read"):
-                    it["read"] = True
-                    # Round 95: the read moment is stamped —
-                    # the auto-clear ages read records from
-                    # here, not from their arrival.
-                    it["read_ts"] = now
-        elif isinstance(body.get("id"), str):
-            for it in items:
-                if isinstance(it, dict) \
-                        and it.get("id") == body["id"] \
-                        and not it.get("read"):
-                    it["read"] = True
-                    it["read_ts"] = now
-        _put("items:" + uid, items)
-        return {"ok": True,
-                "unread": sum(1 for it in items
-                              if not it.get("read"))}
+        import asyncio
+        def _work():
+            items = _items(uid)
+            now = time.time()
+            if body.get("all"):
+                for it in items:
+                    if isinstance(it, dict) and not it.get("read"):
+                        it["read"] = True
+                        # Round 95: the read moment is stamped —
+                        # the auto-clear ages read records from
+                        # here, not from their arrival.
+                        it["read_ts"] = now
+            elif isinstance(body.get("id"), str):
+                for it in items:
+                    if isinstance(it, dict) \
+                            and it.get("id") == body["id"] \
+                            and not it.get("read"):
+                        it["read"] = True
+                        it["read_ts"] = now
+            _put("items:" + uid, items)
+            return {"ok": True,
+                    "unread": sum(1 for it in items
+                                  if not it.get("read"))}
+        return await asyncio.to_thread(_work)
 
     @app.post("/notifications/clear")
     async def notifications_clear(request: Request):
@@ -1172,20 +1175,23 @@ def register_notify_routes(app):
         if not uid:
             return {"ok": True, "unread": 0, "removed": 0}
         body = await _json_body(request)
-        item_id = body.get("id")
-        item_id = item_id if isinstance(item_id, str) \
-            and item_id else None
-        scope = body.get("scope")
-        if not item_id and scope not in ("read", "all"):
-            return JSONResponse(
-                {"ok": False, "detail": "bad clear"},
-                status_code=400)
-        removed, unread = _clear(uid, item_id, scope)
-        return {"ok": True, "unread": unread,
-                "removed": removed}
+        import asyncio
+        def _work():
+            item_id = body.get("id")
+            item_id = item_id if isinstance(item_id, str) \
+                and item_id else None
+            scope = body.get("scope")
+            if not item_id and scope not in ("read", "all"):
+                return JSONResponse(
+                    {"ok": False, "detail": "bad clear"},
+                    status_code=400)
+            removed, unread = _clear(uid, item_id, scope)
+            return {"ok": True, "unread": unread,
+                    "removed": removed}
+        return await asyncio.to_thread(_work)
 
     @app.get("/notifications/prefs")
-    async def notifications_prefs_get(request: Request):
+    def notifications_prefs_get(request: Request):
         uid = _uid_of(request)
         if not uid:
             return {"email": False, "push": False,
@@ -1220,7 +1226,7 @@ def register_notify_routes(app):
         return prefs
 
     @app.get("/notifications/vapid")
-    async def notifications_vapid(request: Request):
+    def notifications_vapid(request: Request):
         try:
             keys = _vapid_keys()
             return {"public_key": keys["public"]}
