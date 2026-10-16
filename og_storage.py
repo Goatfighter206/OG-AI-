@@ -82,7 +82,7 @@ NEAR_FULL_RATIO = 0.90
 _CLEANUP_TTL = 600  # a cleanup proposal lives 10 minutes
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError, apply_bounds as _apply_bounds
 try:
     import psycopg
 except Exception:  # psycopg missing — file backend for metadata
@@ -221,6 +221,7 @@ def storage_enabled() -> bool:
 
 def _db_connect():
     conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_storage_files ("
