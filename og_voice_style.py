@@ -85,7 +85,7 @@ UID_COOKIE = "ogai_uid"
 STORE_FILE = os.getenv("OG_VOICE_STORE", "voice_store.json")
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError, apply_bounds as _apply_bounds
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, StoreError, apply_bounds as _apply_bounds
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -143,7 +143,7 @@ def _avatar(avatar) -> str:
 
 
 def _db_connect():
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT)
     _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
