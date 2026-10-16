@@ -1418,7 +1418,7 @@ def _job_view(rec: Optional[Dict]) -> Optional[Dict]:
 
 def register_designer_routes(app):
     @app.get("/designer/status")
-    async def designer_status(request: Request):
+    def designer_status(request: Request):
         if not enabled():
             return {"enabled": False}
         uid = _route_uid(request)
@@ -1504,7 +1504,7 @@ def register_designer_routes(app):
         return resp
 
     @app.get("/designer/download/{job_id}")
-    async def designer_download(job_id: str, request: Request):
+    def designer_download(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
@@ -1520,7 +1520,7 @@ def register_designer_routes(app):
                             or "design.png")
 
     @app.post("/designer/save/{job_id}")
-    async def designer_save(job_id: str, request: Request):
+    def designer_save(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
