@@ -31,17 +31,7 @@ shellRoot.innerHTML =
 '<div class="og-seat-screen-head"><span id="ogSeatScreenTitle" class="og-seat-screen-title">Feed</span><button id="ogSeatScreenClose" class="og-circle-btn" type="button" aria-label="Back to chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>' +
 '<p id="ogSeatNotice" class="og-seat-notice" hidden></p>' +
 '<div id="ogGoalsView" class="og-seat-view" hidden>' +
-'<p id="ogGoalsSummary" class="og-seat-summary">Loading…</p>' +
-'<h3 class="og-appr-sec">Being worked on</h3>' +
-'<p id="ogProgressSummary" class="og-seat-summary">Loading…</p>' +
-'<div id="ogProgressList"></div>' +
-'<p id="ogProgressEmpty" class="og-appr-empty" hidden>Nothing is being worked on right now — when OG is making something, browsing, or checking a watch for you, it shows up here while it runs.</p>' +
-'<h3 class="og-appr-sec">Watching for you</h3>' +
-'<div id="ogGoalsWatchList"></div>' +
-'<h3 class="og-appr-sec" id="ogGoalsPriceSec" hidden>Price watches</h3>' +
-'<div id="ogGoalsPriceList"></div>' +
-'<p id="ogGoalsEmpty" class="og-appr-empty" hidden>OG isn\'t watching anything yet — ask in chat, like "watch for a red kayak under $200".</p>' +
-'<button id="ogManagerBtn" class="og-manager-btn" type="button">Manager Dashboard</button>' +
+'<div id="ogManagerMount"></div>' +
 '</div>' +
 '<div id="ogIdeasView" class="og-seat-view" hidden>' +
 '<div id="ogIdeasAppr" class="og-appr-card" hidden>' +
@@ -272,12 +262,58 @@ function paintSeats() {
   });
 }
 
+/* --- Progress seat = the Manager Dashboard (Brent, 2026-10-16 16:09) -----
+   The panel's ONLY content is the live Manager surface:
+   og_dashboards.js's 'manager' renderer, mounted into
+   #ogManagerMount through OGDS.mount. Entering the seat
+   mounts it (a fresh read); leaving runs the renderer's
+   cleanup, so its auto-refresh timer dies with the
+   panel. The old /progress + watch lists and the bottom
+   Manager button are retired from this panel; the
+   GET /progress endpoint itself stays — og_crew and
+   og_crewdash still consume it server-side. */
+var managerCleanup = null, managerMounted = false;
+function unmountManagerPanel() {
+  if (managerCleanup) {
+    try { managerCleanup(); } catch (e) { }
+    managerCleanup = null;
+  }
+  managerMounted = false;
+  var m = $('ogManagerMount');
+  if (m) m.innerHTML = '';
+}
+function mountManagerPanel() {
+  var m = $('ogManagerMount');
+  if (!m) return;
+  unmountManagerPanel();
+  managerMounted = true;
+  if (!window.OGDS || typeof window.OGDS.mount !== 'function') {
+    m.textContent = 'Dashboard unavailable.';
+    return;
+  }
+  window.OGDS.mount('manager', m).then(function (cleanup) {
+    if (!managerMounted) {
+      /* the seat closed while the mount was in flight:
+         run the cleanup now so nothing outlives it */
+      if (typeof cleanup === 'function') {
+        try { cleanup(); } catch (e) { }
+      }
+      return;
+    }
+    managerCleanup = cleanup;
+    if (!cleanup && !m.children.length) {
+      m.textContent = 'Dashboard unavailable.';
+    }
+  });
+}
+
 function gotoSeat(name) {
   /* Round 70 rename (Brent, 2026-10-11): the Goals seat
      IS Progress now — one seat, merged view. The legacy
      'goals' name still resolves here so stored
      notification targets never dead-end. */
   if (name === 'goals') name = 'progress';
+  if (name !== 'progress') unmountManagerPanel();
   activeSeat = name;
   closeAllViews();
   hideNotice();
@@ -292,7 +328,7 @@ function gotoSeat(name) {
     if (gv) gv.hidden = name !== 'progress';
     if (iv) iv.hidden = name !== 'ideas';
     if (fv) fv.hidden = name !== 'feed';
-    if (name === 'progress') { refreshGoals(); refreshProgress(); }
+    if (name === 'progress') { mountManagerPanel(); }
     if (name === 'ideas') { renderIdeas(); refreshFixes(); refreshGenIdeas(); }
     if (name === 'feed') refreshFeed();
   }
@@ -400,7 +436,23 @@ function relTime(ts) {
   return fmtTime(ts);
 }
 function getJSON(url) {
-  return fetch(url)
+  /* 12s hard timeout (Drill 5 fix, 2026-10-16): a fetch
+     that never settles — a dead connection on a moving
+     phone — never rejects either, so without the abort
+     every panel fed by this helper could sit on its
+     loading paint forever. A timeout reads as the null
+     every caller already handles. */
+  var p;
+  if (typeof AbortController === 'undefined') {
+    p = fetch(url);
+  } else {
+    var ctl = new AbortController();
+    var t = setTimeout(function () { ctl.abort(); }, 12000);
+    p = fetch(url, { signal: ctl.signal }).then(
+      function (r) { clearTimeout(t); return r; },
+      function (e) { clearTimeout(t); throw e; });
+  }
+  return p
     .then(function (r) { return r.ok ? r.json() : null; })
     .catch(function () { return null; });
 }
@@ -969,10 +1021,10 @@ function decideFix(id, decision, yesBtn, noBtn, viaIdeas) {
     });
 }
 
-/* --- 6. Progress seat (renamed from Goals): everything OG is working on ------------------------
-   Reads the routes that already exist (GET /watch/status for the
-   Facebook-style watches) plus Round 59's additive GET
-   /monitor/status for price watches — no new stores. */
+/* --- 6. Shared seat row builder ----------------------------------------
+   (The Progress seat's own lists retired 2026-10-16: the
+   panel now hosts the Manager Dashboard — see the mount
+   block above gotoSeat. seatRow stays: Ideas uses it.) */
 function seatRow(icon, title, sub) {
   var row = document.createElement('div');
   row.className = 'og-appr-item';
@@ -988,57 +1040,6 @@ function seatRow(icon, title, sub) {
   row.appendChild(ico); row.appendChild(main);
   return row;
 }
-var WATCH_STATUS = {
-  active: 'watching', waiting_login: 'waiting on your sign-in',
-  paused_checkpoint: 'paused at a security check'
-};
-function refreshGoals() {
-  var sum = $('ogGoalsSummary'), wl = $('ogGoalsWatchList'),
-      pl = $('ogGoalsPriceList'), psec = $('ogGoalsPriceSec'),
-      empty = $('ogGoalsEmpty');
-  if (!wl) return;
-  Promise.all([getJSON('/watch/status'), getJSON('/monitor/status')])
-    .then(function (res) {
-      var wst = res[0] || {}, mst = res[1] || {};
-      var watches = wst.watches || [], prices = mst.watches || [];
-      wl.innerHTML = '';
-      watches.forEach(function (w) {
-        var bits = [];
-        if (w.place) bits.push(w.place);
-        if (w.max_price) bits.push('up to $' + w.max_price);
-        if (w.matches && w.matches.length) {
-          var best = w.matches[0];
-          bits.push(w.matches.length + (w.matches.length === 1 ? ' match' : ' matches') +
-            (best && best.price != null ? ', best $' + best.price : ''));
-        }
-        bits.push(WATCH_STATUS[w.status] || w.status || 'watching');
-        if (w.last_check) bits.push('last checked ' + relTime(w.last_check));
-        wl.appendChild(seatRow('👀', w.item || 'Watch', bits.join(' · ')));
-      });
-      if (psec) psec.hidden = prices.length === 0;
-      if (pl) {
-        pl.innerHTML = '';
-        prices.forEach(function (w) {
-          var bits = [];
-          if (w.terms) bits.push(w.terms);
-          if (w.base != null) bits.push('from ' + w.base);
-          bits.push(w.status === 'fired'
-            ? 'fired' + (w.fired_price != null ? ' at ' + w.fired_price : '')
-            : 'watching');
-          pl.appendChild(seatRow('💲', (w.symbol || 'Symbol') + (w.kind ? ' (' + w.kind + ')' : ''), bits.join(' · ')));
-        });
-      }
-      var pendingN = (wst.pending_alerts || 0) + (mst.pending_alerts || 0);
-      var running = watches.length + prices.length;
-      if (sum) sum.textContent = running === 0
-        ? 'Nothing running right now.'
-        : running + (running === 1 ? ' thing' : ' things') + ' running' +
-          (pendingN > 0 ? ' · ' + pendingN + ' alert' + (pendingN === 1 ? '' : 's') + ' waiting for you in chat' : '');
-      if (empty) empty.hidden = running !== 0;
-    })
-    .catch(function () { if (sum) sum.textContent = 'Couldn\'t load right now — try again in a moment.'; });
-}
-
 /* --- 7. Ideas seat: OG's proposals --------------------------------------
    Open fix proposals (same data as the panel's Fixes section) +
    the Round 70 generated ideas (§7b). Round 70 rule pass
@@ -1336,93 +1337,6 @@ function refreshFeed() {
     .catch(function () { });
 }
 
-/* --- 8b. Progress seat (Round 70 addition) ------------------------------
-   Everything being worked on for the signed-in user, from
-   the ONE aggregate endpoint GET /progress (og_progress.py
-   reads the existing job stores — nothing is recomputed or
-   invented here). The live % renders ONLY when the payload
-   carries a number, and the server sends a number only for
-   a task in an actively-working state with real progress
-   counts (Brent, 2026-10-11: "Only tasks that are being
-   worked on will have the live %."). Queued / waiting /
-   done rows show their state words and no bar. The seat
-   polls every 4 s while it is open so a working % moves
-   until the item lands as done. */
-var PROG_SECTIONS = [
-  ['making', 'Making'], ['browser', 'Browser'],
-  ['queries', 'Queries running'], ['watching', 'Watching'],
-  ['fixes', 'Fixes waiting']
-];
-function progressRow(r) {
-  var row = seatRow(r.icon || '•', r.title || '', '');
-  var main = row.querySelector('.og-appr-main');
-  var b = document.createElement('div');
-  b.className = 'og-appr-item-body';
-  var stateTxt = r.state_label || r.state || '';
-  if (typeof r.pct === 'number') {
-    b.innerHTML = '';
-    var s1 = document.createElement('span');
-    s1.textContent = stateTxt + ' — ';
-    var s2 = document.createElement('span');
-    s2.className = 'og-prog-pct';
-    s2.textContent = Math.round(r.pct) + '%';
-    b.appendChild(s1); b.appendChild(s2);
-    if (r.sub) {
-      var s3 = document.createElement('span');
-      s3.textContent = ' · ' + r.sub;
-      b.appendChild(s3);
-    }
-    var bar = document.createElement('div');
-    bar.className = 'og-prog-bar';
-    var fill = document.createElement('span');
-    fill.style.width = Math.max(0, Math.min(100, r.pct)) + '%';
-    bar.appendChild(fill);
-    main.appendChild(b); main.appendChild(bar);
-  } else {
-    b.textContent = stateTxt + (r.sub ? ' · ' + r.sub : '');
-    main.appendChild(b);
-  }
-  return row;
-}
-function refreshProgress() {
-  var sum = $('ogProgressSummary'), list = $('ogProgressList'),
-      empty = $('ogProgressEmpty');
-  if (!list) return;
-  getJSON('/progress').then(function (d) {
-    d = d || {};
-    var rows = d.rows || [];
-    list.innerHTML = '';
-    var lastSec = null;
-    rows.forEach(function (r) {
-      if (!r) return;
-      if (r.section !== lastSec) {
-        lastSec = r.section;
-        var label = lastSec;
-        PROG_SECTIONS.forEach(function (p) { if (p[0] === lastSec) label = p[1]; });
-        var h = document.createElement('h3');
-        h.className = 'og-appr-sec'; h.textContent = label;
-        list.appendChild(h);
-      }
-      list.appendChild(progressRow(r));
-    });
-    if (d.auto_update) {
-      var au = d.auto_update;
-      var h2 = document.createElement('h3');
-      h2.className = 'og-appr-sec'; h2.textContent = 'OG self-update';
-      list.appendChild(h2);
-      list.appendChild(seatRow('🌙', au.title || 'Nightly auto-update', au.sub || ''));
-    }
-    var working = rows.filter(function (r) { return r && r.working; }).length;
-    if (sum) sum.textContent = rows.length === 0
-      ? 'Nothing in flight.'
-      : rows.length + (rows.length === 1 ? ' thing' : ' things') + ' on the board' +
-        (working > 0 ? ' · ' + working + ' actively working' : '');
-    if (empty) empty.hidden = rows.length !== 0 || !!d.auto_update;
-  }).catch(function () {
-    if (sum) sum.textContent = 'Couldn\'t load right now — try again in a moment.';
-  });
-}
-
 /* --- 8c. Keyboard-up rules (Round 106; Brent, 2026-10-12) ------------
    "There extra stuff on the keyboard" + "And the bar
    that's underneath need to stay down there out of site
@@ -1488,14 +1402,9 @@ setInterval(refreshFixes, 4000);
 setInterval(refreshRecents, 15000);
 setInterval(function () {
   if (isHidden($('ogSeatScreen'))) return;
-  if (activeSeat === 'progress') refreshGoals();
   if (activeSeat === 'ideas') { refreshFixes(); refreshGenIdeas(); }
   if (activeSeat === 'feed') refreshFeed();
 }, 20000);
-setInterval(function () {
-  if (isHidden($('ogSeatScreen'))) return;
-  if (activeSeat === 'progress') refreshProgress();
-}, 4000);
 setInterval(function () {
   paintSeats();
   updateNeedsPill();
