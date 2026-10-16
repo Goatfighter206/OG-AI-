@@ -1970,7 +1970,7 @@ def register_blueprint_routes(app):
     cookie uid, like every Round 95+ surface."""
 
     @app.get("/blueprint/status")
-    async def blueprint_status_route(request: Request):
+    def blueprint_status_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         view = status_for(uid) if uid else {
             "sheet": None, "sheets": []}
