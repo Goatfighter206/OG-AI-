@@ -1601,7 +1601,7 @@ def register_song_routes(app):
                     _store_latest_for_owner(_key(uid)))}
 
     @app.post("/song/approve")
-    async def song_approve(request: Request):
+    def song_approve(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "songs are off"},
@@ -1615,7 +1615,7 @@ def register_song_routes(app):
                 "error": "" if ok else msg}
 
     @app.post("/song/decline")
-    async def song_decline(request: Request):
+    def song_decline(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "songs are off"},
@@ -1627,7 +1627,7 @@ def register_song_routes(app):
         return {"ok": ok, "error": "" if ok else msg}
 
     @app.get("/song/download/{job_id}")
-    async def song_download(job_id: str, request: Request):
+    def song_download(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
@@ -1643,7 +1643,7 @@ def register_song_routes(app):
             filename=_slug(rec.get("title", "song")) + ".mp3")
 
     @app.post("/song/save/{job_id}")
-    async def song_save(job_id: str, request: Request):
+    def song_save(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
