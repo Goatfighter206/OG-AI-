@@ -1492,7 +1492,7 @@ def register_trading_routes(app):
     Round 10 Spotify routes one for one."""
 
     @app.get("/auth/coinbase")
-    async def coinbase_auth_start(raw_request: Request):
+    def coinbase_auth_start(raw_request: Request):
         """Begin Coinbase trading connect: bounce the visitor to
         Coinbase's own consent page. Answers 404 while the feature
         is dark (keys not set), so nothing about it is discoverable
@@ -1614,7 +1614,7 @@ def register_trading_routes(app):
         }
 
     @app.post("/auth/coinbase/disconnect")
-    async def coinbase_auth_disconnect(raw_request: Request):
+    def coinbase_auth_disconnect(raw_request: Request):
         """Forget this visitor's Coinbase trading connection —
         tokens deleted server-side (the grant is also revoked at
         Coinbase on a best-effort basis)."""
