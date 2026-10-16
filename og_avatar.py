@@ -68,13 +68,13 @@ def register_avatar_routes(app):
     from fastapi.responses import JSONResponse, Response
 
     @app.get("/avatar/status")
-    async def avatar_status():
+    def avatar_status():
         ok = [s for s in _STATES if avatar_bytes(s)]
         return JSONResponse(content={"states": ok,
                                      "poster": bool(poster_bytes())})
 
     @app.get("/avatar/poster.webp")
-    async def avatar_poster(request: Request):
+    def avatar_poster(request: Request):
         raw = poster_bytes()
         if raw is None:
             return JSONResponse(content={"detail": "no poster"},
@@ -88,7 +88,7 @@ def register_avatar_routes(app):
                      "ETag": etag})
 
     @app.get("/avatar/{state}.mp4")
-    async def avatar_clip(state: str, request: Request):
+    def avatar_clip(state: str, request: Request):
         raw = avatar_bytes(state)
         if raw is None:
             return JSONResponse(content={"detail": "no such avatar"},
