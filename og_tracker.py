@@ -1279,7 +1279,7 @@ def register_tracker_routes(app):
     bench's last action."""
 
     @app.get("/tracker/status")
-    async def tracker_status_route(request: Request):
+    def tracker_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "bench": None, "tracking": None}
