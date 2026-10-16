@@ -1312,7 +1312,7 @@ def register_shopping_routes(app):
     shortlist summary + saved pick."""
 
     @app.get("/shopping/status")
-    async def shopping_status_route(request: Request):
+    def shopping_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "search": None, "pick": None}
