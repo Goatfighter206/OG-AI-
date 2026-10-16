@@ -1500,7 +1500,7 @@ def _job_view(rec: Optional[Dict]) -> Optional[Dict]:
 
 def register_podcast_routes(app):
     @app.get("/podcast/status")
-    async def podcast_status(request: Request):
+    def podcast_status(request: Request):
         if not enabled():
             return {"enabled": False}
         uid = _route_uid(request)
@@ -1553,7 +1553,7 @@ def register_podcast_routes(app):
                     _store_latest_for_owner(_key(uid)))}
 
     @app.post("/podcast/approve")
-    async def podcast_approve(request: Request):
+    def podcast_approve(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "podcasts are off"},
@@ -1567,7 +1567,7 @@ def register_podcast_routes(app):
                 "error": "" if ok else msg}
 
     @app.post("/podcast/decline")
-    async def podcast_decline(request: Request):
+    def podcast_decline(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "podcasts are off"},
@@ -1579,7 +1579,7 @@ def register_podcast_routes(app):
         return {"ok": ok, "error": "" if ok else msg}
 
     @app.get("/podcast/download/{job_id}")
-    async def podcast_download(job_id: str, request: Request):
+    def podcast_download(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
@@ -1595,7 +1595,7 @@ def register_podcast_routes(app):
             filename=_slug(rec.get("title", "podcast")) + ".mp3")
 
     @app.post("/podcast/save/{job_id}")
-    async def podcast_save(job_id: str, request: Request):
+    def podcast_save(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
