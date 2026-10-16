@@ -418,7 +418,7 @@ def register_plaid_routes(app):
     """Attach the /plaid/* routes. All answer 404 while dark."""
 
     @app.post("/plaid/link-token")
-    async def plaid_link_token(raw_request: Request):
+    def plaid_link_token(raw_request: Request):
         """Create a Link token for this visitor (Link itself runs
         in Plaid's hosted flow in the visitor's browser)."""
         if not PLAID_ENABLED:
@@ -517,7 +517,7 @@ def register_plaid_routes(app):
         }
 
     @app.post("/plaid/disconnect")
-    async def plaid_disconnect(raw_request: Request):
+    def plaid_disconnect(raw_request: Request):
         """Forget this visitor's bank connection — the item is
         removed at Plaid too (best-effort), tokens deleted here."""
         if not PLAID_ENABLED:
