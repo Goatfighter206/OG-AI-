@@ -1718,6 +1718,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class _HealthShortcutMiddleware:
+    """Round 321 Step 6: /health answered at the ASGI layer,
+    before routing — a pre-built body + the live warm flag
+    and nothing else. Render's 5 s health patience is met
+    as long as the event loop itself is free to schedule
+    this coroutine, which the Step 6 loop-occupancy
+    invariant (no synchronous I/O or unbounded CPU in any
+    handler body) guarantees. The /health route below
+    stays as the fallback shape."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" \
+                and scope.get("path") == "/health" \
+                and scope.get("method", "GET") in ("GET", "HEAD"):
+            warm = agent is not None
+            body = json.dumps({
+                "status": "healthy",
+                "agent_name": agent.name if warm else "OG-AI",
+                "message": "Service is running"}).encode()
+            await send({
+                "type": "http.response.start", "status": 200,
+                "headers": [
+                    [b"content-type", b"application/json"],
+                    [b"content-length",
+                     str(len(body)).encode()],
+                    [b"x-og-warm", b"1" if warm else b"0"]]})
+            await send({"type": "http.response.body",
+                        "body": b"" if scope.get(
+                            "method") == "HEAD" else body})
+            return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_HealthShortcutMiddleware)
+
 # Mount static files directory
 if not os.path.exists("static"):
     os.makedirs("static")
@@ -1725,76 +1764,92 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 agent = None
 
+agent_build_lock = threading.Lock()
+
+
 def get_agent() -> AIAgent:
     """The shared agent instance (created on first use)."""
     global agent
     if agent is None:
-        # Load config if exists
-        config = {}
-        if os.path.exists('config.json'):
-            try:
-                with open('config.json', 'r') as f:
-                    config = json.load(f)
-            except Exception as e:
-                logger.warning(f"Could not load config.json: {e}")
-
-        agent_name = config.get('agent_name', 'OG-AI')
-        agent = AIAgent(name=agent_name, config=config)
-        _install_lookup_tools(agent)
-        _og_files.install_file_tools(
-            agent, lambda: _current_uid.get("uid", ""),
-            lambda: os.getenv("OPENAI_API_KEY"))
-        _og_maps.install_maps_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_spotify.install_spotify_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_github.install_github_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_youtube.install_youtube_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_discord.install_discord_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_twitch.install_twitch_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_reddit.install_reddit_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_google_hands.install_google_hands(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
-            {"connection": _google_connection,
-             "load_store": _load_google_store,
-             "save_store": _save_google_store,
-             "lock": _google_lock,
-             "client_id": GOOGLE_CLIENT_ID,
-             "client_secret": GOOGLE_CLIENT_SECRET,
-             "google_enabled": GOOGLE_ENABLED})
-        _og_unity.install_unity_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_unity,
-            _unity_left)
-        _og_utils.install_utils_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
-            _consume_shortlink)
-        _og_plaid.install_plaid_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup)
-        _og_monitor.install_monitor_tools(
-            agent, lambda: _current_uid.get("uid", ""), _consume_lookup,
-            _consume_calorie, lambda: _calorie_left(
-                _current_uid.get("uid", "")),
-            lambda: _current_tier.get("tier", "free"))
-        _og_ordering.install_ordering_tools(
-            agent, lambda: _current_uid.get("uid", ""))
-        _og_trading.install_trading_tools(
-            agent, lambda: _current_uid.get("uid", ""))
-        _og_storage.install_storage_tools(
-            agent, lambda: _current_uid.get("uid", ""))
-        _og_browser.install_browser_tools(agent, lambda: _current_uid.get("uid", ""))
-        _og_video.install_video_tools(agent, lambda: _current_uid.get("uid", ""))
-        _og_watch.install_watch_tools(agent, lambda: _current_uid.get("uid", ""), lambda: _current_tier.get("tier", "free"))
-        _og_songs.install_song_tools(agent, lambda: _current_uid.get("uid", ""))
-        _og_selfcheck.install_selfcheck_tools(agent, lambda: _current_uid.get("uid", ""))
-        _og_fixqueue.install_fixqueue_tools(agent, lambda: _current_uid.get("uid", ""))
-        _reset_memory_store()
-
+        with agent_build_lock:
+            if agent is None:
+                _build_agent()
     return agent
+
+
+def _build_agent() -> None:
+    """Build the shared agent into a local and publish
+    it (Round 321 Step 6): get_agent()'s global used to
+    be assigned FIRST and _reset_memory_store() ran
+    LAST, so a turn served by the half-built agent
+    could save history the still-running build then
+    wiped. Single-flight under _agent_build_lock;
+    readers only ever see a complete agent."""
+    global agent
+    config = {}
+    if os.path.exists('config.json'):
+        try:
+            with open('config.json', 'r') as f:
+                config = json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not load config.json: {e}")
+
+    agent_name = config.get('agent_name', 'OG-AI')
+    _built = AIAgent(name=agent_name, config=config)
+    _install_lookup_tools(_built)
+    _og_files.install_file_tools(
+        _built, lambda: _current_uid.get("uid", ""),
+        lambda: os.getenv("OPENAI_API_KEY"))
+    _og_maps.install_maps_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_spotify.install_spotify_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_github.install_github_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_youtube.install_youtube_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_discord.install_discord_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_twitch.install_twitch_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_reddit.install_reddit_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_google_hands.install_google_hands(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup,
+        {"connection": _google_connection,
+         "load_store": _load_google_store,
+         "save_store": _save_google_store,
+         "lock": _google_lock,
+         "client_id": GOOGLE_CLIENT_ID,
+         "client_secret": GOOGLE_CLIENT_SECRET,
+         "google_enabled": GOOGLE_ENABLED})
+    _og_unity.install_unity_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_unity,
+        _unity_left)
+    _og_utils.install_utils_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup,
+        _consume_shortlink)
+    _og_plaid.install_plaid_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    _og_monitor.install_monitor_tools(
+        _built, lambda: _current_uid.get("uid", ""), _consume_lookup,
+        _consume_calorie, lambda: _calorie_left(
+            _current_uid.get("uid", "")),
+        lambda: _current_tier.get("tier", "free"))
+    _og_ordering.install_ordering_tools(
+        _built, lambda: _current_uid.get("uid", ""))
+    _og_trading.install_trading_tools(
+        _built, lambda: _current_uid.get("uid", ""))
+    _og_storage.install_storage_tools(
+        _built, lambda: _current_uid.get("uid", ""))
+    _og_browser.install_browser_tools(_built, lambda: _current_uid.get("uid", ""))
+    _og_video.install_video_tools(_built, lambda: _current_uid.get("uid", ""))
+    _og_watch.install_watch_tools(_built, lambda: _current_uid.get("uid", ""), lambda: _current_tier.get("tier", "free"))
+    _og_songs.install_song_tools(_built, lambda: _current_uid.get("uid", ""))
+    _og_selfcheck.install_selfcheck_tools(_built, lambda: _current_uid.get("uid", ""))
+    _og_fixqueue.install_fixqueue_tools(_built, lambda: _current_uid.get("uid", ""))
+    _reset_memory_store()
+    agent = _built
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -1903,7 +1958,7 @@ async def qr_code():
     return FileResponse("qr.html")
 
 @app.get("/api", response_model=StatusResponse)
-async def api_info():
+def api_info():
     """
     API information endpoint.
     """
@@ -2297,7 +2352,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    agent_instance = get_agent()
+    agent_instance = await asyncio.to_thread(get_agent)
 
     # Visitor identity: hand out an `ogai_uid` cookie to new visitors.
     uid = raw_request.cookies.get("ogai_uid")
@@ -2316,8 +2371,9 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     try:
         tier = await asyncio.to_thread(_tier_of, raw_request.cookies, uid)
         # R55 weekly pool; R56: pack balance takes over when dry.
-        _pool_hit = _og_tiers.chat_pool_hit(
-            tier, _week_used(uid, "token_days", "tokens"))
+        _tokens_used = await asyncio.to_thread(
+            _week_used, uid, "token_days", "tokens")
+        _pool_hit = _og_tiers.chat_pool_hit(tier, _tokens_used)
         _ent_tier = await asyncio.to_thread(_uid_entitlement_tier, uid)
         if _pool_hit:
             _pack_balance = await asyncio.to_thread(
@@ -2330,7 +2386,7 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     is_pro = tier != "free"
     cap_payload = None
     if _pool_hit and not token_funded:
-        _bump_stat("cap_hits")
+        await asyncio.to_thread(_bump_stat, "cap_hits")
         cap_payload = _og_tiers.weekly_chat_payload(tier, agent_instance.name)
     if cap_payload is not None:
         if request.stream:
@@ -2371,15 +2427,20 @@ async def text_to_speech(raw_request: Request):
     voice = (_voice if isinstance(_voice, str) and _voice in TTS_VOICES
              else TTS_DEFAULT_VOICE)
     uid = raw_request.cookies.get("ogai_uid") or "anon"
-    _tts_tier = _tier_of(raw_request.cookies,
-                         uid if uid != "anon" else "")
+    _tts_tier = await asyncio.to_thread(
+        _tier_of, raw_request.cookies,
+        uid if uid != "anon" else "")
     _tts_rate = _og_tokenpacks.RATES["tts"]
     _tts_token_funded = False
-    if _og_tiers.weekly_hit(_tts_tier, "tts", _week_used(f"tts:{uid}")):
-        if not _og_tokenpacks.can_afford(uid, _tts_rate):
+    _tts_used = await asyncio.to_thread(_week_used, f"tts:{uid}")
+    if _og_tiers.weekly_hit(_tts_tier, "tts", _tts_used):
+        if not await asyncio.to_thread(
+                _og_tokenpacks.can_afford, uid, _tts_rate):
             raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
         _tts_token_funded = True
-    elif not _consume_tts_call(uid, _og_tiers.weekly_cap(_tts_tier, "tts")):
+    elif not await asyncio.to_thread(
+            _consume_tts_call, uid,
+            _og_tiers.weekly_cap(_tts_tier, "tts")):
         raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
     import httpx
     try:
@@ -2396,13 +2457,15 @@ async def text_to_speech(raw_request: Request):
         logger.warning(f"TTS upstream status: {r.status_code}")
         raise HTTPException(status_code=502, detail="Voice service error")
     if _tts_token_funded:
-        _og_tokenpacks.debit(uid, _tts_rate, "tts")
+        await asyncio.to_thread(
+            _og_tokenpacks.debit, uid, _tts_rate, "tts")
     return Response(content=r.content, media_type="audio/mpeg")
 
 @app.post("/image")
 async def generate_image(raw_request: Request):
     """Generate ONE image for a visitor (Round 5); expected outcomes answer 200 JSON."""
-    get_agent()  # instantiate first: its creation resets the file store
+    await asyncio.to_thread(get_agent)  # instantiate first:
+    # its creation resets the file store (off-loop, Step 6)
     uid = raw_request.cookies.get("ogai_uid")
     fresh_uid = False
     if not uid:
@@ -2429,12 +2492,15 @@ async def generate_image(raw_request: Request):
                        "Tell me what to draw, fam."}, 400)
     prompt = _clean_image_prompt(raw_prompt)
 
-    tier = _request_tier(raw_request)
+    tier = await asyncio.to_thread(_request_tier, raw_request)
     # Weekly ceiling (R55): pictures are metered weekly only.
     cap_w = _og_tiers.weekly_cap(tier, "images") or 0
-    left = max(0, cap_w - _week_used(f"image:{uid}"))
-    img_token_funded = left <= 0 and _og_tokenpacks.can_afford(
-        uid, _og_tokenpacks.RATES["image"])
+    _img_used = await asyncio.to_thread(
+        _week_used, f"image:{uid}")
+    left = max(0, cap_w - _img_used)
+    img_token_funded = left <= 0 and await asyncio.to_thread(
+        _og_tokenpacks.can_afford, uid,
+        _og_tokenpacks.RATES["image"])
     if left <= 0 and not img_token_funded:
         return _reply({"ok": False, "capped": True, "weekly_capped": True,
                        "images_left": 0,
@@ -2453,13 +2519,17 @@ async def generate_image(raw_request: Request):
                        "images_left": left})
 
     if img_token_funded:
-        _og_tokenpacks.debit(uid, _og_tokenpacks.RATES["image"], "image")
+        await asyncio.to_thread(
+            _og_tokenpacks.debit, uid,
+            _og_tokenpacks.RATES["image"], "image")
     else:
-        _consume_image(uid)
-    left = 0 if img_token_funded else max(0, cap_w - _week_used(f"image:{uid}"))
+        await asyncio.to_thread(_consume_image, uid)
+    left = 0 if img_token_funded else max(
+        0, cap_w - await asyncio.to_thread(
+            _week_used, f"image:{uid}"))
     caption = _IMAGE_CAPTIONS[len(prompt) % len(_IMAGE_CAPTIONS)]
     # Note the drawing in the visitor's thread (too big to store).
-    try:
+    def _note_image():
         now = datetime.now().isoformat()
         with _memory_lock:
             history = _load_hist(uid)
@@ -2469,12 +2539,15 @@ async def generate_image(raw_request: Request):
                             "content": f"{caption}\n[🎨 OG drew an image: {prompt}]",
                             "timestamp": now})
             _save_visitor_history_locked(uid, history)
+    try:
+        await asyncio.to_thread(_note_image)
     except Exception as e:
         logger.warning(f"Could not note image in history: {e}")
     return _reply({"ok": True, "image": image_src, "model": model_used,
                    "prompt": prompt, "response": caption,
                    "images_left": left,
-                   "token_balance": _og_tokenpacks.balance(uid)})
+                   "token_balance": await asyncio.to_thread(
+                       _og_tokenpacks.balance, uid)})
 
 _og_files.bind_app({
     "get_agent": get_agent, "pro_url": _og_tiers.public_pro_url(),
@@ -2632,7 +2705,7 @@ async def stripe_webhook(raw_request: Request):
     return {"received": True}
 
 @app.get("/stats", response_class=HTMLResponse)
-async def stats_page(key: str = ""):
+def stats_page(key: str = ""):
     """Owner-only stats page (token-gated)."""
     if not STATS_TOKEN or key != STATS_TOKEN:
         raise HTTPException(status_code=401, detail="Owner key required")
@@ -2728,7 +2801,7 @@ def get_history(raw_request: Request):
         raise HTTPException(status_code=500, detail=detail)
 
 @app.post("/reset", response_model=StatusResponse)
-async def reset_conversation(raw_request: Request):
+def reset_conversation(raw_request: Request):
     """
     Clear the requesting visitor's conversation history — only theirs.
 
@@ -2754,7 +2827,7 @@ async def reset_conversation(raw_request: Request):
         raise HTTPException(status_code=500, detail=detail)
 
 @app.get("/intelligence")
-async def get_intelligence():
+def get_intelligence():
     """
     Get the agent's intelligence report (self-learning stats).
 
@@ -2785,7 +2858,7 @@ async def get_intelligence():
         }
 
 @app.post("/improve")
-async def manual_improvement():
+def manual_improvement():
     """
     Manually trigger daily self-improvement routine.
 
@@ -2814,12 +2887,15 @@ async def manual_improvement():
 @app.post("/clear", response_model=StatusResponse)
 async def clear_history(raw_request: Request):
     """Clear the conversation history (backward-compat alias for /reset)."""
-    return await reset_conversation(raw_request)
+    # Round 321 Step 6: /reset is a def handler now (threadpool);
+    # the alias hops to a thread to call it, never awaiting it
+    # and never running its store work on this loop.
+    return await asyncio.to_thread(reset_conversation, raw_request)
 
 # --- Google account connect routes (Round 3, dark until enabled) ---
 
 @app.get("/auth/google")
-async def google_auth_start(raw_request: Request):
+def google_auth_start(raw_request: Request):
     """Begin Google connect: bounce the visitor to Google's consent page. 404 while the feature is dark."""
     if not GOOGLE_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
@@ -2929,7 +3005,7 @@ def google_auth_status(raw_request: Request):
     }
 
 @app.post("/auth/google/disconnect")
-async def google_auth_disconnect(raw_request: Request):
+def google_auth_disconnect(raw_request: Request):
     """Forget this visitor's Google connection — tokens deleted server-side."""
     if not GOOGLE_ENABLED:
         raise HTTPException(status_code=404, detail="Not found")
