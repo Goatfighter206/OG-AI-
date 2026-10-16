@@ -713,85 +713,89 @@ def register_account_routes(app):
     @app.post("/auth/signup")
     async def auth_signup(request: Request):
         body = await _json_body(request)
-        email = _clean_email(body.get("email"))
-        password = body.get("password")
-        remember = bool(body.get("remember"))
-        if (not EMAIL_RE.match(email or "")
-                or not isinstance(password, str)
-                or len(password) < MIN_PASSWORD_LEN):
-            return _err(ERR_GENERIC)
-        dob = _parse_dob(body.get("dob"))
-        if dob is None:
-            return _err(ERR_GENERIC)
-        today = datetime.now(timezone.utc).date()
-        if _age_on(dob, today) < 18:
-            return _err(ERR_UNDERAGE)
-        if _get("acct:" + email) is not None:
-            return _err(ERR_GENERIC)
-        uid = request.cookies.get(UID_COOKIE) or uuid.uuid4().hex
-        owner = _get("uidacct:" + uid)
-        if owner is not None and owner != email:
-            return _err(ERR_GENERIC)
-        _put("acct:" + email, {
-            "email": email, "uid": uid,
-            "pw": _hash_password(password),
-            "dob": dob.isoformat(),
-            "created": datetime.now(timezone.utc).isoformat()})
-        _put("uidacct:" + uid, email)
-        resp = JSONResponse({"ok": True, "email": email})
-        _start_session(resp, email, uid, remember)
-        return resp
+        def _work():
+            email = _clean_email(body.get("email"))
+            password = body.get("password")
+            remember = bool(body.get("remember"))
+            if (not EMAIL_RE.match(email or "")
+                    or not isinstance(password, str)
+                    or len(password) < MIN_PASSWORD_LEN):
+                return _err(ERR_GENERIC)
+            dob = _parse_dob(body.get("dob"))
+            if dob is None:
+                return _err(ERR_GENERIC)
+            today = datetime.now(timezone.utc).date()
+            if _age_on(dob, today) < 18:
+                return _err(ERR_UNDERAGE)
+            if _get("acct:" + email) is not None:
+                return _err(ERR_GENERIC)
+            uid = request.cookies.get(UID_COOKIE) or uuid.uuid4().hex
+            owner = _get("uidacct:" + uid)
+            if owner is not None and owner != email:
+                return _err(ERR_GENERIC)
+            _put("acct:" + email, {
+                "email": email, "uid": uid,
+                "pw": _hash_password(password),
+                "dob": dob.isoformat(),
+                "created": datetime.now(timezone.utc).isoformat()})
+            _put("uidacct:" + uid, email)
+            resp = JSONResponse({"ok": True, "email": email})
+            _start_session(resp, email, uid, remember)
+            return resp
+        return await asyncio.to_thread(_work)
 
     @app.post("/auth/login")
     async def auth_login(request: Request):
         body = await _json_body(request)
-        email = _clean_email(body.get("email"))
-        password = body.get("password")
-        remember = bool(body.get("remember"))
-        ip = _client_ip(request)
-        if _throttled(email, ip):
-            return _err(ERR_THROTTLED, status=429)
-        acct = _get("acct:" + email) if email else None
-        stored = acct.get("pw") if isinstance(acct, dict) else _DUMMY_HASH
-        ok = isinstance(password, str) and _check_password(password, stored)
-        if not isinstance(acct, dict) or not ok:
-            _record_failure(email, ip)
-            return _err(ERR_GENERIC, status=401)
-        _del(_fail_key(email, ip))
-        # Round 63: a 2-step account gets NO session from the
-        # password alone — og_2fa holds a 5-minute single-use
-        # challenge and its verify mints the session instead
-        # (attach hooks fire there, with this guest uid riding
-        # the challenge). Non-2FA accounts fall straight
-        # through, byte-identical to before. Fail-safe: a 2FA
-        # module problem can never lock every login out.
-        try:
-            import og_2fa as _2fa
-            if _2fa.twofa_enabled(acct["uid"]):
-                chal = _2fa.create_challenge(
-                    email, acct["uid"], remember,
-                    guest_uid=request.cookies.get(UID_COOKIE) or "")
-                return JSONResponse({
-                    "ok": True, "two_factor_required": True,
-                    "challenge": chal})
-        except StoreError:
-            # Round 99: the 2FA store could not answer —
-            # that must fail the LOGIN honestly (503 via
-            # the app handler), never skip the second
-            # factor and mint a session on password alone.
-            raise
-        except Exception as e:
-            logger.warning(f"2FA login step skipped: {e}")
-        # Round 44: uid-keyed guest state (a buyer entitlement)
-        # follows the person onto their account's uid.
-        _fire_attach_hooks(
-            request.cookies.get(UID_COOKIE), acct["uid"], email)
-        resp = JSONResponse({"ok": True, "email": email})
-        _start_session(resp, email, acct["uid"], remember)
-        return resp
+        def _work():
+            email = _clean_email(body.get("email"))
+            password = body.get("password")
+            remember = bool(body.get("remember"))
+            ip = _client_ip(request)
+            if _throttled(email, ip):
+                return _err(ERR_THROTTLED, status=429)
+            acct = _get("acct:" + email) if email else None
+            stored = acct.get("pw") if isinstance(acct, dict) else _DUMMY_HASH
+            ok = isinstance(password, str) and _check_password(password, stored)
+            if not isinstance(acct, dict) or not ok:
+                _record_failure(email, ip)
+                return _err(ERR_GENERIC, status=401)
+            _del(_fail_key(email, ip))
+            # Round 63: a 2-step account gets NO session from the
+            # password alone — og_2fa holds a 5-minute single-use
+            # challenge and its verify mints the session instead
+            # (attach hooks fire there, with this guest uid riding
+            # the challenge). Non-2FA accounts fall straight
+            # through, byte-identical to before. Fail-safe: a 2FA
+            # module problem can never lock every login out.
+            try:
+                import og_2fa as _2fa
+                if _2fa.twofa_enabled(acct["uid"]):
+                    chal = _2fa.create_challenge(
+                        email, acct["uid"], remember,
+                        guest_uid=request.cookies.get(UID_COOKIE) or "")
+                    return JSONResponse({
+                        "ok": True, "two_factor_required": True,
+                        "challenge": chal})
+            except StoreError:
+                # Round 99: the 2FA store could not answer —
+                # that must fail the LOGIN honestly (503 via
+                # the app handler), never skip the second
+                # factor and mint a session on password alone.
+                raise
+            except Exception as e:
+                logger.warning(f"2FA login step skipped: {e}")
+            # Round 44: uid-keyed guest state (a buyer entitlement)
+            # follows the person onto their account's uid.
+            _fire_attach_hooks(
+                request.cookies.get(UID_COOKIE), acct["uid"], email)
+            resp = JSONResponse({"ok": True, "email": email})
+            _start_session(resp, email, acct["uid"], remember)
+            return resp
+        return await asyncio.to_thread(_work)
 
     @app.post("/auth/logout")
-    async def auth_logout(request: Request):
+    def auth_logout(request: Request):
         token = request.cookies.get(SESSION_COOKIE)
         if token:
             _del(_token_key(token))
