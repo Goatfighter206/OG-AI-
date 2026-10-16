@@ -1411,7 +1411,7 @@ def _nightly_check_hook() -> None:
 def register_autoupdate_routes(app):
 
     @app.get("/system/autoupdate")
-    async def system_autoupdate(key: str = ""):
+    def system_autoupdate(key: str = ""):
         import og_selfcheck as _sc
         if not _sc._key_ok(key):
             return JSONResponse({"detail": "Owner key required"},
@@ -1419,7 +1419,7 @@ def register_autoupdate_routes(app):
         return state_view()
 
     @app.post("/system/autoupdate/reenable")
-    async def system_autoupdate_reenable(key: str = ""):
+    def system_autoupdate_reenable(key: str = ""):
         import og_selfcheck as _sc
         if not _sc._key_ok(key):
             return JSONResponse({"detail": "Owner key required"},
