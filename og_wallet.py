@@ -789,14 +789,14 @@ _COMPLETE_HTML = """<!DOCTYPE html>
 def register_wallet_routes(app):
 
     @app.get("/wallet/status")
-    async def wallet_status(request: Request):
+    def wallet_status(request: Request):
         if not enabled():
             return {"enabled": False}
         uid = _route_uid(request)
         return status_payload(uid, _route_tier(uid, request))
 
     @app.get("/wallet/history")
-    async def wallet_history(request: Request):
+    def wallet_history(request: Request):
         if not enabled():
             return JSONResponse({"enabled": False},
                                 status_code=404)
@@ -808,7 +808,7 @@ def register_wallet_routes(app):
                 "charges": _charges(uid) if uid else []}
 
     @app.post("/wallet/setup")
-    async def wallet_setup(request: Request):
+    def wallet_setup(request: Request):
         if not enabled():
             return JSONResponse({"ok": False, "error": "wallet_off"},
                                 status_code=404)
@@ -828,7 +828,7 @@ def register_wallet_routes(app):
         return out
 
     @app.get("/wallet/complete", response_class=HTMLResponse)
-    async def wallet_complete(request: Request):
+    def wallet_complete(request: Request):
         if not enabled():
             return HTMLResponse(
                 _COMPLETE_HTML.replace("__STATE__", "unavailable")
@@ -861,7 +861,7 @@ def register_wallet_routes(app):
             .replace("__DETAIL__", detail))
 
     @app.post("/wallet/remove")
-    async def wallet_remove(request: Request):
+    def wallet_remove(request: Request):
         if not enabled():
             return JSONResponse({"ok": False, "error": "wallet_off"},
                                 status_code=404)
