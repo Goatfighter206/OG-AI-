@@ -1555,7 +1555,7 @@ def register_builder_routes(app):
     like every Round 95+ surface."""
 
     @app.get("/builder/status")
-    async def builder_status_route(request: Request):
+    def builder_status_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         return {"ok": True, "enabled": builder_enabled(),
                 "plans": plans_for(uid) if uid else []}
