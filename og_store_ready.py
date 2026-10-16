@@ -523,7 +523,7 @@ def register_store_routes(app):
         return {"ok": True, "id": rec["id"]}
 
     @app.get("/reports")
-    async def reports_list(key: str = ""):
+    def reports_list(key: str = ""):
         token = os.getenv("OG_STATS_TOKEN", "")
         if not token or key != token:
             return JSONResponse({"detail": "Owner key required"},
