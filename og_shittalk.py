@@ -705,7 +705,7 @@ async def _json_body(request: Request) -> dict:
 def register_shittalk_routes(app):
 
     @app.get("/shittalk")
-    async def shittalk_get(request: Request):
+    def shittalk_get(request: Request):
         uid = request.cookies.get(UID_COOKIE) or ""
         if not uid:
             # Signed-in only (the pinned contract). In
