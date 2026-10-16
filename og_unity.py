@@ -730,7 +730,7 @@ def register_unity_routes(app):
     inside the 24 h retention window."""
 
     @app.get("/unity/download/{build_id}")
-    async def unity_download(build_id: str, raw_request: Request):
+    def unity_download(build_id: str, raw_request: Request):
         if not re.fullmatch(r"[0-9a-f]{32}", build_id or ""):
             raise HTTPException(status_code=404, detail="Not found")
         zpath = os.path.join(UNITY_STORE_DIR, build_id + ".zip")
