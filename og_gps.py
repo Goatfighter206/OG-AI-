@@ -968,7 +968,7 @@ def _bad(detail):
 def register_gps_routes(app):
 
     @app.get("/gps/points")
-    async def gps_points_list(request: Request):
+    def gps_points_list(request: Request):
         uid = _uid_of(request)
         if not uid:
             return {"points": []}
@@ -1014,7 +1014,7 @@ def register_gps_routes(app):
         return {"ok": True, "point": pt}
 
     @app.get("/gps/points/export")
-    async def gps_points_export(request: Request):
+    def gps_points_export(request: Request):
         uid = _uid_of(request)
         return PlainTextResponse(
             points_csv(uid) if uid else "name,lat,lon,note\n",
@@ -1039,7 +1039,7 @@ def register_gps_routes(app):
                 "skipped": result["skipped"]}
 
     @app.get("/gps/convert")
-    async def gps_convert(request: Request):
+    def gps_convert(request: Request):
         coords = valid_latlon(request.query_params.get("lat"),
                               request.query_params.get("lon"))
         if coords is None:
@@ -1123,13 +1123,13 @@ def register_gps_routes(app):
         return out
 
     @app.get("/gps/route/active")
-    async def gps_route_active(request: Request):
+    def gps_route_active(request: Request):
         uid = _uid_of(request)
         return {"ok": True,
                 "route": active_route_for(uid) if uid else None}
 
     @app.get("/gps/location")
-    async def gps_location_get(request: Request):
+    def gps_location_get(request: Request):
         uid = _uid_of(request)
         if not uid:
             # Signed-in only (the pinned contract). In
