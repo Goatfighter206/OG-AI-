@@ -1839,7 +1839,7 @@ def _off():
 
 def register_voice_lab_routes(app):
     @app.get("/voice-lab/status")
-    async def voice_lab_status(request: Request):
+    def voice_lab_status(request: Request):
         if not enabled():
             return {"enabled": False}
         uid = _route_uid(request)
@@ -1862,7 +1862,7 @@ def register_voice_lab_routes(app):
                     _store_latest_for_owner(_key(uid)))}
 
     @app.get("/voice-lab/voices")
-    async def voice_lab_voices(request: Request):
+    def voice_lab_voices(request: Request):
         if not enabled():
             return _off()
         uid = _route_uid(request)
@@ -1931,7 +1931,7 @@ def register_voice_lab_routes(app):
                 "error": "" if ok else msg}
 
     @app.post("/voice-lab/decline")
-    async def voice_lab_decline(request: Request):
+    def voice_lab_decline(request: Request):
         if not enabled():
             return _off()
         uid = _route_uid(request)
@@ -2020,7 +2020,7 @@ def register_voice_lab_routes(app):
         return Response(content=data, media_type="audio/mpeg")
 
     @app.get("/voice-lab/download/{job_id}")
-    async def voice_lab_download(job_id: str, request: Request):
+    def voice_lab_download(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
@@ -2036,7 +2036,7 @@ def register_voice_lab_routes(app):
             filename=_slug(rec.get("title", "sfx")) + ".mp3")
 
     @app.post("/voice-lab/save/{job_id}")
-    async def voice_lab_save(job_id: str, request: Request):
+    def voice_lab_save(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
