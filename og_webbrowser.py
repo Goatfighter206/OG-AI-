@@ -1354,7 +1354,7 @@ def register_webbrowser_routes(app):
     read live off og_browser's own surfaces."""
 
     @app.get("/webbrowser/status")
-    async def webbrowser_status_route(request: Request):
+    def webbrowser_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "session": {"live": False, "host": "",
