@@ -326,7 +326,7 @@ import og_selfcheck as _og_selfcheck
 import og_fixqueue as _og_fixqueue
 import og_lessons as _og_lessons
 import og_tokenpacks as _og_tokenpacks  # Round 56
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, apply_bounds as _apply_bounds
 
 # --- Entitlement v2 (Stripe webhook, dark): v2 verifies payment
 # via POST /stripe/webhook; v1 grants on /pro/success landing.
@@ -1453,6 +1453,7 @@ _google_lock = threading.Lock()
 def _google_db_connect():
     """Connect to the durable DB, creating the Google tokens table."""
     conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_google_tokens ("
