@@ -1375,7 +1375,7 @@ def register_coding_routes(app):
     last check summary BY NAME."""
 
     @app.get("/coding/status")
-    async def coding_status_route(request: Request):
+    def coding_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {"bench": None}
         return {"ok": True, "enabled": coding_enabled(),
