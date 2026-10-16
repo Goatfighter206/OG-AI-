@@ -2643,7 +2643,7 @@ def register_github_routes(app):
     Mirrors the Round 10 Spotify routes one for one."""
 
     @app.get("/auth/github")
-    async def github_auth_start(raw_request: Request):
+    def github_auth_start(raw_request: Request):
         """
         Begin GitHub connect: bounce the visitor to GitHub's own
         consent page. Answers 404 while the feature is dark (keys
@@ -2779,7 +2779,7 @@ def register_github_routes(app):
         }
 
     @app.post("/auth/github/disconnect")
-    async def github_auth_disconnect(raw_request: Request):
+    def github_auth_disconnect(raw_request: Request):
         """Forget this visitor's GitHub connection — token deleted
         server-side (and any pending PR draft scrapped)."""
         if not GITHUB_ENABLED:
