@@ -2780,7 +2780,7 @@ def register_browser_routes(app):
                                    for b in blocks)}
 
     @app.post("/browser/decline")
-    async def browser_decline(request: Request):
+    def browser_decline(request: Request):
         """The card's Decline door: cancels the parked action with
         zero actions taken, same as a chat NO."""
         if not enabled():
@@ -2802,7 +2802,8 @@ def register_browser_routes(app):
         if not enabled():
             return JSONResponse({"error": "not found"}, status_code=404)
         uid = _route_uid(request)
-        rec = _get_session(uid) if uid else None
+        rec = await asyncio.to_thread(_get_session, uid) \
+            if uid else None
         if not rec:
             return JSONResponse({"ok": False, "error": "no session"},
                                 status_code=400)
@@ -2817,7 +2818,7 @@ def register_browser_routes(app):
         rec = dict(rec)
         rec["control"] = mode
         rec["last_action"] = time.time()
-        _set_session(uid, rec)
+        await asyncio.to_thread(_set_session, uid, rec)
         return {"ok": True, "control": mode}
 
     @app.post("/browser/input")
@@ -2835,7 +2836,8 @@ def register_browser_routes(app):
             return JSONResponse({"error": "not found"},
                                 status_code=404)
         uid = _route_uid(request)
-        rec = _get_session(uid) if uid else None
+        rec = await asyncio.to_thread(_get_session, uid) \
+            if uid else None
         if not rec:
             return JSONResponse({"ok": False, "error": "no session"},
                                 status_code=400)
@@ -2868,7 +2870,7 @@ def register_browser_routes(app):
                 status_code=502)
         rec = dict(rec)
         rec["last_action"] = time.time()
-        _set_session(uid, rec)
+        await asyncio.to_thread(_set_session, uid, rec)
         return out
 
     @app.post("/browser/end")
@@ -2877,7 +2879,7 @@ def register_browser_routes(app):
             return JSONResponse({"error": "not found"}, status_code=404)
         uid = _route_uid(request)
         if uid:
-            _clear_pending(uid)
+            await asyncio.to_thread(_clear_pending, uid)
             await asyncio.to_thread(_end_session, uid, "ended from the panel")
         return {"ok": True}
 
