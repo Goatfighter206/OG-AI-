@@ -623,7 +623,7 @@ def _finish_login(request: Request, rec: dict, chal_token: str):
 def register_2fa_routes(app):
 
     @app.post("/auth/2fa/setup")
-    async def tf_setup(request: Request):
+    def tf_setup(request: Request):
         sess = _session(request)
         if sess is None:
             return JSONResponse({"detail": "sign_in_required"},
@@ -769,7 +769,7 @@ def register_2fa_routes(app):
     # --- Passkeys -----------------------------------------------------------------
 
     @app.post("/auth/2fa/passkey/register/options")
-    async def pk_reg_options(request: Request):
+    def pk_reg_options(request: Request):
         sess = _session(request)
         if sess is None:
             return JSONResponse({"detail": "sign_in_required"},
@@ -856,7 +856,7 @@ def register_2fa_routes(app):
         return {"ok": True}
 
     @app.get("/auth/2fa/passkey/list")
-    async def pk_list(request: Request):
+    def pk_list(request: Request):
         sess = _session(request)
         if sess is None:
             return JSONResponse({"detail": "sign_in_required"},
