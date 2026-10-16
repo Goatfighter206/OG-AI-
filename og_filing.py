@@ -1160,7 +1160,7 @@ def register_filing_routes(app):
     account's project id answers no_such_project."""
 
     @app.get("/filing")
-    async def filing_route(request: Request):
+    def filing_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         projects = []
         if uid:
@@ -1180,7 +1180,7 @@ def register_filing_routes(app):
                 "links": links_for(uid) if uid else []}
 
     @app.get("/filing/project/{pid}")
-    async def filing_project_route(pid: str, request: Request):
+    def filing_project_route(pid: str, request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         proj = _project_by_id(uid, pid) if uid else None
         if not proj:
