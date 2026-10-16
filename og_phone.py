@@ -1292,7 +1292,7 @@ def register_phone_routes(app):
     last thing worked."""
 
     @app.get("/phone/status")
-    async def phone_status_route(request: Request):
+    def phone_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {"bench": None}
         return {"ok": True, "enabled": phone_enabled(),
