@@ -1410,7 +1410,7 @@ def register_godmoderunset_routes(app):
     never another account's."""
 
     @app.get("/godmoderunset/status")
-    async def godmoderunset_status_route(request: Request):
+    def godmoderunset_status_route(request: Request):
         uid = _route_uid(request)
         view = godmoderunset_status_for(uid) if uid else {
             "rulings": 0, "disputes": 0, "by_outcome": {},
