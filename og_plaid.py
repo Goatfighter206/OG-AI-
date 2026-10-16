@@ -62,7 +62,7 @@ _plaid_lock = threading.Lock()
 _MAX_TXNS = 10
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -84,7 +84,7 @@ def _cookie_max_age() -> int:
 # --- Token store ------------------------------------------------------------------
 
 def _plaid_db_connect():
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT)
+    conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
     _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
