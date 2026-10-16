@@ -1472,7 +1472,7 @@ def register_godmodetester_routes(app):
     held — never another account's."""
 
     @app.get("/godmodetester/status")
-    async def godmodetester_status_route(request: Request):
+    def godmodetester_status_route(request: Request):
         uid = _route_uid(request)
         view = godmodetester_status_for(uid) if uid else {
             "strategies": 0, "verdicts": 0, "reads": 0,
