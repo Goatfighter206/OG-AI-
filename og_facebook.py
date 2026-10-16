@@ -1210,7 +1210,7 @@ def register_facebook_routes(app):
     live browser session's host, read live."""
 
     @app.get("/facebook/status")
-    async def facebook_status_route(request: Request):
+    def facebook_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "page": None, "draft": None,
