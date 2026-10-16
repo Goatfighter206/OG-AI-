@@ -249,3 +249,161 @@ def apply_bounds(conn) -> None:
         except Exception:
             pass
         _count_store_error()
+
+
+# ===========================================================================
+# Round 321 (Step 4d): pooler-valid conninfo by construction.
+#
+# Conviction (2026-10-16, second pooler flip): with Step 4c's
+# options= gone, the startup refusals stopped, but OG's
+# background database work failed through the Neon pooler
+# with two new refusals — `connection is insecure (try using
+# sslmode=require)` and `database "neon" does not exist`.
+# The tree was swept: every one of the 71 psycopg.connect
+# sites passes the module's own MEMORY_DB_URL, captured
+# identically from OG_MEMORY_DB_URL, and the string sslmode
+# occurred NOWHERE in the tree — so every connection ran
+# with libpq's compiled default sslmode=prefer (try TLS,
+# silently permit a plaintext fallback). The direct Neon
+# endpoint tolerates that; the PgBouncer pooler does not:
+# a connection must ARRIVE with sslmode=require. The other
+# refusal is env-owned, not code-owned: the configured
+# DSN's path segment IS its dbname, and code must never
+# invent, guess, or alter a database name (the dbname
+# correction belongs to the OG_MEMORY_DB_URL value itself,
+# corrected env-side from the Neon Console's authoritative
+# pooled connection string). What code owns is the sslmode
+# guarantee, and that is the whole job of the function
+# below — guarantee it in code, at every connect site.
+#
+# normalize_conninfo(conninfo) is pure and NEVER raises:
+#   - URL-form (postgres:// / postgresql://): sslmode is
+#     added to the query when absent, and a weaker value
+#     (disable / allow / prefer / require) is raised to
+#     require IN PLACE; verify-ca / verify-full are
+#     stronger and are preserved, never downgraded. All
+#     other query tokens and their order, and the scheme /
+#     userinfo / host / port / path, pass through
+#     byte-for-byte (no parsing-and-rebuilding: credentials
+#     are never decoded or re-encoded).
+#   - Keyword-form conninfo strings get the same guarantee
+#     on their sslmode token, without rewriting any other
+#     token.
+#   - Empty input, non-string input, malformed input, and
+#     non-Postgres URI schemes return UNCHANGED — the
+#     Round 99 unconfigured (no OG_MEMORY_DB_URL) file-store
+#     behaviour is untouched, and a shape the normalizer
+#     does not understand fails visibly at connect time
+#     rather than being mangled here.
+#   - Idempotent: normalize(normalize(x)) == normalize(x).
+#   - No options= is reintroduced (Step 4c law); the bounds
+#     still ride apply_bounds()' post-connect SETs only.
+# Adopted at every psycopg.connect site in the tree as
+# psycopg.connect(_normalize_conninfo(MEMORY_DB_URL),
+# connect_timeout=_DB_CT) — census in
+# round-321/work/step4d/NOTES-draft.md.
+# ===========================================================================
+
+_SSLMODE_STRONGER = ("verify-ca", "verify-full")
+
+
+def _keyword_spans(text):
+    """Tokenize a keyword conninfo string into (start, end,
+    key, raw_value) spans, respecting single-quoted values
+    and backslash escapes (libpq style). Returns None if
+    any token is not a key=value pair (malformed)."""
+    spans = []
+    i, n = 0, len(text)
+    while i < n:
+        while i < n and text[i] in " \t":
+            i += 1
+        if i >= n:
+            break
+        start = i
+        eq = text.find("=", i)
+        if eq == -1:
+            return None
+        key = text[i:eq]
+        if not key or any(c in key for c in " \t'"):
+            return None
+        i = eq + 1
+        vstart = i
+        if i < n and text[i] == "'":
+            i += 1
+            while i < n:
+                if text[i] == "\\" and i + 1 < n:
+                    i += 2
+                    continue
+                if text[i] == "'":
+                    i += 1
+                    break
+                i += 1
+            else:
+                return None
+        else:
+            while i < n and text[i] not in " \t":
+                if text[i] == "\\" and i + 1 < n:
+                    i += 1
+                i += 1
+        spans.append((start, i, key, text[vstart:i]))
+        if i < n and text[i] not in " \t":
+            return None
+    return spans or None
+
+
+def _unquote(raw):
+    if len(raw) >= 2 and raw[0] == "'" and raw[-1] == "'":
+        return raw[1:-1].replace("\\'", "'").replace("\\\\", "\\")
+    return raw
+
+
+def normalize_conninfo(conninfo):
+    """Return conninfo with an effective sslmode=require
+    guaranteed (see the Step 4d block above). Pure; never
+    raises; anything unrecognized returns unchanged."""
+    try:
+        if not isinstance(conninfo, str) or not conninfo.strip():
+            return conninfo
+        s = conninfo
+        low = s.lower()
+        if "://" in s:
+            scheme = low.split("://", 1)[0]
+            if scheme not in ("postgres", "postgresql"):
+                return conninfo
+            # URL form: string surgery on the query only.
+            hash_i = s.find("#")
+            head, frag = (s, "") if hash_i == -1 else \
+                (s[:hash_i], s[hash_i:])
+            q_i = head.find("?")
+            if q_i == -1:
+                return head + "?sslmode=require" + frag
+            base, query = head[:q_i], head[q_i + 1:]
+            if not query:
+                return base + "?sslmode=require" + frag
+            tokens = query.split("&")
+            for idx, tok in enumerate(tokens):
+                key, eq, val = tok.partition("=")
+                if key != "sslmode":
+                    continue
+                v = val if eq else ""
+                if v == "require" or v in _SSLMODE_STRONGER:
+                    return conninfo
+                tokens[idx] = "sslmode=require"
+                return base + "?" + "&".join(tokens) + frag
+            return base + "?" + query + "&sslmode=require" + frag
+        # Keyword form: same guarantee on the sslmode token,
+        # other tokens byte-identical (span replacement).
+        spans = _keyword_spans(s)
+        if spans is None:
+            return conninfo
+        for start, end, key, raw in spans:
+            if key != "sslmode":
+                continue
+            v = _unquote(raw)
+            if v == "require" or v in _SSLMODE_STRONGER:
+                return conninfo
+            return s[:start] + "sslmode=require" + s[end:]
+        sep = "" if s[-1] in " \t" else " "
+        return s + sep + "sslmode=require"
+    except Exception:
+        return conninfo
