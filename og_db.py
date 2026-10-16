@@ -61,21 +61,27 @@ round-99/NOTES.md.
     queue behind a stuck transaction fails the statement
     instead of silently eating the whole budget.
 
-DB_OPTIONS is the libpq `options` string carrying the
-two server-side bounds; psycopg passes it through in the
-startup packet, so it applies from the first statement
-on every connection, pooled endpoint included.
-
-Round 321 (Step 4 — R100) qualifies that last clause: a
-transaction pooler is NOT obliged to carry startup-packet
-GUCs into the backend session it hands out — which is
-why production still runs on the direct host today.
-apply_bounds() below re-asserts the same two bounds with
-post-connect SETs, which bind the session itself however
-the session was obtained. This step also adopts app.py's
-remaining connect site, so the R94-era note further down
-("app.py's own two connect sites are NOT covered") no
-longer holds.
+Until Round 321 Step 4c the two bounds also rode the
+libpq startup packet, as DB_OPTIONS — a string built
+from the constants below and passed as options= on
+every connect. Round 321 Step 4 (R100) first qualified
+that channel: a transaction pooler is NOT obliged to
+carry startup-packet GUCs into the backend session it
+hands out. Production then convicted it outright on
+2026-10-15: the Neon pooler REFUSES the startup
+parameter (unsupported startup parameter in options:
+statement_timeout — use an unpooled connection or
+remove the parameter), and 42 connects died on that
+refusal in the first minutes after the pooler flip.
+DB_OPTIONS is therefore deleted and every connect now
+carries no options= at all. apply_bounds() below
+re-asserts the two bounds with post-connect SETs,
+which bind the session itself however the session was
+obtained — the SETs are now the sole carrier of the
+bounds, on the direct host and the pooled endpoint
+alike. Step 4 also adopted app.py's remaining connect
+site, so the R94-era note further down ("app.py's own
+two connect sites are NOT covered") no longer holds.
 
 app.py's own two connect sites are NOT covered by the
 import sweep — app.py is at its push ceiling and is
@@ -88,10 +94,9 @@ DB_CONNECT_TIMEOUT = 5
 DB_STATEMENT_TIMEOUT_MS = 10000
 DB_LOCK_TIMEOUT_MS = 5000
 
-DB_OPTIONS = (
-    f"-c statement_timeout={DB_STATEMENT_TIMEOUT_MS} "
-    f"-c lock_timeout={DB_LOCK_TIMEOUT_MS}"
-)
+# No DB_OPTIONS (deleted in Round 321 Step 4c): the startup
+# packet carries no bounds — the pooler rejects them there.
+# apply_bounds() below is the sole carrier; see the docstring.
 
 # Round 99: the waking-backend allowance. Field evidence
 # (2026-10-12 ~05:55, live probes): in the hosted
