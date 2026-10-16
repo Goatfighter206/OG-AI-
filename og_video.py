@@ -1728,7 +1728,7 @@ def register_video_routes(app):
                     _store_latest_for_owner(_key(uid)))}
 
     @app.post("/video/approve")
-    async def video_approve(request: Request):
+    def video_approve(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "story videos are off"},
@@ -1742,7 +1742,7 @@ def register_video_routes(app):
                 "error": "" if ok else msg}
 
     @app.post("/video/decline")
-    async def video_decline(request: Request):
+    def video_decline(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "story videos are off"},
@@ -1754,7 +1754,7 @@ def register_video_routes(app):
         return {"ok": ok, "error": "" if ok else msg}
 
     @app.get("/video/download/{job_id}")
-    async def video_download(job_id: str, request: Request):
+    def video_download(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
@@ -1770,7 +1770,7 @@ def register_video_routes(app):
             filename=_slug(rec.get("title", "story")) + ".mp4")
 
     @app.post("/video/save/{job_id}")
-    async def video_save(job_id: str, request: Request):
+    def video_save(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
