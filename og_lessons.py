@@ -354,7 +354,7 @@ def _key_ok(key: str) -> bool:
 def register_lessons_routes(app):
 
     @app.get("/system/lessons")
-    async def system_lessons(request: Request, key: str = ""):
+    def system_lessons(request: Request, key: str = ""):
         if not _key_ok(key):
             return JSONResponse({"detail": "Owner key required"},
                                 status_code=401)
