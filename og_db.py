@@ -66,6 +66,17 @@ two server-side bounds; psycopg passes it through in the
 startup packet, so it applies from the first statement
 on every connection, pooled endpoint included.
 
+Round 321 (Step 4 — R100) qualifies that last clause: a
+transaction pooler is NOT obliged to carry startup-packet
+GUCs into the backend session it hands out — which is
+why production still runs on the direct host today.
+apply_bounds() below re-asserts the same two bounds with
+post-connect SETs, which bind the session itself however
+the session was obtained. This step also adopts app.py's
+remaining connect site, so the R94-era note further down
+("app.py's own two connect sites are NOT covered") no
+longer holds.
+
 app.py's own two connect sites are NOT covered by the
 import sweep — app.py is at its push ceiling and is
 edited only under its own rule; see round-94/NOTES.md
@@ -181,3 +192,55 @@ def store_error_snapshot() -> dict:
     for (store, hour), n in items.items():
         out.setdefault(store, {})[str(hour)] = n
     return out
+
+
+# ===========================================================================
+# Round 321 (Step 4 — R100): post-connect bounds.
+#
+# The startup packet is a request, not a guarantee: a
+# transaction pooler may hand out a backend session whose
+# GUCs owe nothing to the options string the client sent
+# (the session may predate the connect, or serve many
+# clients in turn). A SET issued on the live connection
+# has no such ambiguity — it binds THIS session, direct
+# host or pooled. apply_bounds is therefore called
+# immediately after connect at every psycopg.connect site
+# (the census is in round-321/work/step4/NOTES-draft.md);
+# the values are the same constants the startup packet
+# already carries, so on the direct host this is a
+# no-op-strengthening re-assert, and on a pooled endpoint
+# it is the only thing making the bounds real. Cost: two
+# extra statements per connect (~ms on a live backend).
+#
+# FAIL-SOFT, by law: a failed SET must never break the
+# connect or its caller. The connection still carries
+# whatever the startup packet bought it (on the direct
+# host: the full bounds), so a failed re-assert leaves
+# the status quo, never something worse — while a store
+# that let the exception escape would manufacture an
+# outage out of a hardening step. A failure is counted
+# through the Step 2 machinery above (the raising-store
+# attribution reads the adopting module, exactly as it
+# does for a StoreError raised inside a store helper)
+# and the connection is rolled back so a statement the
+# backend cancelled mid-flight cannot leave the caller's
+# first real statement facing an aborted transaction.
+# Idempotent: re-asserting the same values is a no-op.
+# ===========================================================================
+
+def apply_bounds(conn) -> None:
+    """Re-assert DB_STATEMENT_TIMEOUT_MS / DB_LOCK_TIMEOUT_MS
+    on a live connection via post-connect SETs. Never
+    raises."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SET statement_timeout = {DB_STATEMENT_TIMEOUT_MS}")
+            cur.execute(
+                f"SET lock_timeout = {DB_LOCK_TIMEOUT_MS}")
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        _count_store_error()
