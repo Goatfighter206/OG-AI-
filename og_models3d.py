@@ -1120,7 +1120,7 @@ def _job_view(rec: Optional[Dict]) -> Optional[Dict]:
 
 def register_models3d_routes(app):
     @app.get("/models3d/status")
-    async def models3d_status(request: Request):
+    def models3d_status(request: Request):
         if not enabled():
             return {"enabled": False, "provider": PROVIDER_NAME}
         uid = _route_uid(request)
@@ -1157,7 +1157,7 @@ def register_models3d_routes(app):
                 "job": _job_view(_store_latest_for_owner(_key(uid)))}
 
     @app.post("/models3d/approve")
-    async def models3d_approve(request: Request):
+    def models3d_approve(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "3d models are off"},
@@ -1171,7 +1171,7 @@ def register_models3d_routes(app):
                 "error": "" if ok else msg}
 
     @app.post("/models3d/decline")
-    async def models3d_decline(request: Request):
+    def models3d_decline(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "3d models are off"},
@@ -1183,7 +1183,7 @@ def register_models3d_routes(app):
         return {"ok": ok, "error": "" if ok else msg}
 
     @app.get("/models3d/download/{job_id}")
-    async def models3d_download(job_id: str, request: Request):
+    def models3d_download(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
@@ -1198,7 +1198,7 @@ def register_models3d_routes(app):
             filename=_slug(rec.get("title", "model")) + ".glb")
 
     @app.post("/models3d/save/{job_id}")
-    async def models3d_save(job_id: str, request: Request):
+    def models3d_save(job_id: str, request: Request):
         uid = _route_uid(request)
         rec = _store_get(job_id) if uid else None
         if not rec or rec.get("owner") != _key(uid) \
