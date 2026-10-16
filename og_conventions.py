@@ -445,7 +445,7 @@ def _key_ok(key: str) -> bool:
 def register_conventions_routes(app):
 
     @app.get("/system/conventions")
-    async def system_conventions(request: Request, key: str = "",
+    def system_conventions(request: Request, key: str = "",
                                  repo: str = ""):
         if not _key_ok(key):
             return JSONResponse(
