@@ -135,7 +135,7 @@ STORE_FILE = os.getenv("OG_ACCOUNTS_STORE", "accounts_store.json")
 _store_lock = threading.Lock()
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError, apply_bounds as _apply_bounds
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, StoreError, apply_bounds as _apply_bounds
 from og_db import DB_CONNECT_RETRIES as _DB_RETRIES
 from og_db import DB_CONNECT_RETRY_DELAY as _DB_RETRY_DELAY
 try:
@@ -151,7 +151,7 @@ except Exception:  # psycopg missing — file backend
 
 def _db_connect_once():
     conn = psycopg.connect(
-        MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+        MEMORY_DB_URL, connect_timeout=_DB_CT)
     _apply_bounds(conn)
     return conn
 
