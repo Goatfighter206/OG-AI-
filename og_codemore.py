@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # Durable backend (the og_lessons pattern): Postgres when
 # OG_MEMORY_DB_URL is set, else JSON files beside the stores.
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, StoreError, apply_bounds as _apply_bounds
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -93,6 +93,7 @@ _CHECK_TERMINAL = ("success", "failure", "none", "stopped")
 
 def _checks_db_connect():
     conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_github_checks ("
@@ -289,6 +290,7 @@ _map_lock = threading.Lock()
 
 def _maps_db_connect():
     conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
             "CREATE TABLE IF NOT EXISTS og_github_maps ("
