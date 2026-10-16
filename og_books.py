@@ -1616,7 +1616,7 @@ def _owned(uid: str, book_id: str) -> Optional[Dict]:
 
 def register_book_routes(app):
     @app.get("/books/status")
-    async def books_status(request: Request):
+    def books_status(request: Request):
         if not enabled():
             return {"enabled": False}
         uid = _route_uid(request)
@@ -1657,7 +1657,7 @@ def register_book_routes(app):
                 "job": _book_view(_latest_book(uid))}
 
     @app.post("/books/approve")
-    async def books_approve(request: Request):
+    def books_approve(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "books are off"},
@@ -1671,7 +1671,7 @@ def register_book_routes(app):
                 "error": "" if ok else msg}
 
     @app.post("/books/decline")
-    async def books_decline(request: Request):
+    def books_decline(request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "books are off"},
@@ -1683,7 +1683,7 @@ def register_book_routes(app):
         return {"ok": ok, "error": "" if ok else msg}
 
     @app.get("/books")
-    async def books_list(request: Request):
+    def books_list(request: Request):
         uid = _route_uid(request)
         if not uid:
             return {"books": []}
@@ -1691,7 +1691,7 @@ def register_book_routes(app):
                            for r in list_jobs_for_owner(uid)]}
 
     @app.get("/books/{book_id}")
-    async def book_one(book_id: str, request: Request):
+    def book_one(book_id: str, request: Request):
         uid = _route_uid(request)
         rec = _owned(uid, book_id)
         if not rec:
@@ -1700,7 +1700,7 @@ def register_book_routes(app):
         return _book_view(rec)
 
     @app.get("/books/{book_id}/read")
-    async def book_read(book_id: str, request: Request):
+    def book_read(book_id: str, request: Request):
         uid = _route_uid(request)
         rec = _owned(uid, book_id)
         if not rec:
@@ -1720,7 +1720,7 @@ def register_book_routes(app):
                 "text": _book_markdown(rec)}
 
     @app.get("/books/{book_id}/download")
-    async def book_download(book_id: str, request: Request):
+    def book_download(book_id: str, request: Request):
         uid = _route_uid(request)
         rec = _owned(uid, book_id)
         if not rec or not rec.get("chapters"):
@@ -1735,7 +1735,7 @@ def register_book_routes(app):
             filename=_slug(rec.get("title", "book")) + ".md")
 
     @app.post("/books/{book_id}/continue")
-    async def book_continue(book_id: str, request: Request):
+    def book_continue(book_id: str, request: Request):
         if not enabled():
             return JSONResponse({"ok": False,
                                  "error": "books are off"},
