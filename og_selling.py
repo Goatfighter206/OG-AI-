@@ -1696,7 +1696,7 @@ def register_selling_routes(app):
     listing + book summary + pending state."""
 
     @app.get("/selling/status")
-    async def selling_status_route(request: Request):
+    def selling_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "listing": None, "listings": 0,
