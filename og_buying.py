@@ -1433,7 +1433,7 @@ def register_buying_routes(app):
     prepared buy + whether its card is live."""
 
     @app.get("/buying/status")
-    async def buying_status_route(request: Request):
+    def buying_status_route(request: Request):
         uid = _route_uid(request)
         view = status_for(uid) if uid else {
             "buy": None, "card_live": False}
