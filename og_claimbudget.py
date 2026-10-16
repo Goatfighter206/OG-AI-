@@ -32,31 +32,55 @@ wrapped function is an exact pass-through — fast turns
 and non-chat callers (the suites call claims directly,
 with no budget begun) see the old behavior.
 
-The value: 8 s. Grounds (round-321 NOTES, corrected
-production log verdict 2026-10-15): production runs
-gunicorn --timeout 12 — a worker whose loop starves
-past 12 s is SIGKILLed, and the claim cascade's CPU
-starved it exactly like that (worker timeouts at
-18:43:33/18:48:04 UTC, the hour's one successful chat
-took 83.3 s, requests dying at the edge). The claim
-phase must therefore finish or fall through WELL
-inside 12 s: 8 s of claims + the seconds-fast
-post-blow unwind leaves heartbeat margin. A bare
-detect pass measured 409 s locally for a plain
-message (forget's claim at 99 s), so without the
-budget every parked-state turn was a worker-killer.
+The value: 3 s (Round 321 Step 6 re-derivation). The
+original 8 s was sized against "gunicorn --timeout 12"
+— a truncated log reading; production runs --timeout
+120 (Procfile / render.yaml), and the patience that
+actually kills instances is Render's 5 s health check.
+Since Round 321 Step 3 the claim work runs on worker
+THREADS, never on an event loop, so the budget was
+never a loop-safety device: it is a turn-quality bound.
+It caps the pre-blow census spend (CPU on a 0.1-CPU
+instance, summed store reads per turn) at 3 s; the
+post-blow unwind is seconds-fast, and the deep owner
+commands survive it — the forget chain walks watch ->
+browser in the first seconds of the pass and completed
+inside a 1 s test budget in the Step 3 repro. A bare
+detect pass measured 409 s locally for a plain message
+(forget's claim at 99 s), so without the budget every
+parked-state turn was a worker-killer.
 OG_CLAIM_BUDGET_SECONDS overrides.
+
+Step 6 arity fix: the claim guard used to answer a bare
+None for EVERY wrapped entry once the budget blew —
+but 25 of the 67 _claim_* entries return a 2-TUPLE
+(claim, garble_info), and their callers unpack it
+(claim, info = _claim_<seat>(...)), so a blown budget
+threw "cannot unpack non-iterable NoneType object" in
+~23 seats on one production turn (2026-10-16 09:11) —
+each seat's detect wrapper logged a misleading
+"trigger check failed" and discarded preamble work.
+The guard is now shape-aware at wrap time
+(_tuple_contract): tuple entries step aside as
+(None, None), single entries as None — each kind's
+own "not mine", exactly like the garble guards below
+always did. A unified (None, None) would be wrong:
+single-return callers test truthiness, and a tuple is
+truthy — it would read as a claim.
 """
 
+import ast
+import inspect
 import logging
 import os
+import textwrap
 import threading
 import time
 
 logger = logging.getLogger(__name__)
 
 CLAIM_BUDGET_SECONDS = float(
-    os.getenv("OG_CLAIM_BUDGET_SECONDS", "8") or 8)
+    os.getenv("OG_CLAIM_BUDGET_SECONDS", "3") or 3)
 _claim_budget_local = threading.local()
 
 
@@ -101,11 +125,57 @@ def claim_budget_open() -> bool:
     return False
 
 
-def _budget_guard(fn, kind):
+def _tuple_contract(fn) -> bool:
+    """Round 321 Step 6: True when fn's OWN returns are
+    exclusively tuple literals — the (claim, info)
+    contract. AST over the function's source with nested
+    scopes pruned (their returns are not fn's). Fail-soft
+    False (the pre-Step-6 bare-None shape) when the
+    source cannot be read or parsed. The tree census
+    this mirrors: 67 _claim_* functions, 25 tuple-2,
+    every tuple entry returning tuple literals only."""
+    try:
+        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    except Exception:
+        return False
+    func = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) \
+                and node.name == getattr(fn, "__name__", None):
+            func = node
+            break
+    if func is None:
+        return False
+
+    def _walk(n):
+        yield n
+        for ch in ast.iter_child_nodes(n):
+            if isinstance(ch, (ast.FunctionDef,
+                               ast.AsyncFunctionDef,
+                               ast.Lambda, ast.ClassDef)):
+                continue
+            yield from _walk(ch)
+
+    shapes = set()
+    for n in _walk(func):
+        if isinstance(n, ast.Return):
+            if n.value is None:
+                shapes.add("bare")
+            elif isinstance(n.value, ast.Tuple):
+                shapes.add("tuple")
+            elif isinstance(n.value, ast.Constant) \
+                    and n.value.value is None:
+                shapes.add("none")
+            else:
+                shapes.add("value")
+    return shapes == {"tuple"}
+
+
+def _budget_guard(fn, kind, blown=None):
     if kind == "claim":
         def _g(*a, **k):
             if not claim_budget_open():
-                return None
+                return blown
             return fn(*a, **k)
     elif kind == "defer":
         def _g(message, uid):
@@ -175,7 +245,13 @@ def _wrap_claim_funnels() -> int:
                         continue
                     if getattr(fn, "__module__", None) != modname:
                         continue
-                    _g = _budget_guard(fn, "claim")
+                    # Step 6: a tuple-contract entry steps
+                    # aside as (None, None); a single entry
+                    # as None — the shape-aware "not mine".
+                    _g = _budget_guard(
+                        fn, "claim",
+                        blown=(None, None) if _tuple_contract(fn)
+                        else None)
                     _g.__module__ = modname
                     setattr(mod, attr, _g)
                     wrapped += 1
