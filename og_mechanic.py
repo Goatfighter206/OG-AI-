@@ -2667,7 +2667,7 @@ def register_mechanic_routes(app):
     cookie uid, like every Round 95+ surface."""
 
     @app.get("/mechanic/status")
-    async def mechanic_status_route(request: Request):
+    def mechanic_status_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         view = status_for(uid) if uid else {
             "diagnosis": None, "vehicles": []}
