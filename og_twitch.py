@@ -603,7 +603,7 @@ def register_twitch_routes(app):
     Mirrors the Round 10/14 routes one for one."""
 
     @app.get("/auth/twitch")
-    async def twitch_auth_start(raw_request: Request):
+    def twitch_auth_start(raw_request: Request):
         """
         Begin Twitch connect: bounce the visitor to Twitch's own
         consent page. Answers 404 while the feature is dark (keys
@@ -729,7 +729,7 @@ def register_twitch_routes(app):
         }
 
     @app.post("/auth/twitch/disconnect")
-    async def twitch_auth_disconnect(raw_request: Request):
+    def twitch_auth_disconnect(raw_request: Request):
         """Forget this visitor's Twitch connection — tokens
         deleted server-side."""
         if not TWITCH_ENABLED:
