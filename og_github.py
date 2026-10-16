@@ -209,7 +209,7 @@ _MERGE_POLL_BUDGET = 48 * 60 * 60  # merge-watch bound, seconds
 # tokens live there; psycopg missing simply means the JSON file
 # backend is used.
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, DB_OPTIONS as _DB_OPTS, apply_bounds as _apply_bounds
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -235,7 +235,7 @@ def _cookie_max_age() -> int:
 
 def _github_db_connect():
     """Connect to the durable DB, creating the GitHub tokens table."""
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT, options=_DB_OPTS)
+    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT)
     _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
