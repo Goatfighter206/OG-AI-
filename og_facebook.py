@@ -160,7 +160,7 @@ FACEBOOK_STORE_FILE = os.getenv(
     "OG_FACEBOOK_STORE", "facebook_store.json")
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, StoreError, apply_bounds as _apply_bounds
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, StoreError, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -190,7 +190,7 @@ def facebook_enabled() -> bool:
 
 
 def _db_connect():
-    conn = psycopg.connect(MEMORY_DB_URL, connect_timeout=_DB_CT)
+    conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
     _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
