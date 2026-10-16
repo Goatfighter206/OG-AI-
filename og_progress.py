@@ -475,7 +475,7 @@ def collect_progress(uid: str, request: Request) -> Dict:
 
 def register_progress_routes(app):
     @app.get("/progress")
-    async def progress_list(request: Request):
+    def progress_list(request: Request):
         uid = request.cookies.get(UID_COOKIE) or ""
         data = collect_progress(uid, request)
         return {"ok": True, "rows": data["rows"],
