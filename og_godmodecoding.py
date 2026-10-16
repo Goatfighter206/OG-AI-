@@ -1426,7 +1426,7 @@ def register_godmodecoding_routes(app):
     never another account's."""
 
     @app.get("/godmodecoding/status")
-    async def godmodecoding_status_route(request: Request):
+    def godmodecoding_status_route(request: Request):
         uid = _route_uid(request)
         view = godmodecoding_status_for(uid) if uid else {
             "plans": 0, "drafts": 0, "filed": 0,
