@@ -542,7 +542,7 @@ def register_discord_routes(app):
     Mirrors the Round 10/14 routes one for one."""
 
     @app.get("/auth/discord")
-    async def discord_auth_start(raw_request: Request):
+    def discord_auth_start(raw_request: Request):
         """
         Begin Discord connect: bounce the visitor to Discord's own
         consent page. Answers 404 while the feature is dark (keys
@@ -661,7 +661,7 @@ def register_discord_routes(app):
         }
 
     @app.post("/auth/discord/disconnect")
-    async def discord_auth_disconnect(raw_request: Request):
+    def discord_auth_disconnect(raw_request: Request):
         """Forget this visitor's Discord connection — tokens
         deleted server-side."""
         if not DISCORD_ENABLED:
