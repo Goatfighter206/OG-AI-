@@ -2101,7 +2101,7 @@ def register_mainteng_routes(app):
     caller's cookie uid, like every Round 95+ surface."""
 
     @app.get("/mainteng/status")
-    async def mainteng_status_route(request: Request):
+    def mainteng_status_route(request: Request):
         uid = request.cookies.get("ogai_uid") or ""
         view = status_for(uid) if uid else {
             "diagnosis": None, "schedules": []}
