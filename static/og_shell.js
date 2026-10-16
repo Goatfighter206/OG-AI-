@@ -41,6 +41,7 @@ shellRoot.innerHTML =
 '<h3 class="og-appr-sec" id="ogGoalsPriceSec" hidden>Price watches</h3>' +
 '<div id="ogGoalsPriceList"></div>' +
 '<p id="ogGoalsEmpty" class="og-appr-empty" hidden>OG isn\'t watching anything yet — ask in chat, like "watch for a red kayak under $200".</p>' +
+'<button id="ogManagerBtn" class="og-manager-btn" type="button">Manager Dashboard</button>' +
 '</div>' +
 '<div id="ogIdeasView" class="og-seat-view" hidden>' +
 '<div id="ogIdeasAppr" class="og-appr-card" hidden>' +
