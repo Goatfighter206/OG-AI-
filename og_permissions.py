@@ -336,7 +336,7 @@ async def _json_body(request: Request) -> dict:
 def register_permissions_routes(app):
 
     @app.get("/permissions")
-    async def permissions_get(request: Request):
+    def permissions_get(request: Request):
         uid = request.cookies.get(UID_COOKIE) or ""
         if not uid:
             # Signed-in only (the pinned contract). In
