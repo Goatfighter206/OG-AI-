@@ -407,3 +407,229 @@ def normalize_conninfo(conninfo):
         return s + sep + "sslmode=require"
     except Exception:
         return conninfo
+
+
+# ===========================================================================
+# Round 321 (DBPOOL): pooled connections.
+#
+# Conviction (2026-10-16, measured against production with an
+# authenticated test account): login 42s, /feed 55s for an
+# 80-byte answer, /chat over 90s — while every anonymous or
+# store-free request answered in ~1s. The stores' law since
+# Round 18 was one FRESH psycopg connection per store op
+# (connect, bounds, query, close). In the database's current
+# regime a connect costs ~3-5s (see the Round 99 waking-backend
+# note above: ~5.3s observed 2026-10-12), and a real request
+# stacks 8-30 sequential ops, so every deadline-bound request
+# (chat 30/45s, sheet/data 15s, feed 12s) died of old age while
+# deadline-free polls eventually completed and made the logs
+# look clean. The lab never saw it (the file store costs ~0ms);
+# unauthenticated probes never saw it (no store op at all).
+#
+# The pool keeps a small set of live connections per conninfo
+# per process and hands them out again. pooled_connect() is a
+# drop-in for psycopg.connect(...) at the store wrappers: the
+# caller uses the returned object exactly like a raw connection
+# (with-block, cursor(), commit()); close() and context-exit
+# RETURN it to the pool instead of closing it. Release is
+# idempotent; a connection found broken at checkin or checkout
+# is discarded and replaced, never handed out twice.
+#
+# Bounds law unchanged: apply_bounds() still runs at creation
+# AND the wrappers still re-assert it on every checkout,
+# exactly as they did on every fresh connect — on a transaction
+# pooler the re-assert is what binds the session in hand.
+#
+# Fail-honest, by the Round 99 law: a creation failure raises
+# exactly as a raw connect's would (the accounts retry wrapper
+# still sees it); pool exhaustion NEVER fails a caller — after
+# a bounded wait it hands out a transient unpooled connection
+# that really closes on release.
+# ===========================================================================
+
+_POOL_MAX_IDLE = 8
+_POOL_MAX_TOTAL = 12
+_POOL_IDLE_PING_S = 30.0
+_POOL_WAIT_S = 10.0
+
+
+class _Pool:
+    __slots__ = ("cond", "idle", "total")
+
+    def __init__(self):
+        self.cond = _threading.Condition(_threading.Lock())
+        self.idle = []  # [(conn, released_monotonic)]
+        self.total = 0  # live conns owned: idle + checked out
+
+
+_POOLS = {}
+_POOLS_LOCK = _threading.Lock()
+
+
+def _pool_for(conninfo):
+    with _POOLS_LOCK:
+        pool = _POOLS.get(conninfo)
+        if pool is None:
+            pool = _Pool()
+            _POOLS[conninfo] = pool
+        return pool
+
+
+def _fresh_conn(conninfo, connect_timeout):
+    import psycopg
+    conn = psycopg.connect(conninfo, connect_timeout=connect_timeout)
+    apply_bounds(conn)
+    return conn
+
+
+def _pooled_conn_alive(conn):
+    try:
+        if conn.closed:
+            return False
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def _pool_checkout(conninfo, connect_timeout):
+    """(conn, transient) — a live connection owned by the
+    caller until _pool_checkin. Raises only on creation
+    failure, exactly like a raw connect."""
+    pool = _pool_for(conninfo)
+    deadline = _time.monotonic() + _POOL_WAIT_S
+    create = False
+    with pool.cond:
+        while True:
+            while pool.idle:
+                conn, ts = pool.idle.pop()
+                if conn.closed:
+                    pool.total -= 1
+                    continue
+                if (_time.monotonic() - ts > _POOL_IDLE_PING_S
+                        and not _pooled_conn_alive(conn)):
+                    pool.total -= 1
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    continue
+                return conn, False
+            if pool.total < _POOL_MAX_TOTAL:
+                pool.total += 1
+                create = True
+                break
+            remaining = deadline - _time.monotonic()
+            if remaining <= 0:
+                break
+            pool.cond.wait(timeout=remaining)
+    if not create:
+        # Pool exhausted past the wait: a transient connection
+        # the caller really closes — never fail the request.
+        return _fresh_conn(conninfo, connect_timeout), True
+    try:
+        return _fresh_conn(conninfo, connect_timeout), False
+    except Exception:
+        with pool.cond:
+            pool.total -= 1
+            pool.cond.notify()
+        raise
+
+
+def _pool_checkin(conninfo, conn, transient):
+    if transient:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return
+    pool = _pool_for(conninfo)
+    discard = False
+    try:
+        if conn.closed:
+            discard = True
+        else:
+            try:
+                # psycopg's TransactionStatus.IDLE is 0; any
+                # other state means a transaction is open —
+                # roll it back so the next borrower starts
+                # clean (post-commit this never fires).
+                if int(conn.info.transaction_status) != 0:
+                    conn.rollback()
+            except Exception:
+                discard = True
+    except Exception:
+        discard = True
+    with pool.cond:
+        if discard or len(pool.idle) >= _POOL_MAX_IDLE:
+            pool.total -= 1
+            try:
+                conn.close()
+            except Exception:
+                pass
+        else:
+            pool.idle.append((conn, _time.monotonic()))
+        pool.cond.notify()
+
+
+class _PooledConnection:
+    """Proxy for a pooled psycopg connection. Delegates every
+    attribute to the real connection; close() and context-exit
+    return it to the pool instead of closing it."""
+
+    __slots__ = ("_conninfo", "_conn", "_transient", "_released")
+
+    def __init__(self, conninfo, conn, transient):
+        self._conninfo = conninfo
+        self._conn = conn
+        self._transient = transient
+        self._released = False
+
+    def _release(self):
+        if self._released:
+            return
+        self._released = True
+        _pool_checkin(self._conninfo, self._conn, self._transient)
+
+    def close(self):
+        self._release()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._release()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __repr__(self):
+        return "<_PooledConnection released=%r>" % (self._released,)
+
+
+def pooled_connect(conninfo, connect_timeout=DB_CONNECT_TIMEOUT):
+    """A connection to conninfo, reused from the process pool
+    when one is warm. Drop-in for psycopg.connect(...) at the
+    store wrappers (same arguments the wrappers already pass).
+    """
+    conn, transient = _pool_checkout(conninfo, connect_timeout)
+    return _PooledConnection(conninfo, conn, transient)
+
+
+def pool_snapshot():
+    """{conninfo-tail: {idle, total}} for diagnostics. Keys are
+    truncated so no credential material rides along."""
+    out = {}
+    with _POOLS_LOCK:
+        items = list(_POOLS.items())
+    for conninfo, pool in items:
+        with pool.cond:
+            out[str(conninfo)[-24:]] = {
+                "idle": len(pool.idle), "total": pool.total}
+    return out
