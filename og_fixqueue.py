@@ -1820,7 +1820,8 @@ def fixqueue_results(job: Dict, uid: str) -> List[Dict]:
 from og_claimbudget import (  # noqa: E402
     CLAIM_BUDGET_SECONDS, begin_claim_budget,
     end_claim_budget, claim_budget_open, _wrap_claim_funnels,
-    begin_claim_phase, end_claim_phase)
+    begin_claim_phase, end_claim_phase,
+    turn_budget_active, turn_marker)
 
 
 def install_fixqueue_tools(agent_instance, get_uid):
@@ -1846,6 +1847,14 @@ def install_fixqueue_tools(agent_instance, get_uid):
         # to the phase (see og_claimbudget).
         _budget_started = begin_claim_budget()
         begin_claim_phase()
+        # DBPOOL batch-5: the detect leg's timing marker —
+        # this wrapper is the exact detect boundary on both
+        # chat paths, so the marker is emitted here, and
+        # only while a turn budget stands (og_respond's
+        # drafts begin none and stay exactly as quiet as
+        # before). Fail-soft: a marker must never break a
+        # detect.
+        _detect_t0 = time.monotonic()
         try:
             intent = prev_detect(message)
             _pending["job"] = None
@@ -1864,6 +1873,13 @@ def install_fixqueue_tools(agent_instance, get_uid):
                 _pending["job"] = None
             return intent
         finally:
+            try:
+                if turn_budget_active():
+                    turn_marker(
+                        "detect",
+                        (time.monotonic() - _detect_t0) * 1000.0)
+            except Exception:
+                pass
             end_claim_phase()
             end_claim_budget(_budget_started)
 
