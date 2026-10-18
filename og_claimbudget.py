@@ -32,6 +32,22 @@ wrapped function is an exact pass-through — fast turns
 and non-chat callers (the suites call claims directly,
 with no budget begun) see the old behavior.
 
+DBPOOL batch-4 (2026-10-18): the entry guards alone did
+not bound the phase in production — an entry in flight
+at the deadline, and every seat wrapper's unguarded
+per-turn delivery read, ran to completion at DB prices
+(one plain turn's detect makes ~6,900 store loads; see
+round-321/work/dbpool4/RECON.md). The phase now has a
+mid-flight bound too: og_fixqueue's detect wrapper marks
+the claim phase (begin/end_claim_phase) and the store
+choke point (og_db.pooled_connect) raises
+_ClaimBudgetBlown via raise_if_claim_phase_blown once
+the phase is blown, so an in-flight entry unwinds at
+its next store op. The phase scoping is what keeps the
+check honest: outside the phase (history load/save,
+metering — all on a thread whose budget has blown by
+design) the predicate is False and nothing changes.
+
 The value: 3 s (Round 321 Step 6 re-derivation). The
 original 8 s was sized against "gunicorn --timeout 12"
 — a truncated log reading; production runs --timeout
@@ -111,6 +127,84 @@ def end_claim_budget(started: bool):
         _claim_budget_local.deadline = None
 
 
+def begin_claim_phase() -> None:
+    """DBPOOL batch-4: mark the start of the claim PHASE
+    on this thread (og_fixqueue's detect wrapper — the
+    phase's exact boundary). The budget spans a whole chat
+    turn (begun before the memory lock, ended after the
+    history save), but the phase is only the detect pass.
+    The distinction is load-bearing: store choke points
+    may raise the blown signal ONLY inside the phase —
+    the turn-end history save runs with the budget blown
+    by design and must save normally."""
+    _claim_budget_local.phase_depth = \
+        getattr(_claim_budget_local, "phase_depth", 0) + 1
+
+
+def end_claim_phase() -> None:
+    """Close a begin_claim_phase (depth-counted)."""
+    depth = getattr(_claim_budget_local, "phase_depth", 0) - 1
+    _claim_budget_local.phase_depth = max(0, depth)
+
+
+def claim_phase_blown() -> bool:
+    """True only while ALL of: a claim phase is active on
+    this thread, a budget was begun, and its deadline has
+    passed. With no phase or no budget (suites calling
+    claims directly, non-chat callers) always False — an
+    exact pass-through, like the budget itself."""
+    if getattr(_claim_budget_local, "phase_depth", 0) <= 0:
+        return False
+    return not claim_budget_open()
+
+
+def raise_if_claim_phase_blown() -> None:
+    """The mid-flight choke check (DBPOOL batch-4): raise
+    _ClaimBudgetBlown when this thread's claim phase has
+    blown its budget, so a claim entry in flight at the
+    deadline unwinds at its next store op instead of
+    running its load+parse to completion. Real call sites
+    already swallow this exception (the funnel probes
+    raise it by design). The og_db choke applies it only
+    to loads issued from inside a census-wrapped claim
+    call (see in_claim_call below): the fleet's
+    _load_store idiom would otherwise wrap the raise into
+    a misleading "<seat> store unavailable" StoreError."""
+    if claim_phase_blown():
+        raise _ClaimBudgetBlown()
+
+
+# --- in-claim-call depth (DBPOOL batch 4, choke scope) ---
+# The og_db pooled_connect choke raises _ClaimBudgetBlown
+# on a store load only when the load is issued from
+# inside a census-wrapped claim call (depth > 0 here):
+# loads from detect wrappers' auxiliary helpers, the
+# generation phase, or direct suite calls keep their
+# exact old behaviour — the fleet's _load_store idiom
+# wraps ANY exception into a "<seat> store unavailable"
+# StoreError, and a blown budget must never masquerade
+# as a store outage (r321h B5 pins the quiet signature).
+_call_local = threading.local()
+
+
+def _call_depth() -> int:
+    return getattr(_call_local, "depth", 0)
+
+
+def in_claim_call() -> bool:
+    return _call_depth() > 0
+
+
+class _claim_call:
+    def __enter__(self):
+        _call_local.depth = _call_depth() + 1
+        return self
+
+    def __exit__(self, *exc):
+        _call_local.depth = _call_depth() - 1
+        return False
+
+
 def claim_budget_open() -> bool:
     """True while claims may proceed: no budget begun on
     this thread, or its deadline has not passed yet."""
@@ -172,26 +266,34 @@ def _tuple_contract(fn) -> bool:
 
 
 def _budget_guard(fn, kind, blown=None):
+    # Every wrapped call runs inside _claim_call() so the
+    # og_db mid-flight choke can tell claim-machinery
+    # loads from every other load (see in_claim_call).
     if kind == "claim":
         def _g(*a, **k):
             if not claim_budget_open():
                 return blown
-            return fn(*a, **k)
+            with _claim_call():
+                return fn(*a, **k)
     elif kind == "defer":
         def _g(message, uid):
-            return True if not claim_budget_open() \
-                else fn(message, uid)
+            if not claim_budget_open():
+                return True
+            with _claim_call():
+                return fn(message, uid)
     elif kind == "blown":
         def _g(message, uid):
             if not claim_budget_open():
                 raise _ClaimBudgetBlown()
-            return fn(message, uid)
+            with _claim_call():
+                return fn(message, uid)
     else:  # garble text/info: the no-repair answer
         def _g(text, vocab, homophones=None):
             if not claim_budget_open():
                 return str(text or ""), \
                     [] if kind == "text" else None
-            return fn(text, vocab, homophones)
+            with _claim_call():
+                return fn(text, vocab, homophones)
     _g._og_budget_wrapped = True
     return _g
 
