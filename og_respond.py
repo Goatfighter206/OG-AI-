@@ -58,6 +58,11 @@ logger = logging.getLogger(__name__)
 UID_COOKIE = "ogai_uid"
 TEXT_CAP = 4000
 DRAFT_CAP = 4000
+# Round 321 DBPOOL batch-3: mirrors app.py's _MEMORY_LOCK_WAIT_S —
+# this module's lock users wait at most this long, then fail
+# fast (the routes answer their error JSON) instead of queueing
+# behind a slow chat turn forever.
+_MEMORY_LOCK_WAIT_S = 10.0
 
 _deps: dict = {}
 
@@ -90,6 +95,14 @@ def _dep(name):
 
 
 class _NoLock:
+    # DBPOOL batch-3: acquire/release added so callers can use
+    # one bounded-acquire discipline for real and stub locks.
+    def acquire(self, timeout=None):
+        return True
+
+    def release(self):
+        pass
+
     def __enter__(self):
         return self
 
@@ -118,7 +131,15 @@ def draft_reply(uid: str, text: str) -> str:
     if get_agent is None or load_history is None:
         raise RuntimeError("respond deps unavailable")
     agent = get_agent()
-    with _lock():
+    # DBPOOL batch-3: the swap-and-generate section keeps the
+    # lock for its whole span (same shared-agent discipline as
+    # /chat), but the WAIT for it is bounded — a busy lock
+    # refuses fast and the route answers its error JSON.
+    _lk = _lock()
+    if not _lk.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+        logger.warning("og_respond: memory lock busy; draft refused")
+        raise RuntimeError("memory lock busy")
+    try:
         stored = load_history(uid)
         throwaway = list(stored or []) + [{
             "role": "user", "content": _prompt_for(text),
@@ -135,6 +156,8 @@ def draft_reply(uid: str, text: str) -> str:
                 raw = agent.process_message(_prompt_for(text))
         finally:
             agent.conversation_history = original
+    finally:
+        _lk.release()
     draft = str(raw or "").strip()
     try:
         import og_register
@@ -164,12 +187,20 @@ def append_draft(uid: str, draft: str) -> bool:
     save_history = _dep("save_history")
     if load_history is None or save_history is None:
         return False
-    with _lock():
+    # DBPOOL batch-3: bounded wait — busy lock -> False, and
+    # the route answers 502 "history unavailable", fast.
+    _lk = _lock()
+    if not _lk.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+        logger.warning("og_respond: memory lock busy; append refused")
+        return False
+    try:
         history = list(load_history(uid) or [])
         history.append({
             "role": "assistant", "content": draft,
             "timestamp": datetime.now(timezone.utc).isoformat()})
         save_history(uid, history)
+    finally:
+        _lk.release()
     return True
 
 
