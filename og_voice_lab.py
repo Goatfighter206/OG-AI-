@@ -445,7 +445,7 @@ def _read_samples(uid: str, metas: List[Dict]):
 # --- Voices store (per-uid {voice_id, name, created} only) ------
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo, pooled_connect as _pooled_connect
 try:
     import psycopg
 except Exception:
@@ -469,7 +469,7 @@ def _vstore_load(uid: str) -> Dict:
                 "clone_state": dict(rec.get("clone_state") or {})}
     if MEMORY_DB_URL and psycopg is not None:
         try:
-            conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
+            conn = _pooled_connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
             _apply_bounds(conn)
             with conn:
                 with conn.cursor() as cur:
@@ -480,6 +480,7 @@ def _vstore_load(uid: str) -> Dict:
                         "SELECT data FROM og_voice_voices "
                         "WHERE owner = %s", (owner,))
                     row = cur.fetchone()
+                conn.commit()
             if row:
                 rec = json.loads(row[0])
                 with _vstore_lock:
@@ -514,7 +515,7 @@ def _vstore_save(uid: str, data: Dict) -> None:
         _vstore_mem[owner] = rec
     if MEMORY_DB_URL and psycopg is not None:
         try:
-            conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
+            conn = _pooled_connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
             _apply_bounds(conn)
             with conn:
                 with conn.cursor() as cur:
@@ -526,6 +527,7 @@ def _vstore_save(uid: str, data: Dict) -> None:
                         "VALUES (%s, %s) ON CONFLICT (owner) DO "
                         "UPDATE SET data = EXCLUDED.data",
                         (owner, json.dumps(rec)))
+                conn.commit()
             return
         except Exception as e:
             logger.warning(f"Voice store DB write failed: {e}")
@@ -598,7 +600,7 @@ def _json_store_path() -> str:
 
 
 def _db_connect():
-    conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
+    conn = _pooled_connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
     _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
@@ -791,7 +793,7 @@ def purge_owner(uid: str):
         except Exception as e:
             logger.warning(f"Voice lab DB purge failed: {e}")
         try:
-            conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL),
+            conn = _pooled_connect(_normalize_conninfo(MEMORY_DB_URL),
                                    connect_timeout=_DB_CT)
             _apply_bounds(conn)
             with conn:
@@ -803,6 +805,7 @@ def purge_owner(uid: str):
                     cur.execute(
                         "DELETE FROM og_voice_voices "
                         "WHERE owner = %s", (owner,))
+                conn.commit()
         except Exception:
             pass
     try:
