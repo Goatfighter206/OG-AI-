@@ -49,6 +49,38 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 _WORD_RE = re.compile(r"[A-Za-z]+")
 
+# Round 321 DBPOOL batch-5: the mid-loop deadline. The
+# claim budget's guard consults the deadline at repair
+# ENTRY only, so one long repair call in flight at the
+# deadline ran its whole token loop (~3,053 repairs per
+# plain turn is the fleet's summed reservoir; each call's
+# overrun is small but they stack at production prices).
+# repair() now also consults the deadline INSIDE its
+# loops (every 32 steps): once blown it stops — the token
+# loop abandons the repair wholesale, returning the
+# original text with no fixes, which is exactly the
+# entry guard's blown shape, so no seam can tell the
+# difference; the merge loop keeps the repairs already
+# made. Fail-soft in both directions: no budget machinery
+# importable, or no budget begun on this thread (every
+# suite and non-chat caller), means never blown — the
+# pre-batch-5 behaviour, byte for byte.
+try:
+    import og_claimbudget as _claimbudget
+except Exception:  # garble must never break on the budget
+    _claimbudget = None
+
+
+def _deadline_blown() -> bool:
+    if _claimbudget is None:
+        return False
+    try:
+        if not _claimbudget.claim_budget_open():
+            return True
+        return bool(_claimbudget.turn_budget_blown())
+    except Exception:
+        return False
+
 # Real words that sit close to common trigger words. Rewriting
 # one of these would manufacture an action out of ordinary
 # chat, so they are never substituted (a seam's explicit
@@ -154,6 +186,11 @@ def repair(text: str, vocab: Iterable[str],
     consumed = set()
 
     for i, (s, e, surface) in enumerate(toks):
+        if i and i % 32 == 0 and _deadline_blown():
+            # Blown mid-loop: abandon the repair wholesale
+            # (the entry guard's blown shape — original
+            # text, no fixes), never a half-repaired string.
+            return raw, []
         low = surface.lower()
         if low in token_set:
             continue  # already a vocabulary word — verbatim
@@ -188,7 +225,11 @@ def repair(text: str, vocab: Iterable[str],
     # one vocabulary word ("face book" -> "facebook",
     # "g mail" -> "gmail", "market place" -> "marketplace").
     i = 0
+    _merge_steps = 0
     while i < len(toks) - 1:
+        _merge_steps += 1
+        if _merge_steps % 32 == 0 and _deadline_blown():
+            break  # keep the repairs already made (below)
         if i in consumed or (i + 1) in consumed:
             i += 1
             continue
