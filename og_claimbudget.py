@@ -48,6 +48,37 @@ check honest: outside the phase (history load/save,
 metering — all on a thread whose budget has blown by
 design) the predicate is False and nothing changes.
 
+DBPOOL batch-5 (2026-10-18): the claim budget bounds the
+claim DECISION, but production convicted the turn's
+remaining DB traffic — the ~57 seat wrappers' unguarded
+per-turn delivery reads (depth-0 loads the batch-4 choke
+deliberately cannot touch), the post-detect seat-result
+work, and the metering/save tail — of eating the whole
+~271 s platform sever (see round-321/work/dbpool5/
+DIAGNOSIS.md). So a second, wider clock now stands over
+the whole turn: the TURN budget (45 s,
+OG_TURN_BUDGET_SECONDS overrides), begun by app.py's
+chat workers AFTER the memory lock is held (a queued
+turn must not start pre-blown — the batch-5 convoy fix)
+and ended after the history save. og_db's choke consults
+it for EVERY store op on the turn thread, claim call or
+not — except the legs that must always be able to run:
+history_load, history_save and metering (a turn that
+cannot save its own thread or meter itself has failed
+worse than a slow one). A blown turn budget degrades
+exactly the way a blown claim budget does: the seat
+wrappers' own handlers step aside, detect falls through
+to reduced-context generation, and the visitor still
+gets a reply — the choke never invents a new failure
+shape, it only makes the old one arrive on time. With
+no turn budget begun (suites, non-chat callers, the
+monitor loop) every predicate below is an exact
+pass-through, like the claim budget itself. The turn
+markers (turn_marker) ride this module's logger — the
+one whose warnings provably reach the production log —
+so a turn's leg timings are visible in the server log
+instead of reconstructed from outside.
+
 The value: 3 s (Round 321 Step 6 re-derivation). The
 original 8 s was sized against "gunicorn --timeout 12"
 — a truncated log reading; production runs --timeout
@@ -172,6 +203,131 @@ def raise_if_claim_phase_blown() -> None:
     a misleading "<seat> store unavailable" StoreError."""
     if claim_phase_blown():
         raise _ClaimBudgetBlown()
+
+
+# --- the turn budget (DBPOOL batch 5) ---
+# A thread-local 45 s wall clock over the WHOLE chat turn
+# (see the docstring). app.py's chat workers own the
+# begin/end; og_fixqueue's detect wrapper emits the detect
+# marker; og_db's choke enforces it on every store op
+# whose leg is not allowlisted. The leg is app.py's
+# existing _turn_leg vocabulary, mirrored here because
+# og_db cannot import app (the thread-local IS the
+# channel, exactly like the claim phase marker above).
+
+TURN_BUDGET_SECONDS = float(
+    os.getenv("OG_TURN_BUDGET_SECONDS", "45") or 45)
+
+# Legs a blown turn must still be able to run: loading the
+# thread it is answering, saving that thread back, and
+# metering the exchange. Everything else (claims,
+# generation-leg seat work) steps aside once blown.
+TURN_CHOKE_ALLOWLIST = frozenset(
+    {"history_load", "history_save", "metering"})
+
+
+class _TurnBudgetBlown(Exception):
+    """Private: the turn budget closed mid-turn. Raised by
+    the og_db choke; the fleet's store idiom wraps it into
+    the same StoreError a dead database produces, and the
+    seat wrappers step aside on it — no new failure shape."""
+
+
+def begin_turn_budget(seconds: float = None) -> bool:
+    """Open a turn budget on this thread; True when THIS
+    call set the deadline (it owns the matching end call).
+    Nested begins keep the earliest deadline, return
+    False — the claim budget's exact contract."""
+    depth = getattr(_claim_budget_local, "turn_depth", 0)
+    _claim_budget_local.turn_depth = depth + 1
+    if depth > 0:
+        return False
+    span = TURN_BUDGET_SECONDS if seconds is None else seconds
+    _claim_budget_local.turn_deadline = \
+        time.monotonic() + max(0.0, span)
+    _claim_budget_local.turn_blew = False
+    _claim_budget_local.turn_leg = None
+    return True
+
+
+def end_turn_budget(started: bool):
+    """Close a begin_turn_budget: only the deadline's
+    owner clears it (deadline AND leg), once the nesting
+    has drained — a pooled thread must not carry a stale
+    leg into its next turn."""
+    depth = getattr(_claim_budget_local, "turn_depth", 0) - 1
+    _claim_budget_local.turn_depth = max(0, depth)
+    if started and depth <= 0:
+        _claim_budget_local.turn_deadline = None
+        _claim_budget_local.turn_leg = None
+
+
+def turn_budget_active() -> bool:
+    """True while a turn budget stands on this thread."""
+    return getattr(_claim_budget_local, "turn_deadline", None) \
+        is not None
+
+
+def turn_budget_blown() -> bool:
+    """True when a turn budget stands on this thread and
+    its deadline has passed. The first call past the
+    deadline latches and logs — the claim budget's
+    warning contract, one line per turn."""
+    deadline = getattr(_claim_budget_local, "turn_deadline", None)
+    if deadline is None or time.monotonic() < deadline:
+        return False
+    if not getattr(_claim_budget_local, "turn_blew", False):
+        _claim_budget_local.turn_blew = True
+        logger.warning(
+            "Turn budget blown: remaining store work steps "
+            "aside, the turn falls through to its reply.")
+    return True
+
+
+def turn_deadline_left():
+    """Seconds left on this thread's turn budget, or None
+    when no turn budget stands. Negative once blown. The
+    og_db pool wait caps itself by this so a turn never
+    parks past its own deadline waiting for a connection."""
+    deadline = getattr(_claim_budget_local, "turn_deadline", None)
+    if deadline is None:
+        return None
+    return deadline - time.monotonic()
+
+
+def set_turn_leg(leg) -> None:
+    """Name the turn leg this thread is in (app.py's
+    _turn_leg vocabulary: history_load / claims /
+    generation / metering / history_save)."""
+    _claim_budget_local.turn_leg = leg
+
+
+def turn_leg():
+    """This thread's current turn leg, or None."""
+    return getattr(_claim_budget_local, "turn_leg", None)
+
+
+def turn_choke_active() -> bool:
+    """The og_db turn choke's predicate: a turn budget
+    stands on this thread, it has blown, and the current
+    leg is not one that must always run (history load /
+    save, metering). No budget (suites, non-chat threads)
+    -> False, an exact pass-through."""
+    if not turn_budget_active():
+        return False
+    if turn_leg() in TURN_CHOKE_ALLOWLIST:
+        return False
+    return turn_budget_blown()
+
+
+def turn_marker(name: str, ms: float, outcome: str = None):
+    """One turn-timing line on this module's logger
+    (DBPOOL batch 5 instrumentation): leg name, elapsed
+    milliseconds, and — on the total marker — the turn's
+    outcome. WARNING level because that is the level the
+    production log provably keeps for this logger."""
+    extra = f" outcome={outcome}" if outcome else ""
+    logger.warning(f"Turn {name}: {ms:.0f} ms{extra}")
 
 
 # --- in-claim-call depth (DBPOOL batch 4, choke scope) ---
