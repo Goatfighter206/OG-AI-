@@ -26,6 +26,20 @@ load_dotenv()
 _OPENAI_TIMEOUT_S = 90.0
 _OPENAI_MAX_RETRIES = 1
 
+# Round 321 DBPOOL batch-5: the CHAT completions are capped
+# harder than the shared client — 45 s, no retries — applied
+# PER CALL via with_options in _openai_response (app.py's
+# streaming twin applies the same), so a stalled chat
+# completion fails into the fallback reply well inside the
+# turn budget while every other user of the shared client
+# keeps the batch-3 bounds above. The Anthropic client,
+# built with NO timeout at all before this batch (an
+# unbounded leg whenever AI_PROVIDER=anthropic), gets the
+# same 45 s at construction.
+_CHAT_OPENAI_TIMEOUT_S = 45.0
+_CHAT_OPENAI_MAX_RETRIES = 0
+_ANTHROPIC_TIMEOUT_S = 45.0
+
 # AI Model Clients
 try:
     from openai import OpenAI
@@ -244,7 +258,9 @@ async def get_{endpoint}(item_id: int):
                 timeout=_OPENAI_TIMEOUT_S, max_retries=_OPENAI_MAX_RETRIES)
 
         if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
-            self.anthropic_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            self.anthropic_client = Anthropic(
+                api_key=os.getenv("ANTHROPIC_API_KEY"),
+                timeout=_ANTHROPIC_TIMEOUT_S)
 
         # System prompt with personality
         self.system_prompt = self._build_system_prompt()
@@ -638,7 +654,18 @@ TWO LAWS FOR EVERY ANSWER:
             if context:
                 messages.append({"role": "system", "content": f"Additional context:\n{context}"})
 
-            response = self.openai_client.chat.completions.create(
+            # DBPOOL batch-5: chat-scoped caps, per call (see
+            # the constants at the top of this module). An
+            # SDK without with_options keeps the shared
+            # client's batch-3 bounds — never a failure.
+            client = self.openai_client
+            try:
+                client = client.with_options(
+                    timeout=_CHAT_OPENAI_TIMEOUT_S,
+                    max_retries=_CHAT_OPENAI_MAX_RETRIES)
+            except Exception:
+                pass
+            response = client.chat.completions.create(
                 model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 messages=messages,
                 temperature=0.9,
