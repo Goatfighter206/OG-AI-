@@ -161,7 +161,7 @@ WEBBROWSER_STORE_FILE = os.getenv(
     "OG_WEBBROWSER_STORE", "webbrowser_store.json")
 
 MEMORY_DB_URL = os.getenv("OG_MEMORY_DB_URL", "").strip()
-from og_db import DB_CONNECT_TIMEOUT as _DB_CT, StoreError, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo
+from og_db import DB_CONNECT_TIMEOUT as _DB_CT, StoreError, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo, pooled_connect as _pooled_connect
 try:
     import psycopg
     from psycopg.types.json import Jsonb as _Jsonb
@@ -189,7 +189,7 @@ def webbrowser_enabled() -> bool:
 
 
 def _db_connect():
-    conn = psycopg.connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
+    conn = _pooled_connect(_normalize_conninfo(MEMORY_DB_URL), connect_timeout=_DB_CT)
     _apply_bounds(conn)
     with conn.cursor() as cur:
         cur.execute(
