@@ -1586,6 +1586,22 @@ def _reset_memory_store():
     finally:
         _memory_lock.release()
 
+def _ensure_memory_store():
+    """DBPOOL batch-4: the cheapest correct memory-store
+    init for paths that must not build the agent
+    (/history used to call get_agent() just for this —
+    "a fresh agent instance starts with a fresh memory
+    store"). DB backend: a no-op — the keyed store needs
+    no init, exactly as _reset_memory_store() already
+    returns untouched there. File backend: create the
+    store file iff it is missing (an init, never a wipe —
+    the build-time reset above keeps its exact semantics
+    and its exact call site in _build_agent)."""
+    if MEMORY_DB_URL:
+        return
+    if not os.path.exists(MEMORY_STORE_FILE):
+        _save_memory_store_file({})
+
 def _load_memory_store() -> Dict:
     """The JSON file store, whole (the no-DB backend's shape)."""
     return _load_memory_store_file()
@@ -1808,6 +1824,20 @@ def get_agent() -> AIAgent:
     return agent
 
 
+def agent_if_built():
+    """DBPOOL batch-4: the shared agent if it exists, else
+    None — NEVER builds and never queues on
+    agent_build_lock. For paths whose real work does not
+    need the agent (/history's store read, /reset's durable
+    clear): a cold worker must answer from the durable
+    store, not park behind a cold build (T7, 2026-10-18:
+    the first agent-touching /history on a fresh worker
+    hung past the platform's ~271 s sever while the build
+    crawled on the 0.1-CPU box, and every agent-touching
+    endpoint queued behind the same build lock)."""
+    return agent
+
+
 def _build_agent() -> None:
     """Build the shared agent into a local and publish
     it (Round 321 Step 6): get_agent()'s global used to
@@ -1881,6 +1911,45 @@ def _build_agent() -> None:
     _og_fixqueue.install_fixqueue_tools(_built, lambda: _current_uid.get("uid", ""))
     _reset_memory_store()
     agent = _built
+
+# DBPOOL batch-4: build the agent EAGERLY at worker startup
+# on a background thread, so the first-touch latency is
+# paid at boot — never by a user request, never on a
+# request thread (T7). Single-flight through get_agent():
+# the build still happens at most once per worker however
+# many callers race it, and a request that genuinely needs
+# the agent while the eager build is in flight waits on
+# the build lock exactly as it did on a cold first touch.
+# The thread is a daemon (it must never hold the worker
+# open) and /health never waits on it — the health paths
+# read the module global only, as they already did.
+_eager_build_thread = None
+
+
+def _start_eager_agent_build():
+    """Start the one eager build thread; returns it, or
+    None when the agent is already built or the thread was
+    already started."""
+    global _eager_build_thread
+    if agent is not None or _eager_build_thread is not None:
+        return None
+
+    def _build():
+        try:
+            get_agent()
+        except Exception as e:
+            # A failed eager build must not kill the worker:
+            # the next real request retries through
+            # get_agent() exactly as it did before batch 4.
+            logger.warning(f"Eager agent build failed: {e}")
+
+    _eager_build_thread = threading.Thread(
+        target=_build, name="og-eager-agent-build", daemon=True)
+    _eager_build_thread.start()
+    return _eager_build_thread
+
+
+_start_eager_agent_build()
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -2836,7 +2905,11 @@ the server and reset if the service gets rebuilt from scratch.</p>
 # threadpool, so a stalled DB can never freeze the loop.
 def get_history(raw_request: Request):
     """The requesting visitor's own conversation history (ogai_uid cookie)."""
-    get_agent()  # a fresh agent instance starts with a fresh memory store
+    # DBPOOL batch-4: store init WITHOUT building the agent
+    # (was get_agent(), whose only job here was the fresh
+    # store) — a cold worker now answers /history from the
+    # durable store instead of queueing behind the build.
+    _ensure_memory_store()
     try:
         uid = raw_request.cookies.get("ogai_uid")
         history: List[Dict] = []
@@ -2881,7 +2954,13 @@ def reset_conversation(raw_request: Request):
     Returns:
         StatusResponse confirming the reset
     """
-    agent_instance = get_agent()
+    # DBPOOL batch-4: never build for a reset, and never
+    # queue behind a build either — the durable clear below
+    # is the real work; the in-memory clear applies only
+    # when an agent already exists (with none built there
+    # is no in-memory history to clear, and no turn can be
+    # in flight, so skipping the section loses nothing).
+    agent_instance = agent_if_built()
 
     try:
         uid = raw_request.cookies.get("ogai_uid")
@@ -2891,17 +2970,19 @@ def reset_conversation(raw_request: Request):
             if not _clear_visitor_history(uid):
                 raise HTTPException(status_code=503,
                                     detail="Busy — try again in a moment")
-        if not _memory_lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
-            logger.warning("POST /reset: memory lock busy; answering 503")
-            raise HTTPException(status_code=503,
-                                detail="Busy — try again in a moment")
-        try:
-            agent_instance.clear_history()
-        finally:
-            _memory_lock.release()
+        if agent_instance is not None:
+            if not _memory_lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+                logger.warning("POST /reset: memory lock busy; answering 503")
+                raise HTTPException(status_code=503,
+                                    detail="Busy — try again in a moment")
+            try:
+                agent_instance.clear_history()
+            finally:
+                _memory_lock.release()
         return {
             "status": "success",
-            "agent_name": agent_instance.name,
+            "agent_name": agent_instance.name
+                if agent_instance is not None else "OG-AI",
             "message": "Conversation history has been cleared"
         }
     except HTTPException:
