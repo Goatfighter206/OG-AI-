@@ -4,10 +4,30 @@ Makes OG-AI smarter every day by learning from conversations
 """
 
 import json
+import logging
 import os
+import queue
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
+
+# Round 321 DBPOOL batch-5: deferred learning. Learning
+# from a conversation rewrites the whole knowledge file on
+# every turn, and it ran ON the chat turn's critical path
+# (after the reply, before the response returned — under
+# the turn's memory lock). With DEFER_LEARNING on,
+# learn_from_conversation instead hands the exchange to a
+# daemon worker thread and returns at once; the learning
+# itself is byte-for-byte the old code, just off the
+# response path, and a failure in the worker is logged,
+# never raised into a chat. Default OFF — every direct
+# caller (the suites, the daily routine) keeps the exact
+# synchronous behaviour; app.py turns it on at import for
+# the serving process.
+DEFER_LEARNING = False
 
 
 class SelfLearningSystem:
@@ -37,6 +57,17 @@ class SelfLearningSystem:
         
         # Track improvements made
         self.improvements_log = []
+
+        # DBPOOL batch-5: the intelligence report is a pure
+        # function of self.knowledge, which changes only
+        # through a save — so it is memoized and invalidated
+        # by _save_knowledge; and the deferred-learning
+        # worker's state (started lazily, only when
+        # DEFER_LEARNING is on).
+        self._report_cache = None
+        self._learn_queue = None
+        self._learn_thread = None
+        self._learn_lock = threading.Lock()
         
     def _load_knowledge(self) -> Dict:
         """Load existing knowledge from file"""
@@ -62,17 +93,92 @@ class SelfLearningSystem:
     
     def _save_knowledge(self):
         """Save knowledge to file"""
+        # Every knowledge mutation funnels through here, so
+        # this is the report memo's invalidation point.
+        self._report_cache = None
         try:
             with open(self.knowledge_file, 'w') as f:
                 json.dump(self.knowledge, f, indent=2)
         except Exception as e:
             print(f"⚠️  Failed to save knowledge: {e}")
     
-    def learn_from_conversation(self, user_message: str, agent_response: str, 
+    def learn_from_conversation(self, user_message: str, agent_response: str,
+                                 was_helpful: bool = True, user_feedback: str = None):
+        """Learn from a conversation interaction.
+
+        With DEFER_LEARNING on (the serving process), the
+        exchange is queued to the daemon worker and this
+        returns at once — the response path never waits on
+        the knowledge file again. Otherwise the learning
+        runs inline, exactly as it always did."""
+        if DEFER_LEARNING:
+            try:
+                self._ensure_learn_worker()
+                self._learn_queue.put((
+                    (user_message, agent_response),
+                    {"was_helpful": was_helpful,
+                     "user_feedback": user_feedback}))
+                return
+            except Exception:
+                logger.exception(
+                    "Deferred learning enqueue failed; "
+                    "learning inline instead")
+        self._learn_from_conversation_now(
+            user_message, agent_response,
+            was_helpful=was_helpful, user_feedback=user_feedback)
+
+    def _ensure_learn_worker(self):
+        with self._learn_lock:
+            if self._learn_thread is not None \
+                    and self._learn_thread.is_alive():
+                return
+            q = queue.Queue()
+            self._learn_queue = q
+            t = threading.Thread(
+                target=self._learn_worker, args=(q,),
+                daemon=True, name="og-self-learning")
+            t.start()
+            self._learn_thread = t
+
+    def _learn_worker(self, q):
+        """Drain the deferred-learning queue. An Event item
+        is a flush marker: everything queued before it has
+        been learned once it is set. A failed learn is
+        logged and dropped — learning is best-effort by
+        nature and must never surface in a chat."""
+        while True:
+            item = q.get()
+            try:
+                if isinstance(item, threading.Event):
+                    item.set()
+                else:
+                    args, kwargs = item
+                    try:
+                        self._learn_from_conversation_now(
+                            *args, **kwargs)
+                    except Exception:
+                        logger.exception(
+                            "Deferred self-learning failed")
+            finally:
+                q.task_done()
+
+    def flush_deferred_learning(self, timeout: float = 10.0) -> bool:
+        """True once every exchange queued so far has been
+        learned (or immediately, when nothing is queued).
+        For shutdown and the suites — the serving path
+        never calls this."""
+        q = self._learn_queue
+        if q is None:
+            return True
+        done = threading.Event()
+        q.put(done)
+        return done.wait(timeout)
+
+    def _learn_from_conversation_now(self, user_message: str, agent_response: str,
                                  was_helpful: bool = True, user_feedback: str = None):
         """
         Learn from a conversation interaction
-        
+
         Args:
             user_message: What the user said
             agent_response: What the agent responded
@@ -212,20 +318,29 @@ class SelfLearningSystem:
     def get_intelligence_report(self) -> Dict[str, Any]:
         """
         Get report on agent's intelligence and learning
-        
+
         Returns:
             Report dictionary
         """
-        return {
+        # DBPOOL batch-5 memo: the report is a pure function
+        # of self.knowledge, invalidated by _save_knowledge
+        # (the one funnel every mutation takes). Callers get
+        # a copy, so the memo cannot be poisoned by a caller
+        # mutating what it was handed.
+        if self._report_cache is not None:
+            return dict(self._report_cache)
+        report = {
             'intelligence_level': round(self.knowledge['intelligence_level'], 2),
             'total_conversations': self.knowledge['total_conversations'],
             'successful_patterns_learned': len(self.knowledge['successful_patterns']),
             'improvements_made': len(self.knowledge['improvements']),
-            'top_topics': sorted(self.knowledge['common_topics'].items(), 
+            'top_topics': sorted(self.knowledge['common_topics'].items(),
                                 key=lambda x: x[1], reverse=True)[:5],
             'last_improvement': self.knowledge.get('last_improvement_date'),
             'days_learning': len(self.knowledge['improvements'])
         }
+        self._report_cache = report
+        return dict(report)
     
     def get_learned_response(self, user_message: str) -> str:
         """
