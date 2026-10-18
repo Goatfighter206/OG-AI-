@@ -15,6 +15,17 @@ import random
 # Load environment variables
 load_dotenv()
 
+# Round 321 DBPOOL batch-3: bound the OpenAI call. The SDK
+# defaults (600 s read timeout, 2 retries — up to ~30 min
+# inside one completion) let a stalled provider response park
+# a chat turn silently; because a turn holds app.py's memory
+# lock end to end, the park took /history and /reset down with
+# it (the 2026-10-17 outage). 90 s x (1 + 1 retry) caps a
+# stall at ~3 min and then raises, so the existing fallback
+# reply answers instead of silence.
+_OPENAI_TIMEOUT_S = 90.0
+_OPENAI_MAX_RETRIES = 1
+
 # AI Model Clients
 try:
     from openai import OpenAI
@@ -228,7 +239,9 @@ async def get_{endpoint}(item_id: int):
         self.anthropic_client = None
 
         if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
-            self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            self.openai_client = OpenAI(
+                api_key=os.getenv("OPENAI_API_KEY"),
+                timeout=_OPENAI_TIMEOUT_S, max_retries=_OPENAI_MAX_RETRIES)
 
         if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
             self.anthropic_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
