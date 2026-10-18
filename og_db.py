@@ -150,6 +150,8 @@ class StoreError(Exception):
 # indicator, not an audit ledger.
 # ===========================================================================
 
+import os as _os
+import re as _re
 import sys as _sys
 import threading as _threading
 import time as _time
@@ -500,7 +502,14 @@ def _pooled_conn_alive(conn):
 def _pool_checkout(conninfo, connect_timeout):
     """(conn, transient) — a live connection owned by the
     caller until _pool_checkin. Raises only on creation
-    failure, exactly like a raw connect."""
+    failure, exactly like a raw connect — plus, DBPOOL
+    batch-5, og_claimbudget._TurnBudgetBlown when the
+    caller's turn budget blows DURING the exhaustion wait
+    (the wait is capped at the turn deadline and the choke
+    is re-consulted on wake, so a blown turn fails fast
+    instead of parking out its whole pool wait; the
+    allowlisted legs — history load/save, metering — are
+    exempt and still get their transient connection)."""
     pool = _pool_for(conninfo)
     deadline = _time.monotonic() + _POOL_WAIT_S
     create = False
@@ -527,8 +536,18 @@ def _pool_checkout(conninfo, connect_timeout):
             remaining = deadline - _time.monotonic()
             if remaining <= 0:
                 break
-            pool.cond.wait(timeout=remaining)
+            wait = remaining
+            left = _turn_deadline_left()
+            if left is not None:
+                if left <= 0:
+                    break  # blown during the wait: re-check below
+                wait = min(wait, left)
+            pool.cond.wait(timeout=wait)
     if not create:
+        # The turn may have blown while this thread waited:
+        # fail fast rather than hand a blown turn a fresh
+        # transient connection to stall on.
+        _turn_choke_check()
         # Pool exhausted past the wait: a transient connection
         # the caller really closes — never fail the request.
         return _fresh_conn(conninfo, connect_timeout), True
@@ -577,6 +596,108 @@ def _pool_checkin(conninfo, conn, transient):
         pool.cond.notify()
 
 
+# ===========================================================================
+# Round 321 DBPOOL batch-5: DDL-once.
+#
+# Every seat store's _db_connect() runs its CREATE TABLE IF
+# NOT EXISTS (+ commit) on EVERY checkout (the Round 18
+# pattern, censused in round-321/work/dbpool5/DIAGNOSIS.md):
+# one "load" = pool checkout + DDL + commit + SELECT, at
+# least three Neon round trips, and a plain chat turn makes
+# ~6,900 loads. IF NOT EXISTS makes the repeat executions
+# no-ops BY DEFINITION once the table exists — so after the
+# first SUCCESSFUL execution of a given table's DDL on a
+# given conninfo in this process, the pooled cursor below
+# skips re-executing it: the statement (and, on a connection
+# with no open transaction, the now-empty commit) never
+# leaves the box. A FAILED execution is never remembered —
+# the next caller retries the DDL and gets the real error,
+# exactly as today. The registry is per (conninfo, table):
+# a second database owes its own first execution.
+# OG_DB_DDL_EVERY_TIME restores the old always-execute
+# behaviour (the escape hatch if a table is ever dropped
+# out from under a live process). Interception lives here,
+# on the pooled proxy's cursor — the one object every
+# store statement already passes through — and matches only
+# an unparameterized CREATE TABLE IF NOT EXISTS; every
+# other statement passes through byte-for-byte.
+# ===========================================================================
+
+_DDL_EVERY_TIME = (_os.environ.get("OG_DB_DDL_EVERY_TIME")
+                   or "").strip().lower() in ("1", "true", "yes", "on")
+
+_DDL_TABLE_RE = _re.compile(
+    r"^\s*CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"
+    r"\"?([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)\"?",
+    _re.IGNORECASE)
+
+_DDL_DONE = {}
+_DDL_LOCK = _threading.Lock()
+
+
+def _ddl_table(sql, params):
+    """The registry key for a CREATE TABLE IF NOT EXISTS
+    statement, or None when the statement is not one (or is
+    parameterized — DDL never is, and a parameterized look
+    alike must never be skipped)."""
+    if params or not isinstance(sql, str):
+        return None
+    m = _DDL_TABLE_RE.match(sql)
+    if m is None:
+        return None
+    return m.group(1).lower()
+
+
+def _ddl_done(conninfo, table):
+    with _DDL_LOCK:
+        done = _DDL_DONE.get(conninfo)
+        return done is not None and table in done
+
+
+def _ddl_remember(conninfo, table):
+    with _DDL_LOCK:
+        _DDL_DONE.setdefault(conninfo, set()).add(table)
+
+
+class _PooledCursor:
+    """Proxy for a cursor on a pooled connection. Delegates
+    everything to the real cursor; execute() alone is
+    intercepted for the DDL-once skip above."""
+
+    __slots__ = ("_cur", "_conninfo")
+
+    def __init__(self, cur, conninfo):
+        self._cur = cur
+        self._conninfo = conninfo
+
+    def execute(self, sql, params=None):
+        table = None if _DDL_EVERY_TIME else _ddl_table(sql, params)
+        if table is not None and _ddl_done(self._conninfo, table):
+            return self
+        if params is None:
+            rv = self._cur.execute(sql)
+        else:
+            rv = self._cur.execute(sql, params)
+        if table is not None:
+            _ddl_remember(self._conninfo, table)
+        return self if rv is self._cur else rv
+
+    def executemany(self, sql, params_seq):
+        return self._cur.executemany(sql, params_seq)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return self._cur.__exit__(exc_type, exc, tb)
+
+    def __iter__(self):
+        return iter(self._cur)
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
 class _PooledConnection:
     """Proxy for a pooled psycopg connection. Delegates every
     attribute to the real connection; close() and context-exit
@@ -589,6 +710,15 @@ class _PooledConnection:
         self._conn = conn
         self._transient = transient
         self._released = False
+
+    def cursor(self, *args, **kwargs):
+        return _PooledCursor(
+            self._conn.cursor(*args, **kwargs), self._conninfo)
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
 
     def _release(self):
         if self._released:
@@ -651,6 +781,22 @@ class _PooledConnection:
 _CLAIMBUDGET = None
 
 
+def _claimbudget_mod():
+    """The og_claimbudget module, lazily imported and
+    cached; None when it cannot be imported (the chokes
+    then pass through — a store never breaks over a
+    budget check)."""
+    global _CLAIMBUDGET
+    mod = _CLAIMBUDGET
+    if mod is None:
+        try:
+            import og_claimbudget as mod
+        except Exception:
+            return None
+        _CLAIMBUDGET = mod
+    return mod
+
+
 def _phase_choke_check():
     # NOT named _claim_*: og_claimbudget's install census
     # wraps every _claim_* attribute in every og_* module
@@ -658,14 +804,9 @@ def _phase_choke_check():
     # this check the moment the budget blows (found by the
     # batch-4 suite — the guard returns the step-aside
     # value without ever calling through).
-    global _CLAIMBUDGET
-    mod = _CLAIMBUDGET
+    mod = _claimbudget_mod()
     if mod is None:
-        try:
-            import og_claimbudget as mod
-        except Exception:
-            return
-        _CLAIMBUDGET = mod
+        return
     try:
         blown = mod.claim_phase_blown() \
             and mod.in_claim_call()
@@ -675,16 +816,72 @@ def _phase_choke_check():
         raise mod._ClaimBudgetBlown()
 
 
+# ===========================================================================
+# Round 321 DBPOOL batch-5: the turn bound at the same choke.
+#
+# The batch-4 check above bounds the claim PHASE's in-flight
+# entries. The diagnosis (round-321/work/dbpool5/
+# DIAGNOSIS.md) convicted the rest of the turn's DB traffic
+# — above all the seat wrappers' delivery reads, issued at
+# claim depth 0 by design — of eating the platform sever
+# whole. So pooled_connect ALSO consults the turn budget
+# (og_claimbudget's 45 s thread-local clock over the whole
+# turn): once it has blown, every store op on the turn
+# thread raises _TurnBudgetBlown, whatever leg issued it,
+# EXCEPT the legs that must always run (history load /
+# history save / metering — og_claimbudget owns the
+# allowlist). The fleet's store idiom wraps the raise into
+# the same StoreError a dead database produces and the seat
+# wrappers step aside on it, so a blown turn degrades to
+# reduced-context generation and a real reply — never a
+# new failure shape, never a hang. No turn budget begun
+# (suites, non-chat threads, the monitor loop) -> exact
+# pass-through, and the pool's exhaustion wait above caps
+# itself at the turn deadline via _turn_deadline_left.
+# ===========================================================================
+
+def _turn_choke_check():
+    # NOT named _claim_* — the census law from batch-4
+    # applies to every post-deadline helper in an og_*
+    # module, this one included.
+    mod = _claimbudget_mod()
+    if mod is None:
+        return
+    try:
+        active = mod.turn_choke_active()
+    except Exception:
+        return
+    if active:
+        raise mod._TurnBudgetBlown(
+            "turn budget blown: store op refused")
+
+
+def _turn_deadline_left():
+    """Seconds left on the caller's turn budget, or None
+    (no budget, or the budget module unavailable)."""
+    mod = _claimbudget_mod()
+    if mod is None:
+        return None
+    try:
+        return mod.turn_deadline_left()
+    except Exception:
+        return None
+
+
 def pooled_connect(conninfo, connect_timeout=DB_CONNECT_TIMEOUT):
     """A connection to conninfo, reused from the process pool
     when one is warm. Drop-in for psycopg.connect(...) at the
     store wrappers (same arguments the wrappers already pass).
     Raises og_claimbudget._ClaimBudgetBlown instead of
     connecting when the caller's claim phase has blown its
-    budget (DBPOOL batch-4, see above); in every other state
-    this is the plain checkout it always was.
+    budget (DBPOOL batch-4, see above), and
+    og_claimbudget._TurnBudgetBlown when the caller's turn
+    budget has blown outside the allowlisted legs (DBPOOL
+    batch-5, see above); in every other state this is the
+    plain checkout it always was.
     """
     _phase_choke_check()
+    _turn_choke_check()
     conn, transient = _pool_checkout(conninfo, connect_timeout)
     return _PooledConnection(conninfo, conn, transient)
 
