@@ -613,11 +613,78 @@ class _PooledConnection:
         return "<_PooledConnection released=%r>" % (self._released,)
 
 
+# ===========================================================================
+# Round 321 DBPOOL batch-4: the mid-flight claim bound.
+#
+# pooled_connect is the ONE choke point every DB store op
+# in the tree passes through (each module's _db_connect
+# funnels here; the pool internals above use _fresh_conn
+# and are NOT checked). The claim budget's guards are
+# entry-only: an entry in flight when the 3 s deadline
+# passes — and every seat wrapper's unguarded delivery
+# read — otherwise runs to completion at DB prices, and
+# one plain turn's detect makes ~6,900 store loads
+# (round-321/work/dbpool4/RECON.md). So the head of
+# pooled_connect consults og_claimbudget's phase-scoped
+# predicate: inside a blown claim phase it raises
+# _ClaimBudgetBlown, unwinding the in-flight entry at its
+# next store op; call sites already swallow that signal
+# (the funnel probes raise it by design).
+# Scoping (all three halves verified in the recon/gate):
+# no budget begun (suites, non-chat callers) or no claim
+# phase active (a chat turn's history load/save and
+# metering, whose budget has blown by design) -> exact
+# pass-through; AND the load must be issued from inside
+# a census-wrapped claim call (og_claimbudget
+# .in_claim_call) — the fleet's _load_store idiom wraps
+# ANY exception into a "<seat> store unavailable"
+# StoreError, so choking a detect wrapper's auxiliary
+# load would make a blown budget masquerade as a store
+# outage (r321h B5 pins that quiet signature; the batch-4
+# gate caught the unscoped version doing exactly that).
+# og_claimbudget is imported lazily and cached: og_db sits
+# near the bottom of the import graph, the check is two
+# thread-local reads on the hot path, and any failure to
+# import means pass-through, never a broken store.
+# ===========================================================================
+
+_CLAIMBUDGET = None
+
+
+def _phase_choke_check():
+    # NOT named _claim_*: og_claimbudget's install census
+    # wraps every _claim_* attribute in every og_* module
+    # with the entry guard, which would silently swallow
+    # this check the moment the budget blows (found by the
+    # batch-4 suite — the guard returns the step-aside
+    # value without ever calling through).
+    global _CLAIMBUDGET
+    mod = _CLAIMBUDGET
+    if mod is None:
+        try:
+            import og_claimbudget as mod
+        except Exception:
+            return
+        _CLAIMBUDGET = mod
+    try:
+        blown = mod.claim_phase_blown() \
+            and mod.in_claim_call()
+    except Exception:
+        return
+    if blown:
+        raise mod._ClaimBudgetBlown()
+
+
 def pooled_connect(conninfo, connect_timeout=DB_CONNECT_TIMEOUT):
     """A connection to conninfo, reused from the process pool
     when one is warm. Drop-in for psycopg.connect(...) at the
     store wrappers (same arguments the wrappers already pass).
+    Raises og_claimbudget._ClaimBudgetBlown instead of
+    connecting when the caller's claim phase has blown its
+    budget (DBPOOL batch-4, see above); in every other state
+    this is the plain checkout it always was.
     """
+    _phase_choke_check()
     conn, transient = _pool_checkout(conninfo, connect_timeout)
     return _PooledConnection(conninfo, conn, transient)
 
