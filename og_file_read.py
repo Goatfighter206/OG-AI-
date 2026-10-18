@@ -436,19 +436,36 @@ def _consume_upload(uid):
         d["save_usage"](store)
 
 
+# Round 321 DBPOOL batch-3: mirrors app.py's _MEMORY_LOCK_WAIT_S.
+_MEMORY_LOCK_WAIT_S = 10.0
+
+
 def _note_history(uid, user_line, assistant_line):
     """Record an upload/remove as a visible pair in the visitor's
     thread, so the page's history restore shows it and OG's own
     memory knows a file was attached (never the contents)."""
     d = _deps
+    lock = d["memory_lock"]
+
+    def _do():
+        hist = d["load_history"](uid)
+        ts = datetime.now().isoformat()
+        hist.append({"role": "user", "content": user_line, "timestamp": ts})
+        hist.append({"role": "assistant", "content": assistant_line,
+                     "timestamp": ts})
+        d["save_history"](uid, hist)
+
     try:
-        with d["memory_lock"]:
-            hist = d["load_history"](uid)
-            ts = datetime.now().isoformat()
-            hist.append({"role": "user", "content": user_line, "timestamp": ts})
-            hist.append({"role": "assistant", "content": assistant_line,
-                         "timestamp": ts})
-            d["save_history"](uid, hist)
+        # DBPOOL batch-3: bounded wait — a skipped note is
+        # logged and the upload still ships; never hang an
+        # upload behind a slow chat turn.
+        if not lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+            logger.warning("file history note skipped: memory lock busy")
+            return
+        try:
+            _do()
+        finally:
+            lock.release()
     except Exception:
         logger.warning("file history note failed", exc_info=True)
 

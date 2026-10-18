@@ -1546,6 +1546,20 @@ MEMORY_STORE_FILE = "memory_store.json"
 MEMORY_MAX_MESSAGES = 40    # most recent messages kept per visitor
 MEMORY_MAX_VISITORS = 300   # least-recently-active threads pruned beyond this
 _memory_lock = threading.Lock()
+# Round 321 DBPOOL batch-3: the lock serializes whole turns on
+# the shared agent (swap-in -> process -> save-back, see the
+# *_locked helpers below), so a turn legitimately holds it
+# across generation — generation itself is now bounded by the
+# OpenAI client's own timeout (ai_agent_enhanced). What may
+# never happen again is a NON-turn path queueing behind a slow
+# turn forever (the 2026-10-17 silent /chat + /history +
+# /reset outage): every non-turn acquirer waits at most
+# _MEMORY_LOCK_WAIT_S and then fails fast and loud instead.
+_MEMORY_LOCK_WAIT_S = 10.0
+# Soft threshold for the turn paths themselves: a lock wait or
+# a lock hold longer than this logs a warning, so a slow turn
+# is visible in the log while it happens, not after the fact.
+_MEMORY_TURN_WARN_S = 60.0
 
 # Durable backend: OG_MEMORY_DB_URL (Postgres) keeps threads across
 # rebuilds; unset/unreachable falls back to the JSON file store.
@@ -1562,8 +1576,15 @@ def _reset_memory_store():
     if MEMORY_DB_URL:
         logger.info("Durable memory backend active — memory store not reset")
         return
-    with _memory_lock:
+    # DBPOOL batch-3: bounded wait (see _MEMORY_LOCK_WAIT_S) —
+    # a skipped reset is logged, never a silent hang at build.
+    if not _memory_lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+        logger.warning("Memory store reset skipped: memory lock busy")
+        return
+    try:
         _save_memory_store({})
+    finally:
+        _memory_lock.release()
 
 def _load_memory_store() -> Dict:
     """The JSON file store, whole (the no-DB backend's shape)."""
@@ -1640,16 +1661,26 @@ def _save_visitor_history_locked(uid: str, history: List[Dict]):
             store.pop(old_uid, None)
     _save_memory_store_file(store)
 
-def _clear_visitor_history(uid: str):
-    """Forget one visitor's thread (their /reset or /clear, nobody else's)."""
-    with _memory_lock:
+def _clear_visitor_history(uid: str) -> bool:
+    """Forget one visitor's thread (their /reset or /clear, nobody else's).
+    DBPOOL batch-3: bounded wait — False means the memory lock
+    was busy (a turn mid-flight); the caller answers 503 and
+    the visitor retries, instead of queueing behind the turn
+    forever. True means the thread is gone (or never was)."""
+    if not _memory_lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+        logger.warning(f"Memory clear for {uid} refused: memory lock busy")
+        return False
+    try:
         # Round 321c: keyed delete first (og_memory_io, DB backend).
         if _og_memory_io.delete_history(uid):
-            return
+            return True
         store = _load_memory_store_file()
         if uid in store:
             del store[uid]
             _save_memory_store_file(store)
+        return True
+    finally:
+        _memory_lock.release()
 
 # --- Business stats: owner scorecard counters in the usage store
 # ("__stats__"); read at GET /stats?key=<OG_STATS_TOKEN>.
@@ -2143,7 +2174,15 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
                         token_funded: bool = False):
     """Streaming /chat worker: mirrors classic /chat bookkeeping."""
     _budget_started = _og_fixqueue.begin_claim_budget()  # Round 321c claim budget
+    # DBPOOL batch-3: the whole-turn hold stays (shared agent),
+    # but a long wait / long hold now logs while it happens.
+    _lock_t0 = time.monotonic()
     _memory_lock.acquire()
+    _lock_waited = time.monotonic() - _lock_t0
+    if _lock_waited > _MEMORY_TURN_WARN_S:
+        logger.warning(
+            f"Stream turn waited {_lock_waited:.0f}s for the memory lock")
+    _turn_t0 = time.monotonic()
     agent_instance.conversation_history = _load_hist(uid)
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
@@ -2216,6 +2255,10 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         try:
             _save_turn_history(agent_instance, uid)
         finally:
+            _held = time.monotonic() - _turn_t0
+            if _held > _MEMORY_TURN_WARN_S:
+                logger.warning(
+                    f"Stream turn held the memory lock {_held:.0f}s")
             _memory_lock.release()
             _og_fixqueue.end_claim_budget(_budget_started)
 
@@ -2275,7 +2318,15 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
 def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
     """One non-streaming /chat exchange, awaited via to_thread (Round 80)."""
     _budget_started = _og_fixqueue.begin_claim_budget()
+    # DBPOOL batch-3: the whole-turn hold stays (shared agent),
+    # but a long wait / long hold now logs while it happens.
+    _lock_t0 = time.monotonic()
     _memory_lock.acquire()
+    _lock_waited = time.monotonic() - _lock_t0
+    if _lock_waited > _MEMORY_TURN_WARN_S:
+        logger.warning(
+            f"Chat turn waited {_lock_waited:.0f}s for the memory lock")
+    _turn_t0 = time.monotonic()
     agent_instance.conversation_history = _load_hist(uid)
     _current_uid["uid"] = uid
     _current_tier["tier"] = tier
@@ -2343,6 +2394,10 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
         try:
             _save_turn_history(agent_instance, uid)
         finally:
+            _held = time.monotonic() - _turn_t0
+            if _held > _MEMORY_TURN_WARN_S:
+                logger.warning(
+                    f"Chat turn held the memory lock {_held:.0f}s")
             _memory_lock.release()
             _og_fixqueue.end_claim_budget(_budget_started)
 
@@ -2531,7 +2586,13 @@ async def generate_image(raw_request: Request):
     # Note the drawing in the visitor's thread (too big to store).
     def _note_image():
         now = datetime.now().isoformat()
-        with _memory_lock:
+        # DBPOOL batch-3: bounded wait — a skipped note is
+        # logged and the image still ships; never hang the
+        # image reply behind a slow turn.
+        if not _memory_lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+            logger.warning("Image history note skipped: memory lock busy")
+            return
+        try:
             history = _load_hist(uid)
             history.append({"role": "user", "content": raw_prompt,
                             "timestamp": now})
@@ -2539,6 +2600,8 @@ async def generate_image(raw_request: Request):
                             "content": f"{caption}\n[🎨 OG drew an image: {prompt}]",
                             "timestamp": now})
             _save_visitor_history_locked(uid, history)
+        finally:
+            _memory_lock.release()
     try:
         await asyncio.to_thread(_note_image)
     except Exception as e:
@@ -2778,8 +2841,16 @@ def get_history(raw_request: Request):
         uid = raw_request.cookies.get("ogai_uid")
         history: List[Dict] = []
         if uid:
-            with _memory_lock:
+            # DBPOOL batch-3: bounded wait — a parked turn
+            # must not hang this read forever; answer 503.
+            if not _memory_lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+                logger.warning("GET /history: memory lock busy; answering 503")
+                raise HTTPException(status_code=503,
+                                    detail="Busy — try again in a moment")
+            try:
                 history = _load_hist(uid)
+            finally:
+                _memory_lock.release()
         tier = _tier_of(raw_request.cookies, uid or "")
         if tier != "free":
             tokens_left = None
@@ -2795,6 +2866,8 @@ def get_history(raw_request: Request):
             "tier": tier,
             "token_balance": _og_tokenpacks.balance(uid) if uid else 0
         }
+    except HTTPException:
+        raise  # DBPOOL batch-3: the 503 above stays a 503
     except Exception as e:
         logger.error(f"Error retrieving history: {str(e)}")
         detail = f"An error occurred while retrieving conversation history: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while retrieving conversation history"
@@ -2813,14 +2886,26 @@ def reset_conversation(raw_request: Request):
     try:
         uid = raw_request.cookies.get("ogai_uid")
         if uid:
-            _clear_visitor_history(uid)
-        with _memory_lock:
+            # DBPOOL batch-3: bounded waits, 503 when busy —
+            # a reset must never queue behind a parked turn.
+            if not _clear_visitor_history(uid):
+                raise HTTPException(status_code=503,
+                                    detail="Busy — try again in a moment")
+        if not _memory_lock.acquire(timeout=_MEMORY_LOCK_WAIT_S):
+            logger.warning("POST /reset: memory lock busy; answering 503")
+            raise HTTPException(status_code=503,
+                                detail="Busy — try again in a moment")
+        try:
             agent_instance.clear_history()
+        finally:
+            _memory_lock.release()
         return {
             "status": "success",
             "agent_name": agent_instance.name,
             "message": "Conversation history has been cleared"
         }
+    except HTTPException:
+        raise  # DBPOOL batch-3: the 503s above stay 503s
     except Exception as e:
         logger.error(f"Error resetting conversation: {str(e)}")
         detail = f"An error occurred while resetting conversation: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while resetting conversation"

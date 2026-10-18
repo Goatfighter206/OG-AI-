@@ -226,7 +226,14 @@ def _purge_app_stores(uid: str, results: dict):
         return
 
     def memory():
-        with _appmod._memory_lock:
+        # DBPOOL batch-3: bounded wait — on a busy lock this
+        # step raises and _step records the memory leg as
+        # failed (honest partial purge), instead of queueing
+        # behind a slow chat turn forever.
+        if not _appmod._memory_lock.acquire(
+                timeout=getattr(_appmod, "_MEMORY_LOCK_WAIT_S", 10.0)):
+            raise RuntimeError("memory lock busy")
+        try:
             # Round 321c: app.py's whole-store DB load/save
             # are gone (B6a) — the purge deletes through the
             # keyed door (og_memory_io, the DB backend) plus
@@ -240,6 +247,8 @@ def _purge_app_stores(uid: str, results: dict):
             if uid in store:
                 del store[uid]
                 _appmod._save_memory_store_file(store)
+        finally:
+            _appmod._memory_lock.release()
 
     def usage():
         with _appmod._usage_lock:
