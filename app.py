@@ -324,6 +324,12 @@ import og_library as _og_library
 import og_store_ready as _ogs
 import og_selfcheck as _og_selfcheck
 import og_fixqueue as _og_fixqueue
+import og_claimbudget as _og_claimbudget
+import self_learning as _self_learning
+# Round 321 DBPOOL batch-5: in the serving process, learning
+# from a conversation runs on self_learning's daemon worker
+# instead of the chat response path (see self_learning).
+_self_learning.DEFER_LEARNING = True
 import og_lessons as _og_lessons
 import og_tokenpacks as _og_tokenpacks  # Round 56
 from og_db import DB_CONNECT_TIMEOUT as _DB_CT, apply_bounds as _apply_bounds, normalize_conninfo as _normalize_conninfo, pooled_connect as _pooled_connect
@@ -418,11 +424,24 @@ def _note_chat_error(leg: str, err: Exception):
     _CHAT_ERROR_LEGS[leg] = _CHAT_ERROR_LEGS.get(leg, 0) + 1
     logger.error(f"Chat error (leg={leg}, count={_CHAT_ERROR_LEGS[leg]}): {err}")
 
+def _set_turn_leg(leg: str):
+    """Round 321 DBPOOL batch-5: the leg lives in two places
+    — _turn_leg for the error counter (unchanged) and
+    og_claimbudget's thread-local, which is what the og_db
+    turn choke scopes its allowlist by (og_db cannot import
+    app, so the thread-local is the channel)."""
+    _turn_leg["leg"] = leg
+    try:
+        _og_claimbudget.set_turn_leg(leg)
+    except Exception:
+        pass
+
+
 def _load_hist(uid: str):
     # Fail-soft history load (321c): a throw names the
     # history_load leg, serves an empty thread, and
     # marks the uid so the paired save skips.
-    _turn_leg["leg"] = "history_load"
+    _set_turn_leg("history_load")
     try:
         return _load_visitor_history_locked(uid)
     except Exception as exc:
@@ -434,6 +453,10 @@ def _load_hist(uid: str):
 def _save_turn_history(agent_instance, uid: str):
     """A chat worker's history save-back (321c fail-soft: a
     throw counts the leg and is swallowed)."""
+    # DBPOOL batch-5: name the leg before the save's own
+    # store ops — history_save is turn-choke allowlisted,
+    # so a blown turn still saves its thread.
+    _set_turn_leg("history_save")
     try:
         _save_visitor_history_locked(
             uid, list(getattr(agent_instance, "conversation_history", []) or []))
@@ -2095,9 +2118,9 @@ def _generate_reply_streaming(agent_instance, message: str,
     if getattr(agent, 'learning_system', None):
         learned_hint = agent.learning_system.get_learned_response(message)
 
-    _turn_leg["leg"] = "claims"  # Round 321c: detect IS the claim phase
+    _set_turn_leg("claims")  # Round 321c: detect IS the claim phase
     intent = agent.detect_intent(message)
-    _turn_leg["leg"] = "generation"
+    _set_turn_leg("generation")
 
     context = learned_hint + "\n" if learned_hint else ""
 
@@ -2158,7 +2181,18 @@ def _generate_reply_streaming(agent_instance, message: str,
             if context:
                 messages.append({"role": "system",
                                  "content": f"Additional context:\n{context}"})
-            stream = agent.openai_client.chat.completions.create(
+            # DBPOOL batch-5: the same chat-scoped caps as
+            # _openai_response (45 s, no retries), per call —
+            # the shared client keeps its batch-3 bounds for
+            # every other user. An SDK without with_options
+            # just keeps those bounds, never a failure.
+            _chat_client = agent.openai_client
+            try:
+                _chat_client = _chat_client.with_options(
+                    timeout=45.0, max_retries=0)
+            except Exception:
+                pass
+            stream = _chat_client.chat.completions.create(
                 model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 messages=messages,
                 temperature=0.9,
@@ -2242,7 +2276,15 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
                         tier: str = "free", coords=None, image=None,
                         token_funded: bool = False):
     """Streaming /chat worker: mirrors classic /chat bookkeeping."""
-    _budget_started = _og_fixqueue.begin_claim_budget()  # Round 321c claim budget
+    # DBPOOL batch-5: BOTH budgets (the Round 321c claim
+    # budget and the new turn budget) begin AFTER the lock
+    # is held — a turn queued behind a slow turn must not
+    # start with its clocks already blown (the convoy fix;
+    # nothing between the old begin site and the acquire
+    # touched claims or stores, so the move changes only
+    # when the clocks start). The turn budget's deadline is
+    # what og_db's choke enforces on the turn's store work.
+    _entry_t0 = time.monotonic()
     # DBPOOL batch-3: the whole-turn hold stays (shared agent),
     # but a long wait / long hold now logs while it happens.
     _lock_t0 = time.monotonic()
@@ -2251,6 +2293,10 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
     if _lock_waited > _MEMORY_TURN_WARN_S:
         logger.warning(
             f"Stream turn waited {_lock_waited:.0f}s for the memory lock")
+    _budget_started = _og_fixqueue.begin_claim_budget()  # Round 321c claim budget
+    _turn_started = _og_claimbudget.begin_turn_budget()
+    _og_claimbudget.turn_marker("start", _lock_waited * 1000.0)
+    _turn_outcome = "ok"
     _turn_t0 = time.monotonic()
     agent_instance.conversation_history = _load_hist(uid)
     _current_uid["uid"] = uid
@@ -2260,6 +2306,8 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
     try:
         has_learning = hasattr(agent_instance, 'learning_system') \
             and agent_instance.learning_system is not None
+        _set_turn_leg("claims")
+        _reply_t0 = time.monotonic()
         if hasattr(agent_instance, 'detect_intent'):
             # Round 26: chunks flow through the register sink —
             # complete sentences are enforced before they're emitted.
@@ -2280,6 +2328,8 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
             response = _og_register.enforce_reply(response)
             sink("chunk", response)
             tokens_used = _estimate_call_tokens(agent_instance, response)
+        _og_claimbudget.turn_marker(
+            "reply", (time.monotonic() - _reply_t0) * 1000.0)
 
         # The saved history carries the enforced reply, same as the
         # visitor saw it.
@@ -2298,7 +2348,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         }
         _bump_stat("messages")
         # Metering: record every tier (R55); free meter free-only.
-        _turn_leg["leg"] = "metering"
+        _set_turn_leg("metering")
         _record_chat_usage(uid, tokens_used)
         result["token_balance"] = _og_tokenpacks.settle_chat(
             uid, token_funded, tokens_used)
@@ -2312,6 +2362,7 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
             result["intelligence"] = report.get("intelligence_level", 1.0)
         sink("done", result)
     except Exception as e:
+        _turn_outcome = "error"
         _note_chat_error(_turn_leg["leg"], e)
         detail = f"An error occurred while processing your message: {str(e)}" \
             if DEVELOPMENT_MODE else "An error occurred while processing your message"
@@ -2324,11 +2375,15 @@ def _stream_chat_worker(agent_instance, uid: str, message: str,
         try:
             _save_turn_history(agent_instance, uid)
         finally:
+            _og_claimbudget.turn_marker(
+                "total", (time.monotonic() - _entry_t0) * 1000.0,
+                outcome=_turn_outcome)
             _held = time.monotonic() - _turn_t0
             if _held > _MEMORY_TURN_WARN_S:
                 logger.warning(
                     f"Stream turn held the memory lock {_held:.0f}s")
             _memory_lock.release()
+            _og_claimbudget.end_turn_budget(_turn_started)
             _og_fixqueue.end_claim_budget(_budget_started)
 
 def _sse_streaming_response(event_gen, http_response, entitled: bool):
@@ -2386,7 +2441,15 @@ def _stream_chat_response(agent_instance, uid: str, request: ChatRequest,
 
 def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
     """One non-streaming /chat exchange, awaited via to_thread (Round 80)."""
-    _budget_started = _og_fixqueue.begin_claim_budget()
+    # DBPOOL batch-5: BOTH budgets (the Round 321c claim
+    # budget and the new turn budget) begin AFTER the lock
+    # is held — a turn queued behind a slow turn must not
+    # start with its clocks already blown (the convoy fix;
+    # nothing between the old begin site and the acquire
+    # touched claims or stores, so the move changes only
+    # when the clocks start). The turn budget's deadline is
+    # what og_db's choke enforces on the turn's store work.
+    _entry_t0 = time.monotonic()
     # DBPOOL batch-3: the whole-turn hold stays (shared agent),
     # but a long wait / long hold now logs while it happens.
     _lock_t0 = time.monotonic()
@@ -2395,6 +2458,10 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
     if _lock_waited > _MEMORY_TURN_WARN_S:
         logger.warning(
             f"Chat turn waited {_lock_waited:.0f}s for the memory lock")
+    _budget_started = _og_fixqueue.begin_claim_budget()
+    _turn_started = _og_claimbudget.begin_turn_budget()
+    _og_claimbudget.turn_marker("start", _lock_waited * 1000.0)
+    _turn_outcome = "ok"
     _turn_t0 = time.monotonic()
     agent_instance.conversation_history = _load_hist(uid)
     _current_uid["uid"] = uid
@@ -2407,10 +2474,14 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
         has_learning = hasattr(agent_instance, 'learning_system') and agent_instance.learning_system is not None
 
         # Process message with voice option if available
+        _set_turn_leg("claims")
+        _reply_t0 = time.monotonic()
         if has_voice:
             response = agent_instance.process_message(request.message.strip(), speak_response=request.speak_response)
         else:
             response = agent_instance.process_message(request.message.strip())
+        _og_claimbudget.turn_marker(
+            "reply", (time.monotonic() - _reply_t0) * 1000.0)
 
         # Get the latest assistant message from history
         history = agent_instance.get_conversation_history()
@@ -2425,7 +2496,7 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
         _bump_stat("messages")
 
         # Metering (estimate; recorded for every tier, R55).
-        _turn_leg["leg"] = "metering"
+        _set_turn_leg("metering")
         _tokens_used = _estimate_call_tokens(agent_instance, response) \
             + _drain_lookup_tokens()
         _record_chat_usage(uid, _tokens_used)
@@ -2450,6 +2521,7 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
 
         return result
     except Exception as e:
+        _turn_outcome = "error"
         _note_chat_error(_turn_leg["leg"], e)
         detail = f"An error occurred while processing your message: {str(e)}" if DEVELOPMENT_MODE else "An error occurred while processing your message"
         raise HTTPException(status_code=500, detail=detail)
@@ -2463,11 +2535,15 @@ def _chat_once(agent_instance, uid, request, tier, is_pro, token_funded):
         try:
             _save_turn_history(agent_instance, uid)
         finally:
+            _og_claimbudget.turn_marker(
+                "total", (time.monotonic() - _entry_t0) * 1000.0,
+                outcome=_turn_outcome)
             _held = time.monotonic() - _turn_t0
             if _held > _MEMORY_TURN_WARN_S:
                 logger.warning(
                     f"Chat turn held the memory lock {_held:.0f}s")
             _memory_lock.release()
+            _og_claimbudget.end_turn_budget(_turn_started)
             _og_fixqueue.end_claim_budget(_budget_started)
 
 @app.post("/chat", response_model=ChatResponse, response_model_exclude_none=True)
