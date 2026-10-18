@@ -1819,7 +1819,8 @@ def fixqueue_results(job: Dict, uid: str) -> List[Dict]:
 # its install runs the funnel census LAST.
 from og_claimbudget import (  # noqa: E402
     CLAIM_BUDGET_SECONDS, begin_claim_budget,
-    end_claim_budget, claim_budget_open, _wrap_claim_funnels)
+    end_claim_budget, claim_budget_open, _wrap_claim_funnels,
+    begin_claim_phase, end_claim_phase)
 
 
 def install_fixqueue_tools(agent_instance, get_uid):
@@ -1837,7 +1838,14 @@ def install_fixqueue_tools(agent_instance, get_uid):
     def detect_wrapped(message):
         # Round 321c: the OUTERMOST detect — its entry opens
         # the turn's claim budget, its exit closes it.
+        # DBPOOL batch-4: it also marks the claim PHASE —
+        # this wrapper is the phase's exact boundary (every
+        # detect pass, both chat workers and og_respond's
+        # draft, reaches the chain only through here), and
+        # the store choke point's mid-flight bound is scoped
+        # to the phase (see og_claimbudget).
         _budget_started = begin_claim_budget()
+        begin_claim_phase()
         try:
             intent = prev_detect(message)
             _pending["job"] = None
@@ -1856,6 +1864,7 @@ def install_fixqueue_tools(agent_instance, get_uid):
                 _pending["job"] = None
             return intent
         finally:
+            end_claim_phase()
             end_claim_budget(_budget_started)
 
     def search_wrapped(query, num_results=5):
