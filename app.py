@@ -4,12 +4,14 @@ Exposes REST API endpoints for interacting with the AI agent.
 """
 
 import asyncio
+import faulthandler
 import hashlib
 import hmac
 import json
 import os
 import logging
 import re
+import sys
 import threading
 import time
 import uuid
@@ -1837,6 +1839,24 @@ agent = None
 agent_build_lock = threading.Lock()
 
 
+class AgentNotReady(Exception):
+    """DBPOOL batch-6: raised by get_agent_bounded() when
+    the shared agent did not publish within the caller's
+    wait. Request handlers convert it to a fast, honest
+    503 {"detail": "agent_warming_up"} instead of parking
+    until the platform severs the connection (~271 s of
+    silence: T8/T9/T10/T11, 2026-10-18). The build itself
+    is untouched — it keeps running in the background;
+    only the WAIT became bounded."""
+
+
+# DBPOOL batch-6: set at the exact publish point in
+# _build_agent() (after `agent = _built`), so bounded
+# waiters wake the moment a build lands instead of
+# discovering it on their next poll.
+_agent_published = threading.Event()
+
+
 def get_agent() -> AIAgent:
     """The shared agent instance (created on first use)."""
     global agent
@@ -1861,6 +1881,77 @@ def agent_if_built():
     return agent
 
 
+# DBPOOL batch-6: the bounded wait's build-kick state.
+# At most one kick thread is ever outstanding; get_agent()
+# itself single-flights the actual build on
+# agent_build_lock, so a kick started while the eager
+# build is in flight just queues behind it and returns
+# when it publishes — it can never start a second build.
+_kick_lock = threading.Lock()
+_kick_in_flight = False
+
+
+def _ensure_agent_build_async() -> None:
+    """Start ONE daemon thread running the normal
+    unbounded get_agent() if no kick is outstanding.
+    Covers the first-touch case (the eager thread died,
+    or a suite/request is the first caller ever) without
+    thread spam from concurrent bounded waiters."""
+    global _kick_in_flight
+    if agent is not None:
+        return
+    with _kick_lock:
+        if _kick_in_flight or agent is not None:
+            return
+        _kick_in_flight = True
+
+    def _kick():
+        global _kick_in_flight
+        try:
+            get_agent()
+        except Exception as e:
+            logger.warning(f"Bounded-wait build kick failed: {e}")
+        finally:
+            with _kick_lock:
+                _kick_in_flight = False
+
+    threading.Thread(
+        target=_kick, name="og-agent-build-kick", daemon=True).start()
+
+
+def get_agent_bounded(wait_s: float = None) -> AIAgent:
+    """DBPOOL batch-6: the shared agent, waiting at most
+    wait_s seconds for an in-flight build to publish
+    (default 20 s, env OG_AGENT_WAIT_SECONDS). Returns
+    instantly when the agent is already built. Raises
+    AgentNotReady when the wait expires — request handlers
+    turn that into a 503 instead of an unbounded park
+    behind agent_build_lock (in prod the build has been
+    observed to never publish while get_agent() callers
+    queued silently past the ~271 s platform sever). The
+    build is NEVER interrupted and never duplicated:
+    this only bounds the waiting, polling the published
+    global / the publish Event, and the polling thread
+    never holds agent_build_lock."""
+    if agent is not None:
+        return agent
+    if wait_s is None:
+        try:
+            wait_s = float(os.getenv("OG_AGENT_WAIT_SECONDS", "20"))
+        except Exception:
+            wait_s = 20.0
+    _ensure_agent_build_async()
+    deadline = time.monotonic() + max(wait_s, 0.0)
+    while True:
+        if agent is not None:
+            return agent
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AgentNotReady(
+                f"agent not published within {wait_s:.1f}s")
+        _agent_published.wait(timeout=min(0.05, remaining))
+
+
 def _build_agent() -> None:
     """Build the shared agent into a local and publish
     it (Round 321 Step 6): get_agent()'s global used to
@@ -1870,6 +1961,14 @@ def _build_agent() -> None:
     wiped. Single-flight under _agent_build_lock;
     readers only ever see a complete agent."""
     global agent
+    # DBPOOL batch-6: progress lines (WARNING = the level
+    # that provably reaches prod logs). A build in flight
+    # used to log NOTHING until its final install, so a
+    # build parked mid-installs was indistinguishable
+    # from a build that never started. The heartbeat
+    # counts are the install calls completed at that
+    # source point, of 23 total.
+    logger.warning("_build_agent: start")
     config = {}
     if os.path.exists('config.json'):
         try:
@@ -1896,6 +1995,7 @@ def _build_agent() -> None:
         _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
     _og_twitch.install_twitch_tools(
         _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
+    logger.warning("_build_agent: installs 8 done")
     _og_reddit.install_reddit_tools(
         _built, lambda: _current_uid.get("uid", ""), _consume_lookup)
     _og_google_hands.install_google_hands(
@@ -1924,6 +2024,7 @@ def _build_agent() -> None:
         _built, lambda: _current_uid.get("uid", ""))
     _og_trading.install_trading_tools(
         _built, lambda: _current_uid.get("uid", ""))
+    logger.warning("_build_agent: installs 16 done")
     _og_storage.install_storage_tools(
         _built, lambda: _current_uid.get("uid", ""))
     _og_browser.install_browser_tools(_built, lambda: _current_uid.get("uid", ""))
@@ -1932,8 +2033,11 @@ def _build_agent() -> None:
     _og_songs.install_song_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_selfcheck.install_selfcheck_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_fixqueue.install_fixqueue_tools(_built, lambda: _current_uid.get("uid", ""))
+    logger.warning("_build_agent: installs complete, publishing")
     _reset_memory_store()
     agent = _built
+    _agent_published.set()
+    logger.warning("_build_agent: published")
 
 # DBPOOL batch-4: build the agent EAGERLY at worker startup
 # on a background thread, so the first-touch latency is
@@ -1958,8 +2062,10 @@ def _start_eager_agent_build():
         return None
 
     def _build():
+        logger.warning("Eager agent build thread running")
         try:
             get_agent()
+            logger.warning("Eager agent build thread returned: agent ready")
         except Exception as e:
             # A failed eager build must not kill the worker:
             # the next real request retries through
@@ -1969,10 +2075,63 @@ def _start_eager_agent_build():
     _eager_build_thread = threading.Thread(
         target=_build, name="og-eager-agent-build", daemon=True)
     _eager_build_thread.start()
+    logger.warning("Eager agent build thread started")
     return _eager_build_thread
 
 
 _start_eager_agent_build()
+
+# DBPOOL batch-6: SCHEDULED THREAD-STACK DUMPS (diagnostic).
+# Prod's chat park is invisible because a build in flight
+# logs nothing and a caller parked on agent_build_lock
+# logs nothing; these dumps put EVERY thread's stack in
+# the Render log on a boot schedule (first at ~75 s, then
+# every ~240 s, at most 4) so the parked thread names
+# itself. faulthandler writes to stderr, which is where
+# Render collects logs from. Arming is fail-soft: any
+# error here must never break import or boot. Set
+# OG_FAULTHANDLER_DUMPS=0 to disable (the batch-7 fix
+# batch is expected to retire this).
+_FAULTHANDLER_FIRST_S = 75.0
+_FAULTHANDLER_PERIOD_S = 240.0
+_FAULTHANDLER_MAX_DUMPS = 4
+
+
+def _start_faulthandler_dumps():
+    """Arm the scheduled stack dumps; returns the daemon
+    thread, or None when disabled by env or when arming
+    failed (fail-soft — diagnostics never break boot)."""
+    if os.getenv("OG_FAULTHANDLER_DUMPS", "1").strip().lower() \
+            in ("0", "false", "no", "off"):
+        return None
+    try:
+        faulthandler.enable(file=sys.stderr)
+    except Exception:
+        return None
+
+    def _dumps():
+        delay = _FAULTHANDLER_FIRST_S
+        for _ in range(max(_FAULTHANDLER_MAX_DUMPS, 0)):
+            time.sleep(delay)
+            delay = _FAULTHANDLER_PERIOD_S
+            try:
+                logger.warning(
+                    "faulthandler dump: thread stacks follow on stderr")
+                faulthandler.dump_traceback(file=sys.stderr)
+            except Exception:
+                pass
+
+    try:
+        t = threading.Thread(
+            target=_dumps, name="og-faulthandler-dumps", daemon=True)
+        t.start()
+        logger.warning("faulthandler dumps armed (batch-6 diagnostic)")
+        return t
+    except Exception:
+        return None
+
+
+_faulthandler_thread = _start_faulthandler_dumps()
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -2085,7 +2244,10 @@ def api_info():
     """
     API information endpoint.
     """
-    agent_instance = get_agent()
+    try:
+        agent_instance = get_agent_bounded()
+    except AgentNotReady:
+        raise HTTPException(status_code=503, detail="agent_warming_up")
     return {
         "status": "healthy",
         "agent_name": agent_instance.name,
@@ -2552,7 +2714,17 @@ async def chat(request: ChatRequest, raw_request: Request, http_response: Respon
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    agent_instance = await asyncio.to_thread(get_agent)
+    # DBPOOL batch-6: markers bracket the agent wait so
+    # prod logs prove WHERE a chat parks (entered without
+    # ready = inside the agent wait; neither = middleware),
+    # and the wait itself is bounded — a not-yet-published
+    # agent answers a fast 503 instead of a ~271 s silence.
+    logger.warning("chat route: entered, awaiting agent")
+    try:
+        agent_instance = await asyncio.to_thread(get_agent_bounded)
+    except AgentNotReady:
+        raise HTTPException(status_code=503, detail="agent_warming_up")
+    logger.warning("chat route: agent ready")
 
     # Visitor identity: hand out an `ogai_uid` cookie to new visitors.
     uid = raw_request.cookies.get("ogai_uid")
@@ -2664,8 +2836,11 @@ async def text_to_speech(raw_request: Request):
 @app.post("/image")
 async def generate_image(raw_request: Request):
     """Generate ONE image for a visitor (Round 5); expected outcomes answer 200 JSON."""
-    await asyncio.to_thread(get_agent)  # instantiate first:
-    # its creation resets the file store (off-loop, Step 6)
+    try:
+        await asyncio.to_thread(get_agent_bounded)  # instantiate first:
+        # its creation resets the file store (off-loop, Step 6)
+    except AgentNotReady:
+        raise HTTPException(status_code=503, detail="agent_warming_up")
     uid = raw_request.cookies.get("ogai_uid")
     fresh_uid = False
     if not uid:
@@ -3076,7 +3251,10 @@ def get_intelligence():
     Returns:
         Intelligence report with learning statistics
     """
-    agent_instance = get_agent()
+    try:
+        agent_instance = get_agent_bounded()
+    except AgentNotReady:
+        raise HTTPException(status_code=503, detail="agent_warming_up")
 
     try:
         # Check if agent has learning system
@@ -3107,7 +3285,10 @@ def manual_improvement():
     Returns:
         Improvement report
     """
-    agent_instance = get_agent()
+    try:
+        agent_instance = get_agent_bounded()
+    except AgentNotReady:
+        raise HTTPException(status_code=503, detail="agent_warming_up")
 
     try:
         if hasattr(agent_instance, 'learning_system') and agent_instance.learning_system:
