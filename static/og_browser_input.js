@@ -276,10 +276,59 @@
      while the visitor drives. ~1.3 s cadence, paused
      when the tab is hidden; per-input refreshes ride
      refreshShot() as before. --- */
+  /* --- Round 321 Ticket A3f: THE load-aware still loader.
+     Every still refresh — this loop, refreshShot() after
+     an input, and the page script's loadShot() (via
+     window.ogStillLoad) — goes through this ONE loader.
+     Why: setting an <img>'s src ABORTS its in-flight
+     load, and /browser/screenshot costs a fresh CDP
+     capture (production round trips meet or beat the
+     1300 ms tick), so the shipped loops reset the src
+     before any load could finish — the img sat on its
+     last completed (pre-typing) frame forever while the
+     server logged fresh stills it had "handed out"
+     (convicted on ogtest7: the served frame held the
+     typed text; the displayed one never did). The
+     loader starts each frame in an off-DOM Image and
+     swaps the visible img's src ONLY to a URL that has
+     finished loading; a refresh requested mid-load
+     replaces the pending intent, never the in-flight
+     load; an error keeps the current frame. --- */
+  var stillBusy = false, stillQueued = false,
+      stillBusyCb = null, stillQueuedCb = null;
+  function stillStart(cb) {
+    stillBusy = true;
+    stillBusyCb = cb || null;
+    var url = API + '/browser/screenshot?ts=' + Date.now();
+    var img = new Image();
+    img.onload = function () { stillSettle(true, url); };
+    img.onerror = function () { stillSettle(false, url); };
+    img.src = url;
+  }
+  function stillSettle(ok, url) {
+    stillBusy = false;
+    var cb = stillBusyCb; stillBusyCb = null;
+    if (ok) shot.src = url;
+    if (cb) { try { cb(ok); } catch (e) {} }
+    if (stillQueued) {
+      stillQueued = false;
+      var qcb = stillQueuedCb; stillQueuedCb = null;
+      stillStart(qcb);
+    }
+  }
+  function stillLoad(cb) {
+    if (stillBusy) {
+      stillQueued = true;
+      if (cb) stillQueuedCb = cb;
+      return;
+    }
+    stillStart(cb);
+  }
+  window.ogStillLoad = stillLoad;
   function tickWinShot() {
     if (!fullApplied || document.hidden) return;
     if (shot.hidden) shot.hidden = false;
-    shot.src = API + '/browser/screenshot?ts=' + Date.now();
+    stillLoad(null);
   }
   function startWinShots() {
     if (winShotTimer) return;
@@ -317,7 +366,10 @@
   function refreshShot(delay) {
     window.setTimeout(function () {
       if (!shot.hidden) {
-        shot.src = API + '/browser/screenshot?ts=' + Date.now();
+        /* Ticket A3f: through the load-aware loader — the
+           post-input frame can no longer be aborted by
+           (or abort) the loop's in-flight load. */
+        stillLoad(null);
       }
     }, delay || 0);
   }
