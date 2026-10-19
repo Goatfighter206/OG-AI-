@@ -17,6 +17,51 @@
      its object-fit:contain letterboxing.
    The server accepts input only from the session owner and
    only while the visitor holds control. */
+
+/* OG — Round 321 Ticket A: THE BROWSER WINDOW REBUILD
+   (Brent's confirmation drill, 2026-10-18; spec of
+   2026-10-15 + the drill). What the rounds above left
+   behind, and what this section fixes:
+   - TWO full-screen states competed: the page's
+     og-panel-full class and this file's og-r43-full
+     reparent hack. The letterbox fix (object-fit:cover)
+     was keyed to the page's class only, so whenever the
+     input layer's own state was the one in force the
+     still fell back to contain — a thin band mid-screen,
+     the desktop page squeezed unreadable (drill video).
+     NOW: ONE window state, owned here — the og-r43-full
+     class ALONE carries the geometry (CSS does the work;
+     no reparenting, no inline geometry styles), and it
+     applies while the visitor watches OR drives.
+   - The input layer only ever existed on the still,
+     while the panel defaults to Steel's cross-origin
+     live-player iframe — taps there never reach these
+     handlers and typing can never focus a field (Drill
+     3's dead clicks). In the window state the still IS
+     the surface (the iframe is display:none by CSS), so
+     the window the visitor sees is the window they can
+     drive; the frame loop below keeps it fresh.
+   - The window gets its own chrome: a header naming
+     state + site ("Opening <host>…" / "Browsing —
+     <host>" / "You're in control — <host>", minutes
+     left) painted from the same /browser/status poll,
+     and a bottom bar: Stop task · ⌨️ · 👆 · Fit ·
+     Take control / Hand back · ✕. The bar's buttons
+     press the panel's own buttons (ONE control path —
+     the page still posts /browser/control and
+     /browser/end; nothing here duplicates them).
+   - Keyboard rule (the drill): when the phone keyboard
+     opens, the window is sized to the VISUAL viewport
+     (visualViewport resize/scroll → panel height/top),
+     so the page view reflows ABOVE the keyboard instead
+     of hiding behind it.
+   - A quick swipe on the still scrolls the page (kind
+     'scroll'); a slow press-and-hold stays a drag.
+   - Leaving the window (✕) parks it back to the docked
+     panel — the session itself ends on Stop task, on
+     the page's pagehide /browser/leave beacon, or on the
+     server's 20-minute idle kill; when the session ends
+     underneath, the window closes itself. */
 (function () {
   function $(id) { return document.getElementById(id); }
   var panel = $('browserPanel'), actions = $('browserActions'),
@@ -57,6 +102,56 @@
   panel.insertBefore(msg, actions);
   var kbText = $('ogKbText');
 
+  /* --- Round 321 Ticket A: the window's own chrome.
+     A header (state + site + minutes left, plus the ✕
+     that parks the window back to the docked panel) and
+     a bottom bar that carries Stop task, the ⌨️/👆
+     toggles (moved here from the legacy actions row —
+     same buttons, same handlers), a fit toggle, and
+     Take control / Hand back. Both are ordinary panel
+     children; the og-r43-full CSS lays the panel out as
+     a column and orders them (header first, bar last),
+     and hides the legacy actions row / Open button /
+     floating ✕ while the window state is on. Outside
+     the window state both are display:none (CSS), so
+     the docked panel is exactly as before. --- */
+  var head = document.createElement('div');
+  head.id = 'ogWinHead'; head.className = 'og-win-head';
+  head.innerHTML =
+    '<span class="og-win-state" id="ogWinState">Browser</span>' +
+    '<span class="og-win-site" id="ogWinSite"></span>' +
+    '<span class="og-win-meta" id="ogWinMeta"></span>' +
+    '<button type="button" id="ogWinClose" title="Close window" ' +
+    'aria-label="Close window">✕</button>';
+  panel.appendChild(head);
+  var headState = $('ogWinState'), headSite = $('ogWinSite'),
+      headMeta = $('ogWinMeta'), winCloseBtn = $('ogWinClose');
+  var bar = document.createElement('div');
+  bar.id = 'ogWinBar'; bar.className = 'og-win-bar';
+  var stopBtn = document.createElement('button');
+  stopBtn.type = 'button'; stopBtn.id = 'ogWinStop';
+  stopBtn.className = 'og-win-stop'; stopBtn.textContent = 'Stop task';
+  stopBtn.title = 'Stop task — end the browser session';
+  stopBtn.setAttribute('aria-label', 'Stop task');
+  var fitBtn = document.createElement('button');
+  fitBtn.type = 'button'; fitBtn.id = 'ogWinFit';
+  fitBtn.className = 'og-win-fit'; fitBtn.textContent = 'Fit: Fill';
+  fitBtn.title = 'Toggle how the page fills the window';
+  fitBtn.setAttribute('aria-label', 'Toggle page fit');
+  var winTakeBtn = document.createElement('button');
+  winTakeBtn.type = 'button'; winTakeBtn.id = 'ogWinTake';
+  winTakeBtn.className = 'og-win-take';
+  winTakeBtn.textContent = 'Take control';
+  winTakeBtn.setAttribute('aria-label', 'Take control');
+  bar.appendChild(stopBtn);
+  bar.appendChild(kbBtn);   /* moves the ⌨️ toggle into the bar */
+  bar.appendChild(ptrBtn);  /* moves the 👆 toggle into the bar */
+  bar.appendChild(fitBtn);
+  bar.appendChild(winTakeBtn);
+  panel.appendChild(bar);
+  var endTaskBtn = $('browserEndTaskBtn'),
+      openBtn = $('browserOpenBtn'), pageCloseBtn = $('browserCloseBtn');
+
   var driving = false, kbOn = false, ptrOn = false;
   /* Round 61: a takeover the visitor has ASKED for (Take
      control tapped) whose server confirmation has not landed
@@ -64,41 +159,43 @@
      alone — see reconcile. takeMisses bounds the fast
      re-poll; takeWarned keeps the honest line to once. */
   var takeAsked = false, takeMisses = 0, takeWarned = false;
-  var fullApplied = false, placeholder = null, savedStyle = null;
+  var fullApplied = false;
   var pillHome = null;
+  /* Round 321 Ticket A: the visitor has opened the
+     window (Open browser / Take control / the bar) and
+     not parked it — the window state follows this (and
+     a confirmed takeover), NOT the takeover alone, so
+     the visitor can also WATCH full-screen while OG
+     drives. winShotTimer runs the still's frame loop
+     while the window is up. */
+  var winWanted = false, winShotTimer = null;
 
   function say(text) {
     msg.textContent = text || '';
     msg.hidden = !text;
   }
 
-  /* --- full-screen takeover (driving state only) --- */
+  /* --- the window state (Round 321 Ticket A: ONE state,
+     class-only — the og-r43-full CSS carries ALL the
+     geometry; the Round 43 reparent + inline-style pin
+     is retired, because a second mechanism holding half
+     the state is what kept the letterbox alive). --- */
   function applyFull() {
     if (fullApplied) return;
-    placeholder = document.createComment('og-r43-panel-home');
-    panel.parentNode.insertBefore(placeholder, panel);
-    savedStyle = panel.getAttribute('style');
-    document.body.appendChild(panel);
     panel.classList.add('og-r43-full');
-    panel.style.position = 'fixed';
-    panel.style.inset = '0';
-    panel.style.width = '100dvw';
-    panel.style.height = '100dvh';
-    panel.style.maxWidth = 'none';
-    panel.style.minWidth = '0';
-    panel.style.margin = '0';
-    panel.style.zIndex = '2147483000';
     document.body.classList.add('og-r43-lock');
     /* The ONE task bubble (same element, same updater — it is
        MOVED, never duplicated) rides into the panel at top
        center, so "Opening <host>…" / "Browsing <host>" reads
-       identically in the full-screen state too. */
+       identically in the window state too. */
     if (pillTop && pillTop.parentNode) {
       pillHome = { parent: pillTop.parentNode, next: pillTop.nextSibling };
       panel.appendChild(pillTop);
       pillTop.classList.add('og-r43-pill');
     }
     fullApplied = true;
+    fitWin();
+    startWinShots();
   }
   function removeFull() {
     if (!fullApplied) return;
@@ -112,15 +209,57 @@
       }
       pillHome = null;
     }
+    stopWinShots();
     panel.classList.remove('og-r43-full');
-    if (savedStyle) panel.setAttribute('style', savedStyle);
-    else panel.removeAttribute('style');
+    panel.style.height = '';
+    panel.style.top = '';
     document.body.classList.remove('og-r43-lock');
-    if (placeholder && placeholder.parentNode) {
-      placeholder.parentNode.replaceChild(panel, placeholder);
-    }
-    placeholder = null; savedStyle = null;
     fullApplied = false;
+  }
+
+  /* --- Round 321 Ticket A: the keyboard rule. While the
+     window is up, the panel is sized to the VISUAL
+     viewport: when the phone keyboard opens, the visual
+     viewport shrinks and the window (a flex column:
+     header / page view / strip / bar) reflows into
+     what's actually visible — the page stays on screen
+     above the keyboard instead of hiding behind it.
+     offsetTop keeps it glued to the visible region when
+     the page itself is scrolled under the keyboard. --- */
+  function fitWin() {
+    if (!fullApplied) return;
+    var vv = window.visualViewport;
+    if (!vv) return;
+    panel.style.height = vv.height + 'px';
+    panel.style.top = vv.offsetTop + 'px';
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fitWin);
+    window.visualViewport.addEventListener('scroll', fitWin);
+  }
+
+  /* --- Round 321 Ticket A: the still's frame loop while
+     the window is up — the still IS the window's surface
+     (the live-player iframe is display:none in this
+     state), so it must stay fresh while OG works AND
+     while the visitor drives. ~1.3 s cadence, paused
+     when the tab is hidden; per-input refreshes ride
+     refreshShot() as before. --- */
+  function tickWinShot() {
+    if (!fullApplied || document.hidden) return;
+    if (shot.hidden) shot.hidden = false;
+    shot.src = API + '/browser/screenshot?ts=' + Date.now();
+  }
+  function startWinShots() {
+    if (winShotTimer) return;
+    tickWinShot();
+    winShotTimer = window.setInterval(tickWinShot, 1300);
+  }
+  function stopWinShots() {
+    if (winShotTimer) {
+      window.clearInterval(winShotTimer);
+      winShotTimer = null;
+    }
   }
 
   /* --- toggles --- */
@@ -137,7 +276,7 @@
     ptrBtn.classList.toggle('og-on', on);
     ptrBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     shot.classList.toggle('og-ptr-on', on);
-    if (on) say('👆 Tap the picture to click. Hold and drag to drag.');
+    if (on) say('👆 Tap the picture to click. Swipe to scroll. Hold and drag to drag.');
     else say('');
   }
   kbBtn.addEventListener('click', function () { setKb(!kbOn); });
@@ -270,6 +409,18 @@
         sendInput({ kind: 'click', x: pt.x, y: pt.y,
                     nw: f.nw, nh: f.nh }, 450);
       }
+      return;
+    }
+    if (dur < 500 && Math.abs(dy) > 60 &&
+        Math.abs(dy) > 2 * Math.abs(dx)) {
+      /* Round 321 Ticket A: a quick swipe is a SCROLL,
+         not a drag — finger up means "read further down"
+         (a positive wheel deltaY scrolls down in CDP).
+         The server clamps the delta and wheels at the
+         page center; a slow press-and-hold below stays
+         a real mouse drag. */
+      sendInput({ kind: 'scroll', dx: 0,
+                  dy: Math.round(-dy * 3) }, 350);
       return;
     }
     /* drag (or a plain hold): replay the finger's path as a
@@ -467,11 +618,59 @@
   /* --- driving state: own status poll (the inline panel script
      keeps its state in a closure), plus click accelerators so
      the takeover feels instant. --- */
+  /* --- Round 321 Ticket A: the window header — state +
+     site, from the SAME status payload this poll already
+     fetches (page_url / loading_host / control /
+     minutes_left ride /browser/status today). --- */
+  function hostOf(url) {
+    try { return new URL(url).hostname || ''; } catch (e) { return ''; }
+  }
+  function paintHead(st) {
+    if (!headState) return;
+    if (!st || !st.enabled || !st.active) {
+      headState.textContent = 'Browser';
+      if (headSite) headSite.textContent = '';
+      if (headMeta) headMeta.textContent = '';
+      winTakeBtn.textContent = 'Take control';
+      return;
+    }
+    var host = hostOf(st.page_url) || st.loading_host || '';
+    var t;
+    if (st.phase === 'starting' || st.loading_host) {
+      t = 'Opening ' + (st.loading_host || host || '…') + '…';
+    } else if (st.control === 'visitor') {
+      t = "You're in control";
+    } else {
+      t = 'Browsing';
+    }
+    headState.textContent = t;
+    if (headSite) headSite.textContent = host ? ' — ' + host : '';
+    if (headMeta) {
+      headMeta.textContent = st.minutes_left
+        ? st.minutes_left + ' min left' : '';
+    }
+    winTakeBtn.textContent = st.control === 'visitor'
+      ? 'Hand back' : 'Take control';
+  }
+
   function reconcile(st) {
     var d = !!(st && st.enabled && st.active &&
                st.control === 'visitor');
     driving = d;
-    if (!st || !st.enabled || !st.active) takeAsked = false;
+    paintHead(st);
+    if (!st || !st.enabled || !st.active) {
+      /* The session ended underneath (Stop task, the
+         20-minute idle kill, budget, page-leave): the
+         window closes itself and nothing is left open —
+         no state outlives the session it points at. */
+      takeAsked = false;
+      winWanted = false;
+      if (kbOn) setKb(false);
+      if (ptrOn) setPtr(false);
+      say('');
+      removeFull();
+      return;
+    }
     /* Round 61: the toggles follow the takeover INTENT too.
        They used to be fail-closed on the confirmed flip
        alone, so an unconfirmed take left the full-screen
@@ -479,21 +678,19 @@
        photo). While a take the visitor asked for is still
        unconfirmed, the buttons stay up; an input the
        server refuses is answered in words by sendInput,
-       never silently — and Hand back (guaranteed by the
-       CSS in the full state) always steps back out. */
-    var full = panel.classList.contains('og-panel-full');
-    var showToggles = d || (takeAsked && full);
+       never silently — and Hand back always steps back
+       out. (Ticket A: the toggles live in the window's
+       bottom bar now, so intent alone no longer needs
+       the page's full-screen class to keep them up.) */
+    var showToggles = d || takeAsked;
     kbBtn.hidden = !showToggles;
     ptrBtn.hidden = !showToggles;
     if (d) {
       takeAsked = false;
       applyFull();
-    } else {
-      if (!(takeAsked && full)) {
-        if (kbOn) setKb(false);
-        if (ptrOn) setPtr(false);
-        say('');
-      } else if (takeMisses < 12) {
+    } else if (takeAsked) {
+      if (winWanted) applyFull();
+      if (takeMisses < 12) {
         /* Confirmation still owed: poll again soon instead
            of waiting out the 2.5 s interval. */
         takeMisses++;
@@ -504,6 +701,18 @@
             'driving. The buttons stay here; tap Hand back ' +
             'to step out, or try Take control again.');
       }
+    } else if (winWanted) {
+      /* Watching OG drive, full-screen: the input
+         toggles retire (the server refuses input while
+         OG drives anyway) but the window stays up. */
+      if (kbOn) setKb(false);
+      if (ptrOn) setPtr(false);
+      say('');
+      applyFull();
+    } else {
+      if (kbOn) setKb(false);
+      if (ptrOn) setPtr(false);
+      say('');
       removeFull();
     }
   }
@@ -516,18 +725,64 @@
     takeBtn.addEventListener('click', function () {
       /* Round 61: record the intent BEFORE the first poll —
          it is what keeps the bar whole (see reconcile)
-         while the server confirmation is in flight. */
+         while the server confirmation is in flight.
+         Ticket A: a takeover also opens the window. */
       takeAsked = true; takeMisses = 0; takeWarned = false;
+      winWanted = true;
       window.setTimeout(poll, 350);
     });
   }
   if (handBtn) {
     handBtn.addEventListener('click', function () {
+      /* Ticket A: handing back returns the DRIVING to OG;
+         the window stays up so the visitor keeps watching
+         (the ✕ parks the window). The poll confirms. */
       takeAsked = false;
-      removeFull(); /* optimistic; the poll confirms the truth */
       window.setTimeout(poll, 400);
     });
   }
+  /* --- Round 321 Ticket A: window chrome wiring. Every
+     button presses the panel's OWN button where one
+     exists (one control path — the page still posts
+     /browser/control and /browser/end). --- */
+  if (openBtn) {
+    openBtn.addEventListener('click', function () {
+      winWanted = true;
+      applyFull();
+    });
+  }
+  if (pageCloseBtn) {
+    pageCloseBtn.addEventListener('click', function () {
+      winWanted = false;
+      removeFull();
+    });
+  }
+  winCloseBtn.addEventListener('click', function () {
+    /* Park the window back to the docked panel. The
+       SESSION is not ended here — it ends on Stop task,
+       on leaving the page (the /browser/leave beacon),
+       or on the server's 20-minute idle kill. */
+    winWanted = false;
+    takeAsked = false;
+    if (kbOn) setKb(false);
+    if (ptrOn) setPtr(false);
+    say('');
+    removeFull();
+  });
+  stopBtn.addEventListener('click', function () {
+    winWanted = false;
+    takeAsked = false;
+    if (endTaskBtn) endTaskBtn.click();
+    removeFull();
+  });
+  winTakeBtn.addEventListener('click', function () {
+    if (driving) { if (handBtn) handBtn.click(); }
+    else if (takeBtn) takeBtn.click();
+  });
+  fitBtn.addEventListener('click', function () {
+    var contain = panel.classList.toggle('og-win-contain');
+    fitBtn.textContent = contain ? 'Fit: Width' : 'Fit: Fill';
+  });
   poll();
   window.setInterval(poll, 2500);
 })();

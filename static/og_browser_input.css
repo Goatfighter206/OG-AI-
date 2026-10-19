@@ -84,3 +84,79 @@ body.og-r43-lock{overflow:hidden}
 #browserPanel.og-panel-full #browserView{overflow:hidden;touch-action:none}
 #browserPanel.og-panel-full #browserShot{transform-origin:50% 50%}
 #browserPanel.og-panel-full #browserActions{touch-action:manipulation}
+
+/* --- Round 321 Ticket A: THE BROWSER WINDOW ---------------
+   ONE window state: the og-r43-full class (owned by
+   og_browser_input.js) carries ALL the geometry here —
+   the Round 61 cover fix was keyed to the page's
+   og-panel-full class while the input layer ran its own
+   full state, so the still kept falling back to a
+   letterboxed band mid-screen (Brent's 2026-10-18 drill
+   video). In the window state:
+   - the panel owns the whole screen as a flex column:
+     header (state + site) / page view / note / keyboard
+     strip / input message / bottom bar (Stop task ·
+     toggles · Fit · Take control / Hand back);
+   - the STILL is the surface — the live-player iframe is
+     display:none, so the picture the visitor sees is the
+     picture their taps drive (the CDP input layer has
+     only ever lived on the still);
+   - the still COVERS the view by default (fills the
+     screen, no black bars); Fit: Width switches it to
+     contain for a whole-page-at-once look, and the
+     pointer mapper reads the computed fit either way;
+   - the legacy actions row, Open button and floating ✕
+     are hidden — the window's own bar replaces them.
+   JS sizes the panel to the visual viewport while the
+   phone keyboard is up (height/top inline), so this
+   column reflows ABOVE the keyboard. */
+#ogWinHead,#ogWinBar{display:none}
+#browserPanel.og-r43-full{position:fixed;inset:0;width:100dvw;
+  height:100vh;height:100dvh;min-width:0;max-width:none;
+  margin:0;border:0;border-radius:0;z-index:9000;
+  display:flex;flex-direction:column;background:#0b0b0b}
+#browserPanel.og-r43-full #ogWinHead{display:flex;order:1;
+  flex:0 0 auto;align-items:center;gap:6px;padding:8px 10px;
+  background:#101010;border-bottom:1px solid rgba(255,193,7,.35);
+  color:#f2f2f2}
+#browserPanel.og-r43-full .og-browser-view{order:2;flex:1 1 auto;
+  min-height:0;aspect-ratio:auto;max-height:none;
+  overflow:hidden;touch-action:none}
+#browserPanel.og-r43-full #browserShot{object-fit:cover;
+  display:block!important;transform-origin:50% 50%}
+#browserPanel.og-r43-full.og-win-contain #browserShot{
+  object-fit:contain}
+#browserPanel.og-r43-full #browserFrame{display:none!important}
+#browserPanel.og-r43-full .og-browser-note{order:3;flex:0 0 auto}
+#browserPanel.og-r43-full #ogKbStrip{order:4;flex:0 0 auto}
+#browserPanel.og-r43-full #ogInputMsg{order:5;flex:0 0 auto}
+#browserPanel.og-r43-full #ogWinBar{display:flex;order:6;
+  flex:0 0 auto;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:8px;background:#101010;
+  border-top:1px solid rgba(255,193,7,.35);
+  touch-action:manipulation}
+#browserPanel.og-r43-full #browserActions{display:none!important}
+#browserPanel.og-r43-full #browserOpenBtn{display:none!important}
+#browserPanel.og-r43-full .og-browser-x{display:none!important}
+.og-win-state{font-weight:700;color:#ffc107;font-size:.92rem;
+  white-space:nowrap}
+.og-win-site{color:#e8e8e8;font-size:.92rem;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.og-win-meta{margin-left:auto;color:#bbb;font-size:.78rem;
+  white-space:nowrap}
+#ogWinClose{flex:0 0 auto;width:38px;height:38px;border-radius:50%;
+  border:1px solid #333;background:#1b1b1b;color:#e8e8e8;
+  font-size:15px;cursor:pointer;font-family:inherit}
+#ogWinBar button{border:1px solid rgba(255,193,7,.5);
+  background:#1b1b1b;color:#ffc107;border-radius:999px;
+  padding:8px 13px;font-size:.82rem;cursor:pointer;
+  font-family:inherit;white-space:nowrap;min-height:42px}
+#ogWinBar button:hover{background:rgba(255,193,7,.18)}
+#ogWinBar .og-win-stop{border-color:rgba(255,110,110,.55);
+  color:#ff9d9d}
+#ogWinBar .og-win-take{margin-left:auto;background:#ffc107;
+  border-color:#ffc107;color:#151515;font-weight:700}
+#ogWinBar .og-icon-btn{font-size:19px;line-height:1;
+  min-width:42px;padding:7px 0;text-align:center}
+#ogWinBar .og-icon-btn.og-on{background:#ffc107;
+  border-color:#ffc107;color:#111}
