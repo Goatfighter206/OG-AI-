@@ -215,6 +215,7 @@
     fullApplied = true;
     fitWin();
     startWinShots();
+    paintMarker();
   }
   function removeFull() {
     if (!fullApplied) return;
@@ -246,6 +247,11 @@
     panel.style.top = '';
     document.body.classList.remove('og-r43-lock');
     fullApplied = false;
+    /* Ticket A4: the marker lives only while the window
+       is up — parking the window hides it (its position
+       is kept, so a quick reopen within the staleness
+       window restores it). */
+    paintMarker();
   }
 
   /* --- Round 321 Ticket A: the keyboard rule. While the
@@ -294,30 +300,88 @@
      finished loading; a refresh requested mid-load
      replaces the pending intent, never the in-flight
      load; an error keeps the current frame. --- */
-  var stillBusy = false, stillQueued = false,
-      stillBusyCb = null, stillQueuedCb = null;
+  /* --- Round 321 Ticket A4: the loader grows a WATCHDOG
+     and a generation rule (the never-black fix). A3f's
+     loader is strictly serial with NO timeout: one
+     screenshot request that never settles — a
+     pool-starved server holding the capture open, a
+     stalled mobile connection that never sends FIN —
+     leaves the busy flag set forever, every later
+     refresh queues behind a load that will never
+     finish, and the visible img keeps whatever it had:
+     at window open that is NOTHING, so the view sits on
+     its near-black gradient for the whole session
+     (Brent's 2026-10-19 drill: black from re-entry to
+     the end of the session while the header, bar and
+     toggles all lived). Now each load carries a
+     generation number and a 9 s watchdog: when the
+     watchdog fires, the load's slot frees (a queued or
+     next refresh starts at once), but the abandoned
+     load is not cancelled — if it still completes
+     before any NEWER frame has painted, its frame
+     paints (a slow real frame beats a black screen);
+     a frame never paints over a newer one, and the
+     visible img's src is only ever assigned a finished
+     frame — across open, Take control, Hand back,
+     Fit/Fill and close/reopen the last fully-loaded
+     frame stays on screen until the next one lands. --- */
+  var STILL_WATCHDOG_MS = 9000;
+  var stillSeq = 0, stillPaintedGen = 0, stillBusyGen = 0,
+      stillQueued = false, stillQueuedCb = null,
+      stillWatchdog = null;
   function stillStart(cb) {
-    stillBusy = true;
-    stillBusyCb = cb || null;
+    var gen = ++stillSeq;
+    stillBusyGen = gen;
     var url = API + '/browser/screenshot?ts=' + Date.now();
     var img = new Image();
-    img.onload = function () { stillSettle(true, url); };
-    img.onerror = function () { stillSettle(false, url); };
+    var settled = false;
+    function settle(ok) {
+      if (settled) return;
+      settled = true;
+      stillSettle(gen, ok, url, cb);
+    }
+    img.onload = function () { settle(true); };
+    img.onerror = function () { settle(false); };
     img.src = url;
+    if (stillWatchdog) window.clearTimeout(stillWatchdog);
+    stillWatchdog = window.setTimeout(function () {
+      stillWatchdog = null;
+      if (stillBusyGen !== gen) return;
+      /* The wedge-breaker: free the slot without
+         touching the visible img — the abandoned load
+         may still paint on a late settle (see the
+         generation rule in stillSettle), and a queued
+         refresh starts now instead of never. */
+      stillBusyGen = 0;
+      if (stillQueued) {
+        stillQueued = false;
+        var qcb = stillQueuedCb; stillQueuedCb = null;
+        stillStart(qcb);
+      }
+    }, STILL_WATCHDOG_MS);
   }
-  function stillSettle(ok, url) {
-    stillBusy = false;
-    var cb = stillBusyCb; stillBusyCb = null;
-    if (ok) shot.src = url;
+  function stillSettle(gen, ok, url, cb) {
+    var wasBusy = gen === stillBusyGen;
+    if (wasBusy) {
+      stillBusyGen = 0;
+      if (stillWatchdog) {
+        window.clearTimeout(stillWatchdog);
+        stillWatchdog = null;
+      }
+    }
+    if (ok && gen > stillPaintedGen) {
+      stillPaintedGen = gen;
+      shot.src = url;
+    }
     if (cb) { try { cb(ok); } catch (e) {} }
-    if (stillQueued) {
+    if (wasBusy && stillQueued) {
       stillQueued = false;
       var qcb = stillQueuedCb; stillQueuedCb = null;
       stillStart(qcb);
     }
   }
   function stillLoad(cb) {
-    if (stillBusy) {
+    if (stillBusyGen) {
       stillQueued = true;
       if (cb) stillQueuedCb = cb;
       return;
@@ -325,10 +389,25 @@
     stillStart(cb);
   }
   window.ogStillLoad = stillLoad;
+  /* Gate/debug handle (the OG79ZOOM precedent): the
+     loader's vitals, so a drill can see generations
+     advance instead of guessing at a black screen. */
+  window.OGSTILL = {
+    state: function () {
+      return { seq: stillSeq, paintedGen: stillPaintedGen,
+               busyGen: stillBusyGen, queued: stillQueued,
+               watchdogMs: STILL_WATCHDOG_MS };
+    }
+  };
   function tickWinShot() {
     if (!fullApplied || document.hidden) return;
     if (shot.hidden) shot.hidden = false;
     stillLoad(null);
+    /* Ticket A4: the pointer marker's staleness rule is
+       evaluated on this same tick (see the marker block
+       below) — a position that goes stale fades within
+       one tick of the window it was given. */
+    paintMarker();
   }
   function startWinShots() {
     if (winShotTimer) return;
@@ -381,7 +460,21 @@
     }).then(function (r) {
       return r.json().catch(function () { return {}; });
     }).then(function (res) {
-      if (res && res.ok) { say(''); refreshShot(shotDelay); }
+      if (res && res.ok) {
+        say(''); refreshShot(shotDelay);
+        /* Ticket A4: a landed input CONFIRMS the pointer
+           position it carried — the marker's freshness
+           rides the ack, not just the gesture (the
+           marker block below owns the position). */
+        if (payload && payload.kind === 'click' &&
+            typeof payload.x === 'number') {
+          notePtr(payload.x, payload.y);
+        } else if (payload && payload.kind === 'drag' &&
+                   payload.path && payload.path.length) {
+          var lastPt = payload.path[payload.path.length - 1];
+          if (lastPt) notePtr(lastPt.x, lastPt.y);
+        }
+      }
       else say((res && res.error) || "That didn't go through.");
       return res;
     }).catch(function () {
@@ -465,6 +558,15 @@
               samples: [{ x: e.clientX, y: e.clientY, t: Date.now() }],
               lastPush: Date.now() };
     try { shot.setPointerCapture(e.pointerId); } catch (err) {}
+    /* Ticket A4: the finger IS the pointer — the marker
+       (below) takes the position from this press and
+       follows it through the gesture. */
+    ptrHeld = true;
+    var fDown = frame();
+    if (fDown) {
+      var pDown = toNatural(e.clientX, e.clientY, fDown, true);
+      if (pDown) notePtr(pDown.x, pDown.y);
+    }
     e.preventDefault();
   });
   shot.addEventListener('pointermove', function (e) {
@@ -476,11 +578,22 @@
          Math.abs(e.clientY - last.y) >= 3)) {
       press.samples.push({ x: e.clientX, y: e.clientY, t: now });
       press.lastPush = now;
+      /* Ticket A4: the marker follows the finger at the
+         same sampling pace the drag path is recorded. */
+      var fMove = frame();
+      if (fMove) {
+        var pMove = toNatural(e.clientX, e.clientY, fMove, true);
+        if (pMove) notePtr(pMove.x, pMove.y);
+      }
     }
   });
   function endPress(e, cancelled) {
     if (!press) return;
     var p = press; press = null;
+    /* Ticket A4: the press is over — the marker stays at
+       the release point under its staleness rule. */
+    ptrHeld = false;
+    paintMarker();
     if (!driving || !ptrOn || cancelled) return;
     var f = frame(); if (!f) return;
     var dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -572,6 +685,10 @@
         ? ''
         : 'translate(' + zoom.tx + 'px,' + zoom.ty + 'px) scale(' + zoom.scale + ')';
     }
+    /* Ticket A4: the marker rides the same rendered
+       rect the zoom just changed — repaint it against
+       the new mapping. */
+    paintMarker();
   }
   function resetZoom() {
     zoom.scale = 1; zoom.tx = 0; zoom.ty = 0;
@@ -690,12 +807,132 @@
   panel.addEventListener('gesturechange', function (e) {
     if (fullApplied) e.preventDefault();
   });
+  /* --- Round 321 Ticket A4: SWIPE CAPTURE. The dashboard
+     swipe navigation (og_dashboards.js) listens for
+     touchstart/touchend on the DOCUMENT in the bubble
+     phase and opens the Crypto Hub / Financial Smart
+     Agent on any horizontal swipe >= 70px that doesn't
+     start on a form field — it has no idea the browser
+     window is up, so on Brent's drill a sideways swipe
+     he aimed at the PAGE ejected him full-screen into
+     the Crypto Hub mid-session. While the window is up,
+     a touch that starts on the window is the page's
+     (the pointer handlers above turn it into the page's
+     click / drag / scroll input): a capture-phase
+     stopPropagation on the panel keeps the gesture from
+     ever reaching the document listeners. Propagation
+     only — never preventDefault — so taps, clicks and
+     the keyboard strip behave exactly as before; and
+     only while the window is full, so with the window
+     closed the dashboard swipes work exactly as before.
+     (og_dashboards.js itself is untouched.) --- */
+  function swallowWindowTouch(e) {
+    if (fullApplied) e.stopPropagation();
+  }
+  panel.addEventListener('touchstart', swallowWindowTouch, true);
+  panel.addEventListener('touchmove', swallowWindowTouch, true);
+  panel.addEventListener('touchend', swallowWindowTouch, true);
   window.OG79ZOOM = {
     frameFromRect: frameFromRect,
     state: function () {
       return { scale: zoom.scale, tx: zoom.tx, ty: zoom.ty };
     },
     reset: resetZoom
+  };
+
+  /* --- Round 321 Ticket A4: THE POINTER MARKER ------------
+     The stills carry no OS pointer (a CDP screenshot has
+     no cursor in it), so on Brent's drill the visitor in
+     Take control could not see where the mouse was — the
+     page area read as dead black space. The marker is a
+     client-side arrow rendered OVER the still at the
+     last known pointer position, in the still's NATURAL
+     pixels, positioned through the SAME frame mapping
+     the input path uses (frame()/frameFromRect — the
+     computed object-fit, the Round 79 zoom transform
+     included, since both derive from the img's rendered
+     rect), so the arrow sits exactly where a tap lands.
+     Position sources, in the order the client learns
+     them: the visitor's own press / drag path while
+     pointer mode is on (pointerdown / pointermove /
+     pointerup above), and the /browser/input ACK for a
+     landed click or drag (sendInput). /browser/status
+     carries NO pointer field (audited og_browser.py:
+     active / viewer_url / control / minutes_left /
+     page_url / loading_host / phase only), so while OG
+     drives there is no server position to show — the
+     marker then holds the visitor's last own position
+     until it goes stale.
+     STALENESS RULE (the stated rule): the marker shows
+     while the window is up and a session is live AND
+     either a press is in flight or the position is
+     younger than PTR_STALE_MS (12 s); it hides when the
+     position goes stale, when the window closes, and
+     when the session's end is confirmed. It repaints on
+     the frame tick, on zoom / fit changes, and on every
+     new position.
+     The CARET half of the ticket is deliberately NOT a
+     drawing: the real field caret blinks inside the
+     browsed page, so what the visitor needs is a frame
+     fresh enough to show the focused field and the
+     typed text — the loader above (A3f + the A4
+     watchdog) is that half, and the A4 gate proves it
+     by ink: tap the field, type, and the typed frame
+     paints in the panel. No fake caret is rendered. --- */
+  var PTR_STALE_MS = 12000;
+  var ptrPos = null;      /* {nx, ny, at} — natural px + ms */
+  var ptrHeld = false;
+  var ptrLastClient = null;
+  var markEl = document.createElement('div');
+  markEl.id = 'ogPtrMark';
+  markEl.hidden = true;
+  markEl.setAttribute('aria-hidden', 'true');
+  markEl.innerHTML =
+    '<svg viewBox="0 0 20 20" width="20" height="20">' +
+    '<path d="M1 1 L1 15.2 L4.9 12 L7.1 17.8 L9.3 16.9 ' +
+    'L7.1 11.2 L12.4 11.2 Z" fill="#ffc107" ' +
+    'stroke="#111" stroke-width="1.4" ' +
+    'stroke-linejoin="round"/></svg>';
+  if (view) view.appendChild(markEl);
+  function notePtr(nx, ny) {
+    ptrPos = { nx: nx, ny: ny, at: Date.now() };
+    paintMarker();
+  }
+  function paintMarker() {
+    if (!markEl || !view) return false;
+    var show = false;
+    ptrLastClient = null;
+    if (fullApplied && ptrPos &&
+        (ptrHeld || (Date.now() - ptrPos.at) < PTR_STALE_MS)) {
+      var f = frame();
+      if (f) {
+        var vr = view.getBoundingClientRect();
+        var cx = f.ox + ptrPos.nx * f.scale,
+            cy = f.oy + ptrPos.ny * f.scale;
+        markEl.style.left = (cx - vr.left) + 'px';
+        markEl.style.top = (cy - vr.top) + 'px';
+        ptrLastClient = { x: cx, y: cy };
+        show = true;
+      }
+    }
+    markEl.hidden = !show;
+    return show;
+  }
+  /* Gate/debug handle (the OG79ZOOM / OGSTILL
+     precedent): where the marker believes the pointer
+     is, in natural and client pixels, and its age. */
+  window.OGPTR = {
+    staleMs: PTR_STALE_MS,
+    pos: function () {
+      var shown = paintMarker();
+      if (!ptrPos) return { shown: false };
+      return { shown: shown,
+               nx: ptrPos.nx, ny: ptrPos.ny,
+               cx: ptrLastClient ? ptrLastClient.x : null,
+               cy: ptrLastClient ? ptrLastClient.y : null,
+               ageMs: Date.now() - ptrPos.at,
+               held: ptrHeld };
+    }
   };
 
   /* --- driving state: own status poll (the inline panel script
@@ -736,12 +973,65 @@
       ? 'Hand back' : 'Take control';
   }
 
+  /* --- Round 321 Ticket A4: AUTO-OPEN + the confirmed-
+     end rule.
+     AUTO-OPEN: a browser session that becomes active
+     surfaces the window BY ITSELF, the way a text
+     arrives (Brent, on his drill: OG's chat showed a
+     status pill and an "Open browser" button he had to
+     hunt for — "it should pop up like a text"). The
+     session's key is its viewer_url (the page script's
+     own session key): the first active read carrying a
+     key this client has neither auto-opened nor parked
+     raises winWanted, and the branches below open the
+     window. The visitor's own close is respected:
+     parking the window records the key (parkedKey), the
+     status ticks that follow carry the SAME key, and
+     the window stays down until a NEW session (a new
+     key, or a fresh client after a confirmed end)
+     starts. The pill / Open browser button remain as
+     the manual re-open path, unchanged.
+     CONFIRMED END: a session's end is acted on only
+     when TWO consecutive status reads agree it is gone.
+     One inactive-shaped read — the shape a pool-starved
+     /browser/status returns while the session is very
+     much alive (its server default payload IS
+     active:false) — used to tear the window down, stop
+     the frame loop and reset the header on the spot;
+     combined with the A3f loader's missing watchdog
+     that is the second half of Brent's black screen
+     (window torn down around the Crypto ejection, black
+     on re-entry). Now the first such read only arms a
+     fast confirmation poll (~400 ms, the takeAsked
+     pattern); the window, the last frame and the header
+     all stay exactly as they were unless the next read
+     confirms the end. A real end therefore still closes
+     the window itself — about one fast poll later. --- */
+  var layerActive = false, inactiveReads = 0,
+      curKey = '', autoKey = '', parkedKey = null,
+      prevDriving = false;
+
   function reconcile(st) {
-    var d = !!(st && st.enabled && st.active &&
-               st.control === 'visitor');
-    driving = d;
-    paintHead(st);
-    if (!st || !st.enabled || !st.active) {
+    var act = !!(st && st.enabled && st.active);
+    var key = (st && st.viewer_url) || '';
+    if (!act) {
+      if (layerActive && inactiveReads < 1) {
+        /* Unconfirmed: hold everything — window, frame,
+           header — and ask again fast. */
+        inactiveReads++;
+        window.setTimeout(poll, 400);
+        return;
+      }
+      inactiveReads = 0;
+      layerActive = false;
+      autoKey = '';
+      parkedKey = null;
+      curKey = '';
+      prevDriving = false;
+      ptrPos = null;
+      driving = false;
+      paintHead(st);
+      paintMarker();
       /* The session ended underneath (Stop task, the
          20-minute idle kill, budget, page-leave): the
          window closes itself and nothing is left open —
@@ -753,6 +1043,31 @@
       say('');
       removeFull();
       return;
+    }
+    inactiveReads = 0;
+    if (key) curKey = key;
+    var d = st.control === 'visitor';
+    driving = d;
+    paintHead(st);
+    /* AUTO-OPEN (above): a session key this client has
+       neither opened for nor parked on raises the
+       window unprompted; a keyless session raises it
+       on the inactive->active edge unless the visitor
+       parked this client session. */
+    if (key && key !== autoKey && key !== parkedKey) {
+      autoKey = key;
+      winWanted = true;
+    } else if (!layerActive && !key && parkedKey === null) {
+      winWanted = true;
+    }
+    layerActive = true;
+    if (d !== prevDriving) {
+      /* The control flip gets a fresh frame of its own
+         (the loader coalesces it with any in-flight
+         load): the state the header just named is the
+         state the picture shows. */
+      prevDriving = d;
+      refreshShot(150);
     }
     /* Round 61: the toggles follow the takeover INTENT too.
        They used to be fail-closed on the confirmed flip
@@ -837,6 +1152,7 @@
   if (pageCloseBtn) {
     pageCloseBtn.addEventListener('click', function () {
       winWanted = false;
+      parkedKey = curKey;
       removeFull();
     });
   }
@@ -844,8 +1160,12 @@
     /* Park the window back to the docked panel. The
        SESSION is not ended here — it ends on Stop task,
        on leaving the page (the /browser/leave beacon),
-       or on the server's 20-minute idle kill. */
+       or on the server's 20-minute idle kill. Ticket
+       A4: the park is recorded against this session's
+       key, so the auto-open never re-pops a window the
+       visitor closed on purpose (see reconcile). */
     winWanted = false;
+    parkedKey = curKey;
     takeAsked = false;
     if (kbOn) setKb(false);
     if (ptrOn) setPtr(false);
@@ -865,6 +1185,11 @@
   fitBtn.addEventListener('click', function () {
     var contain = panel.classList.toggle('og-win-contain');
     fitBtn.textContent = contain ? 'Fit: Width' : 'Fit: Fill';
+    /* Ticket A4: Fit/Fill changes the frame mapping —
+       the marker follows it, and the frame itself is
+       untouched (same img, same loaded frame: the flip
+       can never blank the picture). */
+    paintMarker();
   });
   poll();
   window.setInterval(poll, 2500);
