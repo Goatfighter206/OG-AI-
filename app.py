@@ -1856,10 +1856,83 @@ class AgentNotReady(Exception):
 # discovering it on their next poll.
 _agent_published = threading.Event()
 
+# DBPOOL batch-7: PID-STAMPED BUILD STATE (fork
+# self-heal). Prod conviction (2026-10-18, batch-6
+# instruments): the build completes in ~8 s in the
+# gunicorn ARBITER — app.py's import-time code (this
+# state, the eager-build thread, the faulthandler arm)
+# runs in the master BEFORE the workers fork — so each
+# worker is forked WHILE the master's eager thread
+# holds agent_build_lock mid-build and inherits the
+# whole build state poisoned: agent=None, an
+# agent_build_lock LOCKED by a thread that does not
+# exist in the child, an unset _agent_published, a
+# dead _eager_build_thread handle, _kick_in_flight
+# stuck as the master left it. In the child nothing
+# can ever build: get_agent() parks forever on the
+# inherited lock (the T8–T15 chat hang), the bounded
+# wait's kick thread parks the same way, and only the
+# batch-4 no-build paths (/history, /reset) answer.
+# The cure: the build state belongs to ONE process.
+# Every build entry point (get_agent,
+# get_agent_bounded, agent_if_built,
+# _start_eager_agent_build, and the ASGI startup hook
+# below) first calls _agent_state_for_this_process();
+# a pid mismatch means fork-inherited state and it is
+# reinitialized wholesale as FRESH objects (never
+# "unlocked" — a lock whose owner died in another
+# process is not released, it is REPLACED). Same-pid
+# calls are a no-op, so single-process runs (every
+# suite, local dev) see no behavior change at all.
+# Audit (2026-10-18): agent_build_lock,
+# _agent_published, _kick_lock / _kick_in_flight and
+# _eager_build_thread are referenced ONLY by bare
+# global name inside app.py functions — nothing
+# captured the objects themselves into another
+# structure at import (the tool-context dicts capture
+# the get_agent FUNCTION, which reads the globals at
+# call time), and no other module references them —
+# so rebinding the names below re-points every user.
+_agent_state_pid = None
+_agent_state_lock = threading.Lock()
+
+
+def _agent_state_for_this_process() -> None:
+    """DBPOOL batch-7: claim the module build state
+    for THIS process, reinitializing it when it was
+    inherited across a fork. Cheap on the hot path:
+    one getpid + compare; the meta-lock is held only
+    for the check/rebind (no I/O, never across a
+    build), so two threads racing a first touch in a
+    fresh worker cannot double-reset."""
+    global agent, agent_build_lock, _agent_published
+    global _kick_lock, _kick_in_flight, _eager_build_thread
+    global _agent_state_pid
+    pid = os.getpid()
+    if _agent_state_pid == pid:
+        return
+    with _agent_state_lock:
+        if _agent_state_pid == pid:
+            return
+        _old_pid = _agent_state_pid
+        agent = None
+        agent_build_lock = threading.Lock()
+        _agent_published = threading.Event()
+        _kick_lock = threading.Lock()
+        _kick_in_flight = False
+        _eager_build_thread = None
+        _agent_state_pid = pid
+        if _old_pid is not None:
+            logger.warning(
+                "agent build state reinitialized for pid "
+                "%s (fork self-heal: state inherited "
+                "from pid %s discarded)", pid, _old_pid)
+
 
 def get_agent() -> AIAgent:
     """The shared agent instance (created on first use)."""
     global agent
+    _agent_state_for_this_process()
     if agent is None:
         with agent_build_lock:
             if agent is None:
@@ -1878,6 +1951,7 @@ def agent_if_built():
     hung past the platform's ~271 s sever while the build
     crawled on the 0.1-CPU box, and every agent-touching
     endpoint queued behind the same build lock)."""
+    _agent_state_for_this_process()
     return agent
 
 
@@ -1933,6 +2007,7 @@ def get_agent_bounded(wait_s: float = None) -> AIAgent:
     this only bounds the waiting, polling the published
     global / the publish Event, and the polling thread
     never holds agent_build_lock."""
+    _agent_state_for_this_process()
     if agent is not None:
         return agent
     if wait_s is None:
@@ -2058,6 +2133,7 @@ def _start_eager_agent_build():
     None when the agent is already built or the thread was
     already started."""
     global _eager_build_thread
+    _agent_state_for_this_process()
     if agent is not None or _eager_build_thread is not None:
         return None
 
@@ -2132,6 +2208,55 @@ def _start_faulthandler_dumps():
 
 
 _faulthandler_thread = _start_faulthandler_dumps()
+
+# DBPOOL batch-7: the import-time arm above ran in the
+# importing process (in prod the gunicorn arbiter); a
+# forked worker inherits the dead thread handle and a
+# watchdog that will never fire in the child — the
+# batch-6 dumps showed ONLY arbiter stacks, never a
+# worker's. The dumps therefore arm PER PROCESS: the
+# pid stamp records which process the live arm belongs
+# to, and the ASGI startup hook below re-arms in every
+# worker. _start_faulthandler_dumps() itself is
+# unchanged (its direct callers keep batch-6 semantics);
+# the stamp lives in this wrapper so a process never
+# double-arms.
+_faulthandler_armed_pid = (
+    os.getpid() if _faulthandler_thread is not None else None)
+
+
+def _arm_faulthandler_dumps_for_this_process():
+    """DBPOOL batch-7: arm the stack dumps in THIS
+    process unless this process already armed them;
+    returns the live dump thread (or None when disabled
+    by env / arming failed, exactly as
+    _start_faulthandler_dumps)."""
+    global _faulthandler_armed_pid, _faulthandler_thread
+    if _faulthandler_armed_pid == os.getpid():
+        return _faulthandler_thread
+    _t = _start_faulthandler_dumps()
+    if _t is not None:
+        _faulthandler_armed_pid = os.getpid()
+        _faulthandler_thread = _t
+    return _t
+
+
+@app.on_event("startup")
+def _og_worker_startup():
+    """DBPOOL batch-7: per-worker boot wiring. ASGI
+    startup runs in EVERY worker process, unlike the
+    import-time calls above, which run in whichever
+    process imported the module (in prod the arbiter,
+    whose build state the workers then inherit
+    poisoned — see _agent_state_for_this_process).
+    Order matters: heal this process's build state
+    FIRST, then start THIS worker's eager build, then
+    arm THIS worker's stack dumps, so batch-7
+    verification reads worker stacks, not the
+    arbiter's."""
+    _agent_state_for_this_process()
+    _start_eager_agent_build()
+    _arm_faulthandler_dumps_for_this_process()
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
