@@ -1063,6 +1063,94 @@ _INPUT_KEYS = {"enter": ("Enter", "Enter", 13),
                "tab": ("Tab", "Tab", 9)}
 
 
+# --- Ticket A3b: production input diagnostic (env-flagged,
+# default OFF). With OG_BROWSER_INPUT_DEBUG unset, _visitor_input
+# makes exactly the calls it always made and returns exactly what
+# it always returned: the helpers below are never invoked and no
+# line is logged. With the flag on, each visitor input adds
+# read-only probes (the attach's page-target list, element
+# descriptors, a value LENGTH, scrollY) and ONE structured logger
+# line, so a live drill can show which page target the input
+# connection attached to and which element the typed text went
+# into. Descriptors carry tag/id/type/name only, and a field's
+# value is measured, never read: this block cannot log a typed
+# value or a credential (the Round 43 rule). It is built to be
+# deleted whole once the typing bug is convicted.
+
+def _input_debug_enabled() -> bool:
+    return os.environ.get(
+        "OG_BROWSER_INPUT_DEBUG", "").strip().lower() in (
+            "1", "true", "yes", "on")
+
+
+_EL_DESC_JS = ("(function(){var a=__EL__;"
+               " if(!a) return null;"
+               " return {tag:(a.tagName||'').toLowerCase(),"
+               " id:a.id||'',"
+               " type:(a.getAttribute?a.getAttribute('type'):'')||'',"
+               " name:(a.getAttribute?a.getAttribute('name'):'')||'',"
+               " vlen:(typeof a.value==='string'"
+               " ? a.value.length : -1)};})()")
+
+
+def _dbg_clean(text, limit: int = 80) -> str:
+    """One-line-safe a log field: whitespace folded, capped."""
+    return re.sub(r"\s+", "_", str(text or ""))[:limit] or "-"
+
+
+def _dbg_el(desc) -> str:
+    """Format an element descriptor as tag#id[type=..,name=..]."""
+    if not isinstance(desc, dict):
+        return "-"
+    out = _dbg_clean(desc.get("tag") or "?", 24)
+    if desc.get("id"):
+        out += "#" + _dbg_clean(desc["id"], 40)
+    bits = []
+    if desc.get("type"):
+        bits.append("type=" + _dbg_clean(desc["type"], 24))
+    if desc.get("name"):
+        bits.append("name=" + _dbg_clean(desc["name"], 40))
+    if bits:
+        out += "[" + ",".join(bits) + "]"
+    return out
+
+
+def _dbg_desc(cdp: _Cdp, expr: str):
+    """Descriptor of the element an expression names (or None)."""
+    try:
+        return _eval(cdp, _EL_DESC_JS.replace("__EL__", expr))
+    except Exception:
+        return None
+
+
+def _input_debug(cdp: _Cdp, kind: str, extra: str = "") -> None:
+    """Ticket A3b: ONE structured line per visitor input. Never
+    raises — a diagnostic must not break the hand it watches."""
+    try:
+        infos = []
+        try:
+            res = cdp.call("Target.getTargets") or {}
+            infos = [t for t in (res.get("targetInfos") or [])
+                     if t.get("type") == "page"]
+        except Exception:
+            pass
+        urls = "|".join(
+            _dbg_clean(t.get("url"), 120) for t in infos) or "-"
+        try:
+            attached = _eval(cdp, "location.href")
+        except Exception:
+            attached = ""
+        line = ("og_input_debug kind=%s targets=%d target_urls=%s "
+                "attached_url=%s" % (
+                    kind, len(infos), urls,
+                    _dbg_clean(attached, 120)))
+        if extra:
+            line += " " + extra
+        logger.info(line)
+    except Exception:
+        pass
+
+
 def _page_view(cdp: _Cdp) -> Dict:
     view = _eval(cdp, _VIEW_JS)
     if not isinstance(view, dict) or not view.get("w") \
@@ -1087,6 +1175,7 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
     kind = str(payload.get("kind") or "")
     if kind not in ("click", "type", "key", "scroll", "drag"):
         return {"ok": False, "error": "unknown input kind"}
+    dbg = _input_debug_enabled()  # Ticket A3b: off = fully inert
     cdp = _cdp_connect(rec)
     try:
         _attach_page(cdp)
@@ -1105,10 +1194,16 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
             view = _page_view(cdp)
             cx = x * float(view["w"]) / nw
             cy = y * float(view["h"]) / nh
+            at = _dbg_el(_dbg_desc(
+                cdp, "document.elementFromPoint(%r, %r)" % (cx, cy))) \
+                if dbg else ""
             for t in ("mousePressed", "mouseReleased"):
                 cdp.call("Input.dispatchMouseEvent", {
                     "type": t, "x": cx, "y": cy, "button": "left",
                     "clickCount": 1})
+            if dbg:
+                _input_debug(cdp, kind,
+                             "xy=%.1f,%.1f at=%s" % (cx, cy, at))
             return {"ok": True}
         if kind == "type":
             text = payload.get("text")
@@ -1117,10 +1212,26 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
             if len(text) > 2000:
                 return {"ok": False, "error": "that text is too long"}
             if _eval(cdp, _FOCUS_JS) != "ok":
+                if dbg:
+                    _input_debug(cdp, kind, "gate=refused focus=" + _dbg_el(
+                        _dbg_desc(cdp, "document.activeElement")))
                 return {"ok": False,
                         "error": "Tap a field on the page first, "
                                  "then type."}
+            focus = _dbg_el(_dbg_desc(
+                cdp, "document.activeElement")) if dbg else ""
             cdp.call("Input.insertText", {"text": text})
+            if dbg:
+                after_desc = _dbg_desc(cdp, "document.activeElement")
+                after = _dbg_el(after_desc)
+                extra = "focus=" + focus
+                if after != focus:
+                    extra += " focus_after=" + after
+                vlen = after_desc.get("vlen") \
+                    if isinstance(after_desc, dict) else None
+                extra += " vlen=" + (
+                    str(vlen) if vlen is not None else "?")
+                _input_debug(cdp, kind, extra)
             return {"ok": True}
         if kind == "key":
             spec = _INPUT_KEYS.get(str(payload.get("key") or ""))
@@ -1132,6 +1243,8 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
                     "type": t, "key": key, "code": code,
                     "windowsVirtualKeyCode": vk,
                     "nativeVirtualKeyCode": vk})
+            if dbg:
+                _input_debug(cdp, kind, "key=" + key)
             return {"ok": True}
         if kind == "drag":
             # press-and-hold drag (Brent's refinement): the
@@ -1174,6 +1287,8 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
                 "type": "mouseReleased", "x": pts[-1][0],
                 "y": pts[-1][1], "button": "left", "buttons": 0,
                 "clickCount": 1})
+            if dbg:
+                _input_debug(cdp, kind, "pts=%d" % len(pts))
             return {"ok": True}
         # scroll: wheel deltas in CSS pixels
         try:
@@ -1184,11 +1299,20 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
         except Exception:
             return {"ok": False, "error": "bad scroll"}
         view = _page_view(cdp)
+        wx = float(view["w"]) / 2.0
+        wy = float(view["h"]) / 2.0
         cdp.call("Input.dispatchMouseEvent", {
             "type": "mouseWheel",
-            "x": float(view["w"]) / 2.0,
-            "y": float(view["h"]) / 2.0,
+            "x": wx,
+            "y": wy,
             "deltaX": dx, "deltaY": dy})
+        if dbg:
+            try:
+                sy = _eval(cdp, "window.scrollY")
+            except Exception:
+                sy = None
+            _input_debug(cdp, kind, "xy=%.1f,%.1f dxy=%s,%s scrollY=%s" % (
+                wx, wy, dx, dy, sy if sy is not None else "?"))
         return {"ok": True}
     finally:
         cdp.close()
