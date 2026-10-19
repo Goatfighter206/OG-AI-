@@ -178,3 +178,20 @@ body.og-r43-lock{overflow:hidden}
   min-width:42px;padding:7px 0;text-align:center}
 #ogWinBar .og-icon-btn.og-on{background:#ffc107;
   border-color:#ffc107;color:#111}
+
+/* --- Round 321 Ticket A4: the pointer marker -------------
+   The stills carry no OS pointer, so og_browser_input.js
+   renders this arrow OVER the still at the last known
+   pointer position (the visitor's own taps/drags, mapped
+   through the same frame math as the input path). It is
+   a child of the view, so the view clips it at the page
+   edges; pointer-events:none — it never eats a tap. Its
+   left/top IS the arrow's tip (the SVG path starts at
+   1,1), which is the point the gate measures. Visibility
+   is the JS staleness rule (hidden attribute); this block
+   only paints it. */
+#ogPtrMark{position:absolute;z-index:7;width:20px;height:20px;
+  margin:0;padding:0;pointer-events:none;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}
+#ogPtrMark[hidden]{display:none}
+#ogPtrMark svg{display:block}
