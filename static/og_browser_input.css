@@ -114,14 +114,32 @@ body.og-r43-lock{overflow:hidden}
 #browserPanel.og-r43-full{position:fixed;inset:0;width:100dvw;
   height:100vh;height:100dvh;min-width:0;max-width:none;
   margin:0;border:0;border-radius:0;z-index:9000;
-  display:flex;flex-direction:column;background:#0b0b0b}
+  display:flex;flex-direction:column;background:#0b0b0b;
+  /* Ticket A follow-up (drift-state leaks): the og_shell.css
+     Round 70 "Browser small bar" block keys ONLY on the
+     page's og-panel-open / og-panel-full classes. When the
+     window goes full on og-r43-full ALONE (the status-driven
+     driving state — control already "visitor" before the
+     page ever ran its full-screen path), its declarations
+     leak into the full state: transform:translate(-50%,-50%)
+     shifted the whole window half off-screen, and
+     align-items:center / gap / padding shrank and offset
+     the header, view and bar. The full window pins all
+     four to the whole-screen geometry. */
+  transform:none;align-items:stretch;gap:0;padding:0}
 #browserPanel.og-r43-full #ogWinHead{display:flex;order:1;
   flex:0 0 auto;align-items:center;gap:6px;padding:8px 10px;
   background:#101010;border-bottom:1px solid rgba(255,193,7,.35);
   color:#f2f2f2}
 #browserPanel.og-r43-full .og-browser-view{order:2;flex:1 1 auto;
   min-height:0;aspect-ratio:auto;max-height:none;
-  overflow:hidden;touch-action:none}
+  overflow:hidden;touch-action:none;
+  /* Ticket A follow-up: the same Round 70 block sets
+     .og-browser-view{display:none!important} under its
+     page-class guard — on the og-r43-full-only path that
+     blanked the page picture outright. The id-anchored
+     selector outranks it among !important declarations. */
+  display:block !important}
 #browserPanel.og-r43-full #browserShot{object-fit:cover;
   display:block!important;transform-origin:50% 50%}
 #browserPanel.og-r43-full.og-win-contain #browserShot{

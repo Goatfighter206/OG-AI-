@@ -161,6 +161,7 @@
   var takeAsked = false, takeMisses = 0, takeWarned = false;
   var fullApplied = false;
   var pillHome = null;
+  var panelHome = null;
   /* Round 321 Ticket A: the visitor has opened the
      window (Open browser / Take control / the bar) and
      not parked it — the window state follows this (and
@@ -184,6 +185,24 @@
     if (fullApplied) return;
     panel.classList.add('og-r43-full');
     document.body.classList.add('og-r43-lock');
+    /* Ticket A follow-up (the invisible-bar root): the panel
+       lives inside .chat-container, whose backdrop-filter
+       (styles.css) makes it a stacking context — the panel's
+       z-index:9000 then only competes INSIDE the chat
+       subtree, and og_shell's #ogShellDock (a later body
+       child) paints and hit-tests over the window's bottom
+       strip, burying #ogWinBar under the composer + seat
+       bar (production QA 2026-10-19: the bar rendered with
+       real geometry yet every tap landed on the seat bar).
+       While the window is full, the panel is therefore
+       MOVED to <body> (same element, same listeners — the
+       page's own reference stays valid), where its z-index
+       outranks the dock and its fixed box is the viewport
+       itself. removeFull puts it back in its exact home. */
+    if (panel.parentNode && panel.parentNode !== document.body) {
+      panelHome = { parent: panel.parentNode, next: panel.nextSibling };
+      document.body.appendChild(panel);
+    }
     /* The ONE task bubble (same element, same updater — it is
        MOVED, never duplicated) rides into the panel at top
        center, so "Opening <host>…" / "Browsing <host>" reads
@@ -209,6 +228,18 @@
       }
       pillHome = null;
     }
+    /* Ticket A follow-up: undo applyFull's reparent — the
+       panel returns to its exact home slot in
+       .chat-container, so the docked small-bar state is
+       byte-for-byte the pre-window DOM. */
+    if (panelHome && panel.parentNode === document.body) {
+      if (panelHome.next && panelHome.next.parentNode === panelHome.parent) {
+        panelHome.parent.insertBefore(panel, panelHome.next);
+      } else {
+        panelHome.parent.appendChild(panel);
+      }
+    }
+    panelHome = null;
     stopWinShots();
     panel.classList.remove('og-r43-full');
     panel.style.height = '';
