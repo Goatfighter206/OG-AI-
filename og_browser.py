@@ -1063,6 +1063,115 @@ _INPUT_KEYS = {"enter": ("Enter", "Enter", 13),
                "tab": ("Tab", "Tab", 9)}
 
 
+# --- Ticket A3c: typing as REAL KEYSTROKES ------------------
+# The type path used to dispatch the whole string as ONE bulk
+# Input.insertText. The A3b drill (flagged, production)
+# convicted what that misses: the text DID land in the field
+# at the server — focus = Facebook's email input, value length
+# 11 right after the call — yet every screenshot showed the
+# placeholder. Facebook's login form is a React CONTROLLED
+# input: a bulk insertText sets the DOM value without the key
+# events a controlled component needs to register a genuine
+# edit, so its state never learns the text and the next
+# re-render wipes the field back to the (empty) state. Typing
+# below therefore goes character by character as real
+# Input.dispatchKeyEvent sequences — keyDown, char carrying
+# the text, keyUp: the standard CDP typing pattern a
+# physical keyboard produces — so controlled inputs accept
+# it as genuine typing and their state retains the value.
+# (The text rides the char event ONLY: a text-bearing
+# keyDown is itself turned into an edit by the browser, so
+# carrying it in both places types every character twice —
+# proven in the A3c probe.) If the key path errors
+# mid-string, the untyped remainder falls back to the old
+# insertText rather than failing the call.
+
+_TYPE_PUNCT = {
+    "-": ("-", "Minus", 189, False), "=": ("=", "Equal", 187, False),
+    "[": ("[", "BracketLeft", 219, False),
+    "]": ("]", "BracketRight", 221, False),
+    "\\": ("\\", "Backslash", 220, False),
+    ";": (";", "Semicolon", 186, False),
+    "'": ("'", "Quote", 222, False),
+    ",": (",", "Comma", 188, False), ".": (".", "Period", 190, False),
+    "/": ("/", "Slash", 191, False), "`": ("`", "Backquote", 192, False),
+    "!": ("!", "Digit1", 49, True), "@": ("@", "Digit2", 50, True),
+    "#": ("#", "Digit3", 51, True), "$": ("$", "Digit4", 52, True),
+    "%": ("%", "Digit5", 53, True), "^": ("^", "Digit6", 54, True),
+    "&": ("&", "Digit7", 55, True), "*": ("*", "Digit8", 56, True),
+    "(": ("(", "Digit9", 57, True), ")": (")", "Digit0", 48, True),
+    "_": ("_", "Minus", 189, True), "+": ("+", "Equal", 187, True),
+    "{": ("{", "BracketLeft", 219, True),
+    "}": ("}", "BracketRight", 221, True),
+    "|": ("|", "Backslash", 220, True),
+    ":": (":", "Semicolon", 186, True),
+    '"': ('"', "Quote", 222, True),
+    "<": ("<", "Comma", 188, True), ">": (">", "Period", 190, True),
+    "?": ("?", "Slash", 191, True), "~": ("~", "Backquote", 192, True),
+}
+
+
+def _char_key(ch: str):
+    """(key, code, windowsVirtualKeyCode, shifted) for ONE
+    character, or None when the character has no key of its
+    own — accented / symbolic runs ride the insertText
+    fallback inside _type_text."""
+    if "a" <= ch <= "z":
+        return (ch, "Key" + ch.upper(), ord(ch) - 32, False)
+    if "A" <= ch <= "Z":
+        return (ch, "Key" + ch, ord(ch), True)
+    if "0" <= ch <= "9":
+        return (ch, "Digit" + ch, ord(ch), False)
+    if ch == " ":
+        return (" ", "Space", 32, False)
+    if ch == "\n" or ch == "\r":
+        return ("Enter", "Enter", 13, False)
+    if ch == "\t":
+        return ("Tab", "Tab", 9, False)
+    return _TYPE_PUNCT.get(ch)
+
+
+def _type_text(cdp: _Cdp, text: str) -> None:
+    """Dispatch `text` into the focused field as REAL
+    keystrokes (Ticket A3c — see the block note above)."""
+    i = 0
+    n = len(text)
+    try:
+        while i < n:
+            spec = _char_key(text[i])
+            if spec is None:
+                j = i + 1
+                while j < n and _char_key(text[j]) is None:
+                    j += 1
+                cdp.call("Input.insertText", {"text": text[i:j]})
+                i = j
+                continue
+            key, code, vk, shifted = spec
+            ev = {"key": key, "code": code,
+                  "windowsVirtualKeyCode": vk,
+                  "nativeVirtualKeyCode": vk}
+            if shifted:
+                ev["modifiers"] = 8
+            if len(key) == 1:
+                ch = text[i]
+                cdp.call("Input.dispatchKeyEvent", dict(
+                    ev, type="keyDown"))
+                cdp.call("Input.dispatchKeyEvent", dict(
+                    ev, type="char", text=ch, unmodifiedText=ch))
+                cdp.call("Input.dispatchKeyEvent", dict(
+                    ev, type="keyUp"))
+            else:
+                cdp.call("Input.dispatchKeyEvent", dict(
+                    ev, type="keyDown"))
+                cdp.call("Input.dispatchKeyEvent", dict(
+                    ev, type="keyUp"))
+            i += 1
+    except Exception:
+        rest = text[i:]
+        if rest:
+            cdp.call("Input.insertText", {"text": rest})
+
+
 # --- Ticket A3b: production input diagnostic (env-flagged,
 # default OFF). With OG_BROWSER_INPUT_DEBUG unset, _visitor_input
 # makes exactly the calls it always made and returns exactly what
@@ -1220,7 +1329,7 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
                                  "then type."}
             focus = _dbg_el(_dbg_desc(
                 cdp, "document.activeElement")) if dbg else ""
-            cdp.call("Input.insertText", {"text": text})
+            _type_text(cdp, text)  # Ticket A3c: real keystrokes
             if dbg:
                 after_desc = _dbg_desc(cdp, "document.activeElement")
                 after = _dbg_el(after_desc)
