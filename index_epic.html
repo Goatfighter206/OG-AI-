@@ -1551,6 +1551,18 @@ if (text) shotNote.textContent = text;
 function loadShot() {
 if (!shot) return;
 viewLive(false);
+if (window.ogStillLoad) {
+/* Round 321 Ticket A3f: ride the input layer's ONE
+load-aware still loader — the visible img is only ever
+handed a frame that finished loading (assigning src
+directly aborted slow /browser/screenshot loads
+mid-flight, freezing the still on an old frame). */
+window.ogStillLoad(function (ok) {
+if (ok) { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. Driving? Tap 👆 Tap, then tap the picture to click; ⌨️ Keyboard types.' : ''); }
+else note("Still view couldn't load a picture right now — the Open browser button below is your reliable window.");
+});
+return;
+}
 shot.onerror = function () { note("Still view couldn't load a picture right now — the Open browser button below is your reliable window."); };
 shot.onload = function () { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. Driving? Tap 👆 Tap, then tap the picture to click; ⌨️ Keyboard types.' : ''); };
 shot.src = API_URL + '/browser/screenshot?ts=' + Date.now();
@@ -2091,7 +2103,7 @@ paint();
 <link rel="stylesheet" href="/static/og_library.css?v=98">
 <link rel="stylesheet" href="/static/og_store.css?v=98">
 <link rel="stylesheet" href="/static/og_notification_settings.css?v=98">
-<link rel="stylesheet" href="/static/og_browser_input.css?v=100">
+<link rel="stylesheet" href="/static/og_browser_input.css?v=101">
 <link rel="stylesheet" href="/static/og_shell.css?v=98">
 <link rel="stylesheet" href="/static/og_tokens.css?v=98">
 <link rel="stylesheet" href="/static/og_dashboards.css?v=2">
@@ -2100,7 +2112,7 @@ paint();
 <script src="/static/og_library.js?v=98"></script>
 <script src="/static/og_store.js?v=98"></script>
 <script src="/static/og_notification_settings.js?v=98"></script>
-<script src="/static/og_browser_input.js?v=100"></script>
+<script src="/static/og_browser_input.js?v=101"></script>
 <script src="/static/og_shell.js?v=98"></script>
 <script src="/static/og_tokens.js?v=98"></script>
 <script src="/static/og_dashboards.js?v=2"></script>
