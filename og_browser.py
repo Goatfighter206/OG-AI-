@@ -950,7 +950,10 @@ def _capture_shot(rec: Dict) -> bytes:
         data = res.get("data") or ""
         if not data:
             raise _DriveError("the screenshot came back empty")
-        return base64.b64decode(data)
+        raw = base64.b64decode(data)
+        if _input_debug_enabled():  # Ticket A3d: still provenance
+            _still_debug(cdp, len(raw))
+        return raw
     finally:
         cdp.close()
 
@@ -1260,6 +1263,159 @@ def _input_debug(cdp: _Cdp, kind: str, extra: str = "") -> None:
         pass
 
 
+# --- Ticket A3d: persistence + visibility probes and still
+# provenance (same flag, same Round 43 rule as A3b: lengths
+# and node facts only, never a value). The ogtest5 drill
+# left three live suspects for a field that reads vlen=11
+# right after the key dispatch yet shows its placeholder on
+# screen seconds later: (a) the value is wiped AFTER the
+# immediate post-dispatch read; (b) the value persists but
+# the still the client displays never shows it; (c) the
+# value sits in a same-named DOM node that is NOT the
+# visible field (a hidden duplicate). _dbg_persist0 takes
+# the focused field's census at type time — how many inputs
+# carry its name, how many of those are visible, whether
+# the focused node itself is visible — plus a (name,
+# ordinal) signature; _type_persist_debug re-finds that
+# node at about +3s and +8s and logs all three lengths in
+# ONE kind=type_persist line. The re-read sleeps live ONLY
+# on this flagged path. _still_debug stamps every still
+# _capture_shot serves (when, off which page, how big), so
+# a drill can line the frames up against the type's
+# timestamps: the server captures a FRESH frame per request
+# (Page.captureScreenshot, fromSurface, no-store) and the
+# client re-requests it on a ~1.3s loop while the window is
+# up, so a still line proves what the server handed out at
+# that second — never a cached frame.
+
+_VIS_TEST_JS = (
+    "function vis(el){ if(!el||el.nodeType!==1) return false;"
+    " var n=el;"
+    " while(n&&n.nodeType===1){ var s=getComputedStyle(n);"
+    " if(s.display==='none'||s.visibility==='hidden')"
+    " return false; n=n.parentNode; }"
+    " var r=el.getClientRects();"
+    " return r.length>0&&r[0].width>0&&r[0].height>0; }")
+
+_PERSIST0_JS = (
+    "(function(){ /*a3d-persist0*/ var a=document.activeElement;"
+    " if(!a) return null;"
+    + _VIS_TEST_JS +
+    " var name=(a.getAttribute?a.getAttribute('name'):'')||'';"
+    " var all=Array.prototype.slice.call("
+    "document.querySelectorAll('input'));"
+    " var m=all.filter(function(e){"
+    " return ((e.getAttribute&&e.getAttribute('name'))||'')"
+    "===name; });"
+    " return {tag:(a.tagName||'').toLowerCase(),"
+    " type:(a.getAttribute?a.getAttribute('type'):'')||'',"
+    " name:name,"
+    " vlen:(typeof a.value==='string'?a.value.length:-1),"
+    " ord:m.indexOf(a), name_matches:m.length,"
+    " visible_matches:m.filter(vis).length,"
+    " focus_visible:vis(a)?1:0}; })()")
+
+_PERSIST_REFIND_JS = (
+    "(function(){ /*a3d-persistR*/ var name=__NAME__,"
+    " ord=__ORD__;"
+    + _VIS_TEST_JS +
+    " var all=Array.prototype.slice.call("
+    "document.querySelectorAll('input'));"
+    " var m=all.filter(function(e){"
+    " return ((e.getAttribute&&e.getAttribute('name'))||'')"
+    "===name; });"
+    " var el=(ord>=0&&ord<m.length)?m[ord]:null;"
+    " if(!el) return {found:0, name_matches:m.length,"
+    " visible_matches:m.filter(vis).length};"
+    " return {found:1,"
+    " vlen:(typeof el.value==='string'?el.value.length:-1),"
+    " visible:vis(el)?1:0, name_matches:m.length,"
+    " visible_matches:m.filter(vis).length}; })()")
+
+
+def _dbg_persist0(cdp: _Cdp):
+    """Ticket A3d: census + signature of the focused field
+    (or None). Never raises — same rule as _input_debug."""
+    try:
+        return _eval(cdp, _PERSIST0_JS)
+    except Exception:
+        return None
+
+
+def _dbg_persist_refind(cdp: _Cdp, name: str, ord_: int):
+    """Ticket A3d: re-find the censused node by (name,
+    ordinal) and re-read it. Never raises."""
+    try:
+        expr = _PERSIST_REFIND_JS.replace(
+            "__NAME__", json.dumps(name or "")).replace(
+            "__ORD__", str(int(ord_)))
+        return _eval(cdp, expr)
+    except Exception:
+        return None
+
+
+def _persist_num(desc, key: str) -> str:
+    if isinstance(desc, dict) and isinstance(desc.get(key), int) \
+            and not isinstance(desc.get(key), bool):
+        return str(desc[key])
+    return "?"
+
+
+def _type_persist_debug(cdp: _Cdp, first) -> None:
+    """Ticket A3d: ONE kind=type_persist line per flagged
+    type: the typed field's value LENGTH at +0s (the census
+    read, taken right after the dispatch), +3s and +8s, its
+    node census at +0s, and the node's state at +8s. With
+    the flag off this is never called and the type returns
+    exactly as fast as it always did. Never raises."""
+    try:
+        if not isinstance(first, dict):
+            return
+        name = first.get("name") or ""
+        ord_ = first.get("ord")
+        if not isinstance(ord_, int) or isinstance(ord_, bool):
+            ord_ = -1
+        time.sleep(3)
+        r3 = _dbg_persist_refind(cdp, name, ord_)
+        time.sleep(5)
+        r8 = _dbg_persist_refind(cdp, name, ord_)
+        logger.info(
+            "og_input_debug kind=type_persist vlen0=%s "
+            "vlen3=%s vlen8=%s name_matches=%s "
+            "visible_matches=%s focus_visible=%s found3=%s "
+            "found8=%s field_visible8=%s nm8=%s vm8=%s" % (
+                _persist_num(first, "vlen"),
+                _persist_num(r3, "vlen"),
+                _persist_num(r8, "vlen"),
+                _persist_num(first, "name_matches"),
+                _persist_num(first, "visible_matches"),
+                _persist_num(first, "focus_visible"),
+                _persist_num(r3, "found"),
+                _persist_num(r8, "found"),
+                _persist_num(r8, "visible"),
+                _persist_num(r8, "name_matches"),
+                _persist_num(r8, "visible_matches")))
+    except Exception:
+        pass
+
+
+def _still_debug(cdp: _Cdp, nbytes: int) -> None:
+    """Ticket A3d: ONE kind=still line per captured still —
+    when it was taken, off which page, how big. Never
+    raises."""
+    try:
+        try:
+            url = _eval(cdp, "location.href")
+        except Exception:
+            url = ""
+        logger.info("og_input_debug kind=still ts=%d "
+                    "target_url=%s bytes=%d" % (
+                        int(time.time()), _dbg_clean(url, 120),
+                        nbytes))
+    except Exception:
+        pass
+
+
 def _page_view(cdp: _Cdp) -> Dict:
     view = _eval(cdp, _VIEW_JS)
     if not isinstance(view, dict) or not view.get("w") \
@@ -1341,6 +1497,10 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
                 extra += " vlen=" + (
                     str(vlen) if vlen is not None else "?")
                 _input_debug(cdp, kind, extra)
+                # Ticket A3d: census the typed field NOW and
+                # re-read its length at +3s/+8s (flagged path
+                # only — the added latency lives here too).
+                _type_persist_debug(cdp, _dbg_persist0(cdp))
             return {"ok": True}
         if kind == "key":
             spec = _INPUT_KEYS.get(str(payload.get("key") or ""))
