@@ -740,6 +740,51 @@ def _alert_start_outcome(uid: str, title: str, body: str) -> None:
         pass
 
 
+def _deliver_start_outcome(uid: str, title: str, body: str) -> None:
+    """Ticket A4d: the start outcome is delivered VERIFIED,
+    with retries — this runs on _start_background's daemon
+    thread, off every main path. og_notify.record is
+    fail-safe BY CONTRACT: it swallows its own store
+    failures, so a single fire-and-forget call that meets a
+    distress window loses the note silently. That is the
+    ogtest14 drill (2026-10-19): the start landed, the
+    session was live, and the Feed stayed empty — the
+    outcome's one record() went into a server whose worker
+    died ~10 s after arrival, and nothing ever retried.
+    Delivery now reads the note back after each attempt
+    and retries over ~45 s, which rides out a stall (the
+    evening's repeated pattern: pool stalls of tens of
+    seconds that clear); a note that still cannot land is
+    logged loudly instead of vanishing. A worker that DIES
+    mid-delivery still takes this thread with it — a
+    durable outbox is Ticket D's store work; this closes
+    the stall case. Alerts-off keeps the old single
+    no-op call (record is gated upstream anyway)."""
+    try:
+        import og_notify as _notify
+        if not _notify.alerts_enabled(uid):
+            _alert_start_outcome(uid, title, body)
+            return
+    except Exception:
+        pass
+    for wait in (0, 5, 15, 25):
+        if wait:
+            time.sleep(wait)
+        _alert_start_outcome(uid, title, body)
+        try:
+            import og_notify as _notify
+            items = _notify._items(uid)
+            if any(isinstance(it, dict)
+                   and it.get("title") == title
+                   for it in items):
+                return
+        except Exception:
+            pass
+    logger.warning(
+        "Browser start outcome note could not be delivered "
+        f"for {uid} after 4 attempts: {title}")
+
+
 def _other_pending(uid: str) -> bool:
     """Another module's approval is waiting (ordering / trading /
     storage / unity): never consume a YES/NO meant for them."""
@@ -2234,7 +2279,7 @@ def _start_background(uid: str, pend: Dict) -> None:
     except Exception as e:
         logger.warning(f"Browser background start failed: {e}")
         _clear_starting(uid)
-        _alert_start_outcome(
+        _deliver_start_outcome(
             uid, "OG browser — start hit a snag",
             "The browser start ran into trouble partway. "
             "If the panel shows nothing live, ask me again "
@@ -2246,7 +2291,7 @@ def _start_background(uid: str, pend: Dict) -> None:
              else "OG browser — live")
     body = " ".join((r.get("body") or "") for r in out)
     body = body.replace("[OG BROWSER] ", "").strip()
-    _alert_start_outcome(uid, title, body or title)
+    _deliver_start_outcome(uid, title, body or title)
 
 
 def _post_kickoff(uid: str, post: Dict,
