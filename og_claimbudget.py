@@ -496,6 +496,31 @@ def _wrap_claim_funnels() -> int:
                 for attr in dir(mod):
                     if not attr.startswith("_claim_"):
                         continue
+                    if (modname == "og_browser"
+                            and attr == "_claim_job"):
+                        # Ticket A4c carve-out: the browser's
+                        # claim ENTRY is a pure parse over the
+                        # visitor's own words plus reads of the
+                        # in-process usage-store file — no
+                        # og_db, no network, bounded in
+                        # milliseconds on its own. Cutting it
+                        # when the SHARED clock has blown
+                        # silently kills a deterministic user
+                        # command (2026-10-19 evening: every
+                        # "Open Facebook." narrated, none
+                        # started — see window-rebuild
+                        # NOTES.md # Ticket A4c) and defeats
+                        # this budget's own design intent
+                        # (the deep commands survive; the
+                        # forget chain walks watch -> browser).
+                        # Its expensive half (_do_start's
+                        # Steel create) already runs in a
+                        # background thread, and the deferral
+                        # funnels + every other seat's entry
+                        # stay guarded, so the cascade this
+                        # budget exists to cut cannot rebuild
+                        # through this one entry.
+                        continue
                     fn = getattr(mod, attr, None)
                     if fn is None or not callable(fn):
                         continue
