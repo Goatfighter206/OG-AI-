@@ -582,8 +582,85 @@
          text grew THERE — the writing spot stays put. */
   var sendChain = Promise.resolve();
   var typeAnchor = null;
+  /* Ticket A4g: the spot is a MACHINE, not a bare slot.
+     A4e's slot was the ogtest17 step-6 failure: the
+     operator tapped the Password field, the press
+     landed on its eye button, the server verified no
+     field and answered with no anchor — and the slot
+     kept the PREVIOUS field's anchor (Email), so the
+     type appended the password text to Email while the
+     server's readback (which measures the anchored
+     field) answered ok. The slot was also never
+     cleared at all — not on hand-back, not at the
+     session's end. Now:
+       - SUPERSESSION: every press is stamped with a
+         sequence number (tap, in sendInput) which the
+         server echoes; the ack's word is final for
+         that tap — an anchor arms the spot, NO anchor
+         means the tap chose no field and the spot is
+         REFUSED: a type/key then stops HERE, in the
+         window, honestly, and is never sent, until a
+         tap verifies a field again. An ack whose echo
+         does not match its tap is no verdict at all —
+         it cannot resurrect a superseded spot, and the
+         tap it answered earns nothing: the spot
+         refuses rather than guess.
+       - LEGACY ACKS (no echo — a pre-A4g server) keep
+         the A4e rule: an anchor arms, silence leaves
+         the spot as it was, so a mixed deploy degrades
+         to A4e, never worse.
+       - DEATH: control leaving the visitor's hands
+         (the flip below), the session's confirmed end,
+         a new session key, or the page navigating
+         under an armed spot (spotDeathCheck) — the
+         visitor re-taps to write.
+       - AMBIENT (no tap yet this session) still types
+         the way Round 43 did: the anchor only ever
+         improved on that flow, it never gated it. */
+  var spotState = 'ambient'; /* 'ambient'|'armed'|'refused' */
+  var tapSeq = 0;
+  function applySpotAck(payload, res) {
+    if (!res || res.ok !== true) return;
+    if ('tap' in res) {
+      if (res.tap !== payload.tap) {
+        /* A stale or garbled ack: it is not this tap's
+           verdict, so the tap earned NOTHING the client
+           can trust — the spot refuses rather than
+           guess (and a superseded spot stays dead). */
+        typeAnchor = null; spotState = 'refused';
+        return;
+      }
+      if (res.anchor) {
+        typeAnchor = res.anchor; spotState = 'armed';
+      } else {
+        typeAnchor = null; spotState = 'refused';
+      }
+    } else if (res.anchor) {
+      typeAnchor = res.anchor; spotState = 'armed';
+    }
+  }
+  var spotKey = '', spotUrl = '';
+  function spotDeathCheck(key, url) {
+    if (key && spotKey && key !== spotKey) {
+      typeAnchor = null; spotState = 'ambient';
+    }
+    if (key) spotKey = key;
+    if (url && spotUrl && url !== spotUrl &&
+        spotState === 'armed') {
+      typeAnchor = null; spotState = 'refused';
+    }
+    if (url) spotUrl = url;
+  }
   var typeBtn = $('ogKbSend');
   function sendInput(payload, shotDelay) {
+    /* Ticket A4g: every press carries its sequence
+       number, stamped HERE — at call time, in gesture
+       order — so its ack can be matched to its tap
+       even while sends queue behind a long type. */
+    if (payload && (payload.kind === 'click' ||
+                    payload.kind === 'drag')) {
+      payload.tap = ++tapSeq;
+    }
     var run = sendChain.then(function () {
       return sendInputNow(payload, shotDelay);
     });
@@ -592,6 +669,20 @@
   }
   function sendInputNow(payload, shotDelay) {
     var isType = !!(payload && payload.kind === 'type');
+    /* Ticket A4g: a REFUSED spot stops the type HERE —
+       the visitor's latest tap verified no field, so
+       there is nowhere honest to type. Nothing is
+       sent, the box keeps its text (typeFromField only
+       clears on an ok answer), and the word — sticky,
+       like any refused input's — says what to do. */
+    if ((isType || (payload && payload.kind === 'key')) &&
+        spotState === 'refused') {
+      stickyErr = 'Tap the field you want to type in ' +
+        'first — your last tap didn\'t land in one, ' +
+        'so nothing was typed.';
+      say(stickyErr);
+      return Promise.resolve({ ok: false });
+    }
     if ((isType || (payload && payload.kind === 'key')) &&
         typeAnchor) {
       payload = Object.assign({}, payload,
@@ -656,16 +747,23 @@
         if (payload && payload.kind === 'click' &&
             typeof payload.x === 'number') {
           notePtr(payload.x, payload.y);
-          /* Ticket A4e: the server names the field this
-             tap landed in, when it landed in one — that
-             field becomes the writing spot (see the
-             block above). A tap outside any field leaves
-             the spot where it was. */
-          if (res.anchor) typeAnchor = res.anchor;
+          /* Ticket A4g: the tap's ack settles the
+             writing spot (see applySpotAck at the
+             anchor declaration) — an anchor arms it, a
+             verified no-field answer refuses it, a
+             stale echo is ignored. A4e armed on an
+             anchor and otherwise kept the old spot,
+             which is how a tap on the password field's
+             eye button left Email armed (ogtest17). */
+          applySpotAck(payload, res);
         } else if (payload && payload.kind === 'drag' &&
                    payload.path && payload.path.length) {
           var lastPt = payload.path[payload.path.length - 1];
           if (lastPt) notePtr(lastPt.x, lastPt.y);
+          /* Ticket A4g: a drag mints at its press point
+             too (the server verifies there) — its ack
+             settles the spot the same way. */
+          applySpotAck(payload, res);
         }
       }
       else {
@@ -1384,11 +1482,24 @@
       if (kbOn) setKb(false);
       if (ptrOn) setPtr(false);
       stickyErr = '';
+      /* Ticket A4g: the writing spot dies with the
+         session — the confirmed end is where the death
+         lives (A4e named the rule but no reset existed):
+         back to ambient, so a fresh session starts
+         tapless, the way Round 43 typed. */
+      typeAnchor = null;
+      spotState = 'ambient'; spotKey = ''; spotUrl = '';
       say('');
       removeFull();
       return;
     }
     inactiveReads = 0;
+    /* Ticket A4g: the spot's status-riding deaths — a
+       NEW session key retires the old session's spot
+       to ambient, and a page_url change under an
+       armed spot means the page the tap named is gone
+       (refuse; the server checks the same stamp). */
+    spotDeathCheck(key, (st && st.page_url) || '');
     if (key) curKey = key;
     /* Ticket A4b: the EFFECTIVE control (see the block
        above) — header, toggles, strip and the pointer
@@ -1484,6 +1595,14 @@
          state the picture shows. */
       prevDriving = d;
       refreshShot(150);
+      if (!d && spotState === 'armed') {
+        /* Ticket A4g: control left the visitor's hands
+           — the spot dies with the hold that earned it.
+           After re-taking control, a type must earn a
+           fresh tap; it never rides a dead hold's
+           anchor into a page OG may have moved on. */
+        typeAnchor = null; spotState = 'refused';
+      }
       if (d) {
         /* Ticket A4e: taking control returns the window
            to the whole page (a Fill chosen while watching
