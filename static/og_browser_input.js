@@ -335,6 +335,10 @@
   var stillSeq = 0, stillPaintedGen = 0, stillBusyGen = 0,
       stillQueued = false, stillQueuedCb = null,
       stillWatchdog = null;
+  /* Ticket A4d: when the on-screen frame last landed, and
+     whether the paused-picture note is standing (see
+     tickWinShot). */
+  var stillPaintedAt = 0, stalePicNote = false;
   function stillStart(cb) {
     var gen = ++stillSeq;
     stillBusyGen = gen;
@@ -378,6 +382,13 @@
     if (ok && gen > stillPaintedGen) {
       stillPaintedGen = gen;
       shot.src = url;
+      /* Ticket A4d: a fresh picture retires the
+         paused-picture note (see tickWinShot). */
+      stillPaintedAt = Date.now();
+      if (stalePicNote) {
+        stalePicNote = false;
+        clearSay();
+      }
     }
     if (cb) { try { cb(ok); } catch (e) {} }
     if (wasBusy && stillQueued) {
@@ -414,6 +425,27 @@
        below) — a position that goes stale fades within
        one tick of the window it was given. */
     paintMarker();
+    /* Ticket A4d: never drive blind on a dead picture
+       without saying so. On the ogtest14 drill the server
+       instance died mid-session; the loader (by design)
+       held the last frame while /browser/input kept
+       dispatching against the LIVE page — which settled
+       upward as it finished loading — so taps aimed at
+       the frozen picture landed a field high on the real
+       page, with no sign anything was wrong. While the
+       visitor drives with tap mode on, a picture older
+       than ~6 s now names itself paused; the note clears
+       on the next fresh frame (stillSettle). Inputs are
+       never refused — the visitor's hand is theirs — but
+       they are never silently aimed at a corpse either. */
+    if (driving && ptrOn && stillPaintedAt &&
+        Date.now() - stillPaintedAt > 6000 &&
+        !stickyErr && !stalePicNote) {
+      stalePicNote = true;
+      say('⚠ Picture paused — the live page may have ' +
+          'moved on. Taps follow the picture you see; ' +
+          'wait for it to refresh before tapping.');
+    }
   }
   function startWinShots() {
     if (winShotTimer) return;
@@ -1221,10 +1253,45 @@
       removeFull();
     }
   }
+  /* Ticket A4d: poll replies land IN REQUEST ORDER, and a
+     hung poll DIES instead of landing late. On the
+     ogtest14 drill the server instance failed mid-session;
+     the status fetches queued behind the dying workers
+     stopped resolving, and the window's header sat on its
+     last paint — "Opening facebook.com…" — for the whole
+     back half of the session while frames, taps and typing
+     (other routes) still worked: the header is painted
+     ONLY from this poll, and this poll had no timeout and
+     no ordering, so nothing bounded its staleness and a
+     slow starting-era reply resolving late would repaint
+     that stale state over the truth. Each poll now carries
+     a sequence number — reconcile runs only for a reply
+     newer than every reply already applied — and a 10 s
+     abort turns a wedged fetch into a quiet miss the next
+     interval poll retries. */
+  var pollSeq = 0, pollApplied = 0;
   function poll() {
-    fetch(API + '/browser/status').then(function (r) {
-      return r.json();
-    }).then(reconcile).catch(function () {});
+    var id = ++pollSeq;
+    var ctl = null, timer = null;
+    try {
+      if (window.AbortController) {
+        ctl = new AbortController();
+        timer = window.setTimeout(function () {
+          try { ctl.abort(); } catch (e) {}
+        }, 10000);
+      }
+    } catch (e) { ctl = null; }
+    fetch(API + '/browser/status',
+          ctl ? { signal: ctl.signal } : undefined)
+    .then(function (r) { return r.json(); })
+    .then(function (st) {
+      if (timer) window.clearTimeout(timer);
+      if (id <= pollApplied) return;
+      pollApplied = id;
+      reconcile(st);
+    }).catch(function () {
+      if (timer) window.clearTimeout(timer);
+    });
   }
   if (takeBtn) {
     takeBtn.addEventListener('click', function () {
