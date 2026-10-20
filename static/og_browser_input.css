@@ -30,8 +30,15 @@ body.og-r43-lock{overflow:hidden}
    black above and below. In the full state the still COVERS
    (crops the sides, fills the screen); the pointer mapper in
    og_browser_input.js reads the computed fit, so its
-   coordinate math follows. The docked panel keeps contain. */
-#browserPanel.og-panel-full #browserShot{object-fit:cover}
+   coordinate math follows. The docked panel keeps contain.
+   Ticket A4e (2026-10-20): INVERTED by Brent's drill verdict
+   — cover CROPS the page (his Facebook login form's right
+   edge, most of the Log in button, off-screen), and his
+   requirement is the whole page fitted on screen. Contain
+   is now the default in every full state; cover survives
+   only as the Fit button's explicit opt-in (og-win-fill). */
+#browserPanel.og-panel-full #browserShot{object-fit:contain}
+#browserPanel.og-panel-full.og-win-fill #browserShot{object-fit:cover}
 
 /* The two toggle icons: small, icon-only. Dim = off; gold = on. */
 #browserActions .og-icon-btn{font-size:19px;line-height:1;
@@ -101,10 +108,14 @@ body.og-r43-lock{overflow:hidden}
      display:none, so the picture the visitor sees is the
      picture their taps drive (the CDP input layer has
      only ever lived on the still);
-   - the still COVERS the view by default (fills the
-     screen, no black bars); Fit: Width switches it to
-     contain for a whole-page-at-once look, and the
-     pointer mapper reads the computed fit either way;
+   - the still shows the WHOLE PAGE by default
+     (object-fit:contain — Ticket A4e: Brent's requirement
+     after his drill showed cover cropping the login form's
+     right edge off-screen); Fit: Fill switches it to cover
+     as an explicit gesture (the og-win-fill class), the
+     window opens and every confirmed take-control return
+     to Width, and the pointer mapper reads the computed
+     fit either way;
    - the legacy actions row, Open button and floating ✕
      are hidden — the window's own bar replaces them.
    JS sizes the panel to the visual viewport while the
@@ -140,10 +151,9 @@ body.og-r43-lock{overflow:hidden}
      blanked the page picture outright. The id-anchored
      selector outranks it among !important declarations. */
   display:block !important}
-#browserPanel.og-r43-full #browserShot{object-fit:cover;
+#browserPanel.og-r43-full #browserShot{object-fit:contain;
   display:block!important;transform-origin:50% 50%}
-#browserPanel.og-r43-full.og-win-contain #browserShot{
-  object-fit:contain}
+#browserPanel.og-r43-full.og-win-fill #browserShot{object-fit:cover}
 #browserPanel.og-r43-full #browserFrame{display:none!important}
 #browserPanel.og-r43-full .og-browser-note{order:3;flex:0 0 auto}
 #browserPanel.og-r43-full #ogKbStrip{order:4;flex:0 0 auto}
