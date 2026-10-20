@@ -1210,20 +1210,42 @@ _ANCHOR_READ_JS = (
 
 def _check_anchor(raw):
     """A client-supplied anchor, validated to the shape
-    _ANCHOR_READ_JS mints — anything else is no anchor."""
+    _MINT_JS mints — anything else is no anchor.
+    Ticket A4g: every anchor carries the page it was
+    minted on (u) — an anchor presented after the page
+    navigated names a field on a page that no longer
+    exists — and a field with neither name nor id is
+    named by GEOMETRY (by='geom': its rect at mint
+    time), so nameless fields anchor too (the A4e probe
+    left them ambient, and a drifted type into one was
+    refused by the focus gate with the text nowhere)."""
     if not isinstance(raw, dict):
         return None
     by = raw.get("by")
-    v = raw.get("v")
-    o = raw.get("ord")
-    if by not in ("name", "id"):
+    u = raw.get("u")
+    if not isinstance(u, str) or not u or len(u) > 1000:
         return None
-    if not isinstance(v, str) or not v or len(v) > 200:
-        return None
-    if isinstance(o, bool) or not isinstance(o, int) \
-            or o < 0 or o > 500:
-        return None
-    return {"by": by, "v": v, "ord": o}
+    if by in ("name", "id"):
+        v = raw.get("v")
+        o = raw.get("ord")
+        if not isinstance(v, str) or not v or len(v) > 200:
+            return None
+        if isinstance(o, bool) or not isinstance(o, int) \
+                or o < 0 or o > 500:
+            return None
+        return {"by": by, "v": v, "ord": o, "u": u}
+    if by == "geom":
+        out = {"by": "geom", "u": u}
+        for k, lo, hi in (("x", -10000, 100000),
+                          ("y", -10000, 100000),
+                          ("w", 1, 10000), ("h", 1, 10000)):
+            n = raw.get(k)
+            if isinstance(n, bool) or not isinstance(n, int) \
+                    or n < lo or n > hi:
+                return None
+            out[k] = n
+        return out
+    return None
 
 
 def _read_anchor(cdp: _Cdp):
@@ -1236,28 +1258,150 @@ def _read_anchor(cdp: _Cdp):
         return None
 
 
+_REFOCUS_JS = (
+    "(function(){/*a4g-refocus*/ var A=%s;"
+    " if(location.href!==A.u) return 'gone';"
+    " var el=null;"
+    " if(A.by==='geom'){"
+    " var all=document.querySelectorAll("
+    "'input,textarea,[contenteditable]');"
+    " var hits=[];"
+    " for(var i=0;i<all.length;i++){"
+    " var r=all[i].getBoundingClientRect();"
+    " if(Math.abs(Math.round(r.left)-A.x)<=3"
+    "&&Math.abs(Math.round(r.top)-A.y)<=3"
+    "&&Math.abs(Math.round(r.width)-A.w)<=3"
+    "&&Math.abs(Math.round(r.height)-A.h)<=3)"
+    " hits.push(all[i]);}"
+    " if(hits.length!==1) return 'gone';"
+    " el=hits[0];"
+    " } else {"
+    " var els=document.querySelectorAll('['+A.by+']');"
+    " var named=[];"
+    " for(var j=0;j<els.length;j++)"
+    " if(els[j].getAttribute(A.by)===A.v) named.push(els[j]);"
+    " el=named[A.ord]||null;"
+    " if(!el) return 'gone'; }"
+    " var t=(el.tagName||'').toLowerCase();"
+    " if(t!=='input'&&t!=='textarea'"
+    " &&!el.isContentEditable) return 'gone';"
+    " el.scrollIntoView({block:'center'});"
+    " if(el.focus) el.focus();"
+    " return document.activeElement===el"
+    " ? 'ok' : 'gone';})()")
+
+
 def _refocus_anchor(cdp: _Cdp, anchor: Dict) -> str:
     """Put the caret back in the anchored field: 'ok'
-    when the field was found, is still a text field, and
-    holds focus afterwards; 'gone' otherwise."""
-    js = ("(function(){var by=%s, v=%s, ord=%d;"
-          " var sel='['+by+'=\"'+v.replace(/\\\\/g,'\\\\\\\\')"
-          " .replace(/\"/g,'\\\\\"')+'\"]';"
-          " var el=document.querySelectorAll(sel)[ord];"
-          " if(!el) return 'gone';"
-          " var t=(el.tagName||'').toLowerCase();"
-          " if(t!=='input'&&t!=='textarea'"
-          " &&!el.isContentEditable) return 'gone';"
-          " el.scrollIntoView({block:'center'});"
-          " if(el.focus) el.focus();"
-          " return document.activeElement===el"
-          " ? 'ok' : 'gone';})()") % (
-              json.dumps(anchor["by"]), json.dumps(anchor["v"]),
-              anchor["ord"])
+    when the field was found ON THE PAGE THE ANCHOR WAS
+    MINTED ON (Ticket A4g: the page stamp is checked
+    first — an anchor never crosses a navigation), is
+    still a text field, and holds focus afterwards;
+    'gone' otherwise. Name/id anchors resolve by
+    attribute iteration (no selector string is ever
+    built from the value); geometry anchors resolve to
+    the one field whose rect still matches the
+    mint-time rect (±3 px) — zero or two matches is
+    'gone', never a guess."""
     try:
-        return "ok" if _eval(cdp, js) == "ok" else "gone"
+        return "ok" if _eval(
+            cdp, _REFOCUS_JS % json.dumps(anchor)) == "ok" \
+            else "gone"
     except Exception:
         return "gone"
+
+
+# --- Ticket A4g: the VERIFIED mint ----------------------
+# A4e minted the anchor from document.activeElement
+# AFTER the click — ambient focus, never checked
+# against the point the visitor actually tapped.
+# ogtest17's step 6 (reproduced end-to-end in the A4g
+# real-Chrome probe): the tap inside the password
+# field's box hit its eye BUTTON; the button took the
+# focus; the mint read a non-field and named nothing —
+# while the client kept the PREVIOUS field's anchor
+# armed, so the type re-focused Email, appended the
+# password text there, and the A4b readback (which
+# measures the anchored field) answered ok. The mint
+# now verifies, in ONE eval at the tapped point: the
+# field AT THE POINT (elementFromPoint, walked up
+# through wrappers) must be the very field the press
+# focused. Anything else — a covering button, a miss,
+# a focus that never moved — mints NOTHING, and the
+# client reads an anchorless verified ack as "this
+# tap chose no field" (og_browser_input.js). A verified
+# field is named by name/id when it has one, else by
+# its rect (geometry), and every anchor is stamped
+# with the page URL — an anchor dies with its page
+# (see _refocus_anchor). (_ANCHOR_READ_JS/_read_anchor
+# above are retained for the record; the visitor input
+# path no longer calls them.)
+_MINT_JS = (
+    "(function(){/*a4g-mint*/ var px=%s, py=%s;"
+    " function isF(n){if(!n) return false;"
+    " var t=(n.tagName||'').toLowerCase();"
+    " return t==='input'||t==='textarea'"
+    " ||n.isContentEditable===true;}"
+    " var hit=document.elementFromPoint(px,py);"
+    " var f=hit, hops=0;"
+    " while(f&&!isF(f)&&hops<4){f=f.parentElement;hops++;}"
+    " var a=document.activeElement;"
+    " if(!f||f!==a) return {spot:'none'};"
+    " function probe(attr){var v=f.getAttribute(attr);"
+    " if(!v) return null;"
+    " var all=document.querySelectorAll('['+attr+']');"
+    " var ord=0;"
+    " for(var i=0;i<all.length;i++){"
+    " if(all[i].getAttribute(attr)!==v) continue;"
+    " if(all[i]===f) return {by:attr,v:v,ord:ord};"
+    " ord++;}"
+    " return null;}"
+    " var anc=probe('name')||probe('id');"
+    " if(anc){anc.u=location.href;"
+    " return {spot:'field',anchor:anc};}"
+    " var r=f.getBoundingClientRect();"
+    " return {spot:'field',anchor:{by:'geom',"
+    " x:Math.round(r.left),y:Math.round(r.top),"
+    " w:Math.round(r.width),h:Math.round(r.height),"
+    " u:location.href}};})()")
+
+
+def _check_mint(raw):
+    """A mint result, validated: {'anchor': {...}} when
+    the tap verified a field, {} when it verified none.
+    Never raises — a click must not fail because its
+    mint did."""
+    if not isinstance(raw, dict):
+        return {}
+    if raw.get("spot") != "field":
+        return {}
+    anchor = _check_anchor(raw.get("anchor"))
+    return {"anchor": anchor} if anchor else {}
+
+
+def _mint_spot(cdp: _Cdp, cx: float, cy: float) -> Dict:
+    """Verify the writing spot at the tapped point
+    (cx, cy in page CSS pixels): {'anchor': ...} when
+    the field at the point is the field the press
+    focused, {} otherwise. Best-effort by design."""
+    try:
+        return _check_mint(_eval(
+            cdp, _MINT_JS % (repr(float(cx)),
+                             repr(float(cy)))))
+    except Exception:
+        return {}
+
+
+def _tap_echo(payload: Dict):
+    """The client's per-tap sequence number, echoed in
+    the ack so the client can tell a stale or duplicated
+    reply from the answer to its latest tap (Ticket
+    A4g). Absent/invalid -> None (a pre-A4g client)."""
+    t = payload.get("tap")
+    if isinstance(t, bool) or not isinstance(t, int) \
+            or t < 0 or t > 10 ** 9:
+        return None
+    return t
 _VIEW_JS = ("(function(){return {w: window.innerWidth || 0,"
             " h: window.innerHeight || 0};})()")
 _INPUT_KEYS = {"enter": ("Enter", "Enter", 13),
@@ -1720,17 +1864,24 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
             if dbg:
                 _input_debug(cdp, kind,
                              "xy=%.1f,%.1f at=%s" % (cx, cy, at))
-            # Ticket A4e: a click that landed in a text
-            # field names the writing spot — the ack
-            # carries its anchor and the type path will
-            # return the caret to THIS field (see the
-            # anchor block at _ANCHOR_READ_JS). A click
-            # anywhere else leaves the spot unnamed, and
-            # the ack is byte-identical to before.
-            anchor = _read_anchor(cdp)
-            if anchor:
-                return {"ok": True, "anchor": anchor}
-            return {"ok": True}
+            # Ticket A4g: the writing spot is VERIFIED at
+            # the tapped point — the field under the point
+            # must be the field the press focused (see
+            # _MINT_JS). A4e read ambient focus here, so a
+            # press landing on the password field's eye
+            # button minted nothing while the client kept
+            # the previous field's anchor and the type
+            # appended there (ogtest17 step 6). The ack
+            # also echoes the tap's sequence number, so
+            # the client can refuse a stale reply.
+            out = {"ok": True}
+            spot = _mint_spot(cdp, cx, cy)
+            if spot:
+                out["anchor"] = spot["anchor"]
+            tap = _tap_echo(payload)
+            if tap is not None:
+                out["tap"] = tap
+            return out
         if kind == "type":
             text = payload.get("text")
             if not isinstance(text, str) or not text:
@@ -1882,7 +2033,21 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
                 "clickCount": 1})
             if dbg:
                 _input_debug(cdp, kind, "pts=%d" % len(pts))
-            return {"ok": True}
+            # Ticket A4g: a drag mints at its PRESS point
+            # too — a press the client classified as a
+            # drag (a slow or slightly-offset tap on the
+            # picture) still pressed a field, and the
+            # visitor's next type belongs to the field
+            # that press focused — verified the same way
+            # as a click (see _MINT_JS) — or to none.
+            out = {"ok": True}
+            spot = _mint_spot(cdp, pts[0][0], pts[0][1])
+            if spot:
+                out["anchor"] = spot["anchor"]
+            tap = _tap_echo(payload)
+            if tap is not None:
+                out["tap"] = tap
+            return out
         # scroll: wheel deltas in CSS pixels
         try:
             dx = max(-4000.0, min(4000.0,
