@@ -50,22 +50,66 @@ COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year
 _usage_lock = threading.Lock()
 
 def _load_usage_store() -> Dict:
-    """Load per-visitor daily chat counts from the JSON usage store."""
+    """Load per-visitor daily chat counts from the JSON usage store.
+
+    Ticket A4d: a load that hits a torn file must not be read
+    as "the store is empty". Saves are atomic now (below), so
+    a parse failure here means a pre-fix writer mid-dump (or
+    real corruption); retry briefly — a dump finishes in
+    milliseconds — before degrading. The old behaviour
+    (return {} on any error) is what turned a torn read into
+    a whole-store wipe: the next load-modify-save from that
+    {} deleted every other key, live browser session records
+    included (ogtest14, 2026-10-19)."""
     if os.path.exists(USAGE_STORE_FILE):
-        try:
-            with open(USAGE_STORE_FILE, 'r') as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-        except Exception as e:
-            logger.warning(f"Could not load usage store: {e}")
+        last_err = None
+        for attempt in range(4):
+            try:
+                with open(USAGE_STORE_FILE, 'r') as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+                last_err = ValueError("usage store is not a dict")
+            except Exception as e:
+                last_err = e
+            if attempt < 3:
+                time.sleep(0.05)
+        logger.warning(f"Could not load usage store: {last_err}")
     return {}
 
 def _save_usage_store(store: Dict):
-    """Save per-visitor daily chat counts to the JSON usage store."""
+    """Save per-visitor daily chat counts to the JSON usage store.
+
+    Ticket A4d: ATOMIC — the dump goes to a per-process temp
+    file and is os.replace()d over the store, so a reader in
+    the other gunicorn worker only ever sees a complete file.
+    The old truncate-then-dump let a concurrent load parse a
+    half-written file, fail, and read the store as empty —
+    and any load-modify-save built on that empty read then
+    wiped every key it did not know about (the ogtest14
+    session record vanished this way mid-drill and the
+    window closed on the next status reads). Belt and
+    braces: an EMPTY store is refused over a non-empty file
+    — no flow in this codebase legitimately empties the
+    store, so an empty save is a failed load's fingerprint,
+    refused loudly instead of wiping the world."""
     try:
-        with open(USAGE_STORE_FILE, 'w') as f:
+        if not store:
+            try:
+                if os.path.getsize(USAGE_STORE_FILE) > 2:
+                    logger.warning(
+                        "Refused to save an empty usage store "
+                        "over a non-empty file (failed-load "
+                        "guard).")
+                    return
+            except OSError:
+                pass
+        tmp = f"{USAGE_STORE_FILE}.tmp{os.getpid()}"
+        with open(tmp, 'w') as f:
             json.dump(store, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, USAGE_STORE_FILE)
     except Exception as e:
         logger.warning(f"Could not save usage store: {e}")
 
