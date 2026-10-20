@@ -700,7 +700,19 @@
      comes back is phone-shaped: the whole page, at a
      readable size, with the Width fit nearly exact.
      Best-effort: any failure leaves the desktop-shaped
-     page and the Width default still shows all of it. */
+     page and the Width default still shows all of it.
+     Ticket A4f: FIRE-AND-FORGET, in the strong sense —
+     A4e sent this through the serialized input chain,
+     where a slow metrics call (the same ~70-call CDP
+     transport, on a starved session) made the
+     visitor's next type QUEUE behind a report they
+     never asked for, and a refused report (the erased
+     record's 409) painted its refusal into the window
+     as if the visitor's own input had failed. A side-
+     effect of the hold must never gate the hold's
+     traffic or speak in the window: the report now
+     rides its own fetch, its outcome is swallowed
+     whole, and nothing anywhere waits on it. */
   function sendClientView() {
     var w = 0, h = 0, dpr = 1;
     try {
@@ -711,7 +723,14 @@
       dpr = window.devicePixelRatio || 1;
     } catch (e) {}
     if (!w || !h) return;
-    sendInput({ kind: 'viewport', vw: w, vh: h, dpr: dpr }, 400);
+    try {
+      fetch(API + '/browser/input', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'viewport', vw: w,
+                               vh: h, dpr: dpr })
+      }).then(function () {}, function () {});
+    } catch (e) {}
   }
 
   /* --- keyboard strip actions --- */
@@ -1275,6 +1294,61 @@
      applies it on the first agreeing read, no wait. --- */
   var ctrlHeld = false, ctrlDissent = 0, handAsked = false;
 
+  /* --- Ticket A4f: THE HOLD THAT NOISE CANNOT DROP —
+     A4b's two-read rule assumed a dissenting read is a
+     TRANSIENT lie: a stale whole-record write lands
+     once, the next read tells the truth again. The
+     ogtest16 drill (2026-10-20, the A4e build) met the
+     other shape: the usage store is ONE file that every
+     writer loads and saves WHOLE, under a lock that
+     exists once per server process — and there are two
+     processes. A writer whose load predates the control
+     grant and whose save follows it ERASES the grant
+     from the file (the A4f server proof: the grant, its
+     control_ts and all, overwritten whole; nobody
+     handed back). Every later read then truthfully
+     says "og" — two "agreeing" reads that are really
+     one overwrite — and A4b's rule dropped the panel
+     mid-drive, exactly as coded. Read-counting cannot
+     tell that lie from a real change of hands; the
+     system's own contract can: while this window is up,
+     control changes hands ONLY at the visitor's word
+     (OG is hands-off for the whole takeover by design).
+     So, once a take is CONFIRMED held and the window is
+     up, dissenting reads are noise, full stop: the
+     panel holds everything, polls fast, and REPAIRS
+     the record — reassertControl re-posts the visitor's
+     own grant (throttled) until the reads agree again,
+     which also un-409s the visitor's inputs and hands
+     the page its phone fit (the first viewport report
+     met the erased record and was refused; viewOwed
+     re-reports it when the record agrees). The same
+     repair covers an UNCONFIRMED take: the tap's own
+     post may be the write the race ate (the drill's
+     first tap "did not register" — one post, no
+     confirmation, the warning after twelve misses).
+     The exits are unchanged and complete: the
+     visitor's own Hand back (handAsked), the confirmed
+     end (two inactive reads), End task. The dissent
+     counter survives as the streak's measure; while
+     the window is PARKED the pre-A4f two-read drop
+     still applies — a parked panel asserts nothing, so
+     a hand-back given in chat while the window is down
+     is honored the old way. --- */
+  var lastAssertAt = 0, viewOwed = false;
+  function reassertControl() {
+    var now = Date.now();
+    if (now - lastAssertAt < 2500) return;
+    lastAssertAt = now;
+    try {
+      fetch(API + '/browser/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'visitor' })
+      }).then(function () {}, function () {});
+    } catch (e) {}
+  }
+
   function reconcile(st) {
     var act = !!(st && st.enabled && st.active);
     var key = (st && st.viewer_url) || '';
@@ -1295,6 +1369,8 @@
       ctrlHeld = false;
       ctrlDissent = 0;
       handAsked = false;
+      viewOwed = false;
+      lastAssertAt = 0;
       ptrPos = null;
       driving = false;
       paintHead(st);
@@ -1332,25 +1408,60 @@
         d = true;
       }
     } else if (rawD) {
+      if (!ctrlHeld) {
+        /* A fresh confirmation: the next repair streak
+           starts with its first re-post unthrottled. */
+        lastAssertAt = 0;
+      }
+      if (ctrlDissent > 0) {
+        /* The dissent streak just ended — the record
+           agrees again; the screen report is owed once
+           more (its first send may have met the erased
+           record and been refused). */
+        viewOwed = true;
+      }
       ctrlHeld = true;
       ctrlDissent = 0;
       d = true;
     } else if (ctrlHeld) {
       ctrlDissent++;
-      if (ctrlDissent >= 2) {
-        /* Two agreeing reads: a real change of hands —
-           honor it. */
+      if (ctrlDissent === 1) {
+        /* A NEW streak is new evidence the record
+           broke again — its first repair is never
+           throttled; the streak's later repairs are. */
+        lastAssertAt = 0;
+      }
+      if (!winWanted && ctrlDissent >= 2) {
+        /* Parked: the pre-A4f rule — a hand-back given
+           in chat while the window is down is honored
+           after two agreeing reads, and nothing is
+           re-asserted on a panel nobody is looking at. */
         ctrlHeld = false;
         ctrlDissent = 0;
+        viewOwed = false;
         d = false;
       } else {
-        /* Unconfirmed dissent: hold EVERYTHING (header,
-           strip, toggles, pointer) and ask again fast. */
+        /* Ticket A4f: HOLD EVERYTHING (header, strip,
+           toggles, pointer), ask again fast, and repair
+           the record — a dissenting read while the
+           window is up is the store race's noise, never
+           a change of hands (see the block above). */
         d = true;
         window.setTimeout(poll, 400);
+        if (winWanted) reassertControl();
       }
     } else {
       d = false;
+      if (takeAsked) {
+        /* Ticket A4f: an unconfirmed take re-posts its
+           own grant — the tap's write may be the one
+           the race ate (the drill's first tap). The
+           confirmation polls below remain the only
+           truth-teller; this just gives the record a
+           second chance to hold what the visitor
+           already asked for. */
+        reassertControl();
+      }
     }
     driving = d;
     paintHead(st, d ? 'visitor' : 'og');
@@ -1381,8 +1492,17 @@
            screen it is being driven from (sendClientView
            — the server fits the page itself to it). */
         assertFitWidth();
-        sendClientView();
+        viewOwed = true;
       }
+    }
+    if (d && viewOwed) {
+      /* Ticket A4f: the screen report fires when the
+         hold (re)confirms — on the flip, and once more
+         when a dissent streak ends (the first report
+         may have met the erased record and been
+         refused). Fire-and-forget — see sendClientView. */
+      viewOwed = false;
+      sendClientView();
     }
     /* Round 61: the toggles follow the takeover INTENT too.
        They used to be fail-closed on the confirmed flip
@@ -1481,6 +1601,9 @@
       takeAsked = true; takeMisses = 0; takeWarned = false;
       handAsked = false;
       winWanted = true;
+      /* Ticket A4f: a fresh tap is fresh intent — its
+         repair re-post (reconcile) starts unthrottled. */
+      lastAssertAt = 0;
       window.setTimeout(poll, 350);
     });
   }
