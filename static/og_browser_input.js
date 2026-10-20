@@ -1684,32 +1684,83 @@
      slow starting-era reply resolving late would repaint
      that stale state over the truth. Each poll now carries
      a sequence number — reconcile runs only for a reply
-     newer than every reply already applied — and a 10 s
+     newer than every reply already applied — and an
      abort turns a wedged fetch into a quiet miss the next
-     interval poll retries. */
-  var pollSeq = 0, pollApplied = 0;
+     interval poll retries.
+     Ticket A4i: the abort budget is 30 s, not A4d's 10 s.
+     A4d sized it for a DYING instance, whose fetches hang
+     forever; production's live failure is the other
+     shape — a HEALTHY but pool-starved instance whose
+     /browser/status reads legitimately take ~12 s (every
+     read pays a DB-backed tier lookup and a Steel
+     viewer call; the ogtest19 drill's faulthandler found
+     the threads parked in og_accounts._session_for /
+     og_db execute). At 10 s EVERY poll aborted, reconcile
+     never ran once in either drill, and with it died
+     everything reconcile alone does — the auto-open,
+     the header paint, the take confirmation and the A4f
+     reassert repair — while the timeout-free pollers
+     (the page panel, og_shell) kept painting on late
+     answers, so the session looked alive and the two
+     control POSTs (a file-only route, answered at once,
+     200 in the Render log) changed nothing anyone could
+     see. Proven in repro/a4/drive_a4i_slowfull.js: at a
+     12 s status delay the take posts exactly once, never
+     confirms, and confirms with no new tap the moment
+     the delay lifts. The abort stays a wedge-breaker
+     only: freshness is the sequence number's job, never
+     the clock's, and the budget must exceed the status
+     route's real worst-case read, not a healthy LAN's.
+     And the poll no longer PILES UP: it used to fire on
+     every interval and every fast re-poll regardless of
+     a read already in flight, so under exactly this
+     latency the browser's per-origin connection cap
+     queued fresh reads behind a wall of stale ones and
+     stretched the effective latency past ANY abort
+     budget (the first A4i candidate — 30 s alone —
+     failed its own slow gate on this). One read in
+     flight: the next poll waits for it to land or for
+     the wedge-breaker to free the slot, and a reply
+     that lands late is still judged by its sequence
+     number. Under drill latency the layer's read now
+     costs the route's latency, not the queue's. */
+  var pollSeq = 0, pollApplied = 0, pollBusy = false;
   function poll() {
+    /* Ticket A4i: ONE read in flight (see the block
+       above) — a poll asked for while one is flying is
+       a no-op; the flying read's landing (reconcile
+       re-schedules the fast polls) and the 2.5 s
+       interval keep the cadence. */
+    if (pollBusy) return;
+    pollBusy = true;
     var id = ++pollSeq;
     var ctl = null, timer = null;
+    function done() {
+      pollBusy = false;
+      if (timer) window.clearTimeout(timer);
+    }
     try {
       if (window.AbortController) {
         ctl = new AbortController();
-        timer = window.setTimeout(function () {
-          try { ctl.abort(); } catch (e) {}
-        }, 10000);
       }
     } catch (e) { ctl = null; }
+    /* The wedge-breaker: at 30 s the fetch is aborted
+       where it can be, and the slot frees either way —
+       a deader-than-dead read can never lock the poll
+       shut (a late landing is still sequence-judged). */
+    timer = window.setTimeout(function () {
+      try { if (ctl) ctl.abort(); } catch (e) {}
+      pollBusy = false;
+    }, 30000);
     fetch(API + '/browser/status',
           ctl ? { signal: ctl.signal } : undefined)
     .then(function (r) { return r.json(); })
     .then(function (st) {
-      if (timer) window.clearTimeout(timer);
+      done();
       if (id <= pollApplied) return;
       pollApplied = id;
       reconcile(st);
-    }).catch(function () {
-      if (timer) window.clearTimeout(timer);
-    });
+    }).catch(function () { done(); });
   }
   if (takeBtn) {
     takeBtn.addEventListener('click', function () {
