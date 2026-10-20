@@ -175,6 +175,12 @@
     msg.textContent = text || '';
     msg.hidden = !text;
   }
+  /* Ticket A4b: the ROUTINE clear — mode changes and
+     toggle-offs clear the line only when no failed
+     input's word is standing (see stickyErr at the
+     input plumbing). Deliberate words (a hint, a fresh
+     failure, a success) still go through say(). */
+  function clearSay() { if (!stickyErr) say(''); }
 
   /* --- the window state (Round 321 Ticket A: ONE state,
      class-only — the og-r43-full CSS carries ALL the
@@ -428,7 +434,7 @@
     kbBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     strip.hidden = !on;
     if (on) { try { kbText.focus(); } catch (e) {} }
-    else say('');
+    else clearSay();
   }
   function setPtr(on) {
     ptrOn = on;
@@ -436,12 +442,29 @@
     ptrBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     shot.classList.toggle('og-ptr-on', on);
     if (on) say('👆 Tap the picture to click. Swipe to scroll. Hold and drag to drag.');
-    else say('');
+    else clearSay();
   }
   kbBtn.addEventListener('click', function () { setKb(!kbOn); });
   ptrBtn.addEventListener('click', function () { setPtr(!ptrOn); });
 
   /* --- input plumbing --- */
+  /* Ticket A4b: a FAILED input's word is STICKY. sendInput
+     used to report a refusal through say() alone, and the
+     next reconcile's routine say('') (the watching branch
+     runs it every poll) wiped the line within a poll
+     cycle — a tap the server refused (409 while the
+     control record had transiently reverted, ogtest11)
+     looked exactly like a tap that landed: the marker
+     paints from the local press either way, and the only
+     trace of the refusal vanished before the visitor
+     could read it. A failure now records itself here;
+     reconcile's routine clears respect it, and only a
+     SUCCESSFUL input (or the session's confirmed end)
+     clears it. The typed text itself was never cleared
+     on failure (typeFromField) — now the reason survives
+     alongside it, so a type across a flap either lands
+     or visibly fails with the text still in the bar. */
+  var stickyErr = '';
   function refreshShot(delay) {
     window.setTimeout(function () {
       if (!shot.hidden) {
@@ -461,6 +484,7 @@
       return r.json().catch(function () { return {}; });
     }).then(function (res) {
       if (res && res.ok) {
+        stickyErr = '';
         say(''); refreshShot(shotDelay);
         /* Ticket A4: a landed input CONFIRMS the pointer
            position it carried — the marker's freshness
@@ -475,10 +499,16 @@
           if (lastPt) notePtr(lastPt.x, lastPt.y);
         }
       }
-      else say((res && res.error) || "That didn't go through.");
+      else {
+        /* Ticket A4b: sticky (see stickyErr above) — the
+           refusal stays readable until an input lands. */
+        stickyErr = (res && res.error) || "That didn't go through.";
+        say(stickyErr);
+      }
       return res;
     }).catch(function () {
-      say('Connection hiccup — try again.');
+      stickyErr = 'Connection hiccup — try again.';
+      say(stickyErr);
       return { ok: false };
     });
   }
@@ -945,7 +975,14 @@
   function hostOf(url) {
     try { return new URL(url).hostname || ''; } catch (e) { return ''; }
   }
-  function paintHead(st) {
+  /* Ticket A4b: paintHead takes the EFFECTIVE control
+     (reconcile's held state, below) when one is passed:
+     the header and the bar's Take/Hand-back label name
+     the control the visitor actually holds, never a
+     single status read's raw field — one reverted read
+     used to flip the header to "Browsing" and relabel
+     the button mid-takeover (the ogtest11 flap). */
+  function paintHead(st, effControl) {
     if (!headState) return;
     if (!st || !st.enabled || !st.active) {
       headState.textContent = 'Browser';
@@ -954,11 +991,12 @@
       winTakeBtn.textContent = 'Take control';
       return;
     }
+    var ctl = effControl === undefined ? st.control : effControl;
     var host = hostOf(st.page_url) || st.loading_host || '';
     var t;
     if (st.phase === 'starting' || st.loading_host) {
       t = 'Opening ' + (st.loading_host || host || '…') + '…';
-    } else if (st.control === 'visitor') {
+    } else if (ctl === 'visitor') {
       t = "You're in control";
     } else {
       t = 'Browsing';
@@ -969,7 +1007,7 @@
       headMeta.textContent = st.minutes_left
         ? st.minutes_left + ' min left' : '';
     }
-    winTakeBtn.textContent = st.control === 'visitor'
+    winTakeBtn.textContent = ctl === 'visitor'
       ? 'Hand back' : 'Take control';
   }
 
@@ -1011,6 +1049,31 @@
       curKey = '', autoKey = '', parkedKey = null,
       prevDriving = false;
 
+  /* --- Round 321 Ticket A4b: CONFIRMED CONTROL — the
+     confirmed-end rule, applied to the control field.
+     A4 confirmed the session's END before acting on it
+     but left control following SINGLE status reads:
+     one read whose control field said "og" while the
+     visitor held the wheel flipped the header to
+     "Browsing", closed the keyboard strip, hid the
+     toggles and killed pointer input until the visitor
+     re-took control by hand (ogtest11's flap — the
+     server record itself can transiently revert: it is
+     written WHOLE by paths holding pre-takeover copies,
+     and og_browser now carries control across those
+     writes by timestamp; this rule is the client's half
+     of the same fix). Control once CONFIRMED held is
+     therefore held through a dissenting read: the first
+     only arms a fast (~400 ms) confirmation poll, and
+     the panel drops to Browsing only when TWO
+     consecutive reads agree the visitor no longer
+     drives. An alternating field (visitor/og/visitor…)
+     never reaches two in a row, so control survives
+     flapping however many polls it spans. The visitor's
+     OWN Hand back is intent, not noise — handAsked
+     applies it on the first agreeing read, no wait. --- */
+  var ctrlHeld = false, ctrlDissent = 0, handAsked = false;
+
   function reconcile(st) {
     var act = !!(st && st.enabled && st.active);
     var key = (st && st.viewer_url) || '';
@@ -1028,6 +1091,9 @@
       parkedKey = null;
       curKey = '';
       prevDriving = false;
+      ctrlHeld = false;
+      ctrlDissent = 0;
+      handAsked = false;
       ptrPos = null;
       driving = false;
       paintHead(st);
@@ -1040,15 +1106,53 @@
       winWanted = false;
       if (kbOn) setKb(false);
       if (ptrOn) setPtr(false);
+      stickyErr = '';
       say('');
       removeFull();
       return;
     }
     inactiveReads = 0;
     if (key) curKey = key;
-    var d = st.control === 'visitor';
+    /* Ticket A4b: the EFFECTIVE control (see the block
+       above) — header, toggles, strip and the pointer
+       gate all follow this, never the raw field. */
+    var rawD = st.control === 'visitor';
+    var d;
+    if (handAsked) {
+      /* The visitor's own Hand back: settle on the
+         first read that agrees; until it lands the
+         visitor still drives. */
+      if (!rawD) {
+        handAsked = false;
+        ctrlHeld = false;
+        ctrlDissent = 0;
+        d = false;
+      } else {
+        d = true;
+      }
+    } else if (rawD) {
+      ctrlHeld = true;
+      ctrlDissent = 0;
+      d = true;
+    } else if (ctrlHeld) {
+      ctrlDissent++;
+      if (ctrlDissent >= 2) {
+        /* Two agreeing reads: a real change of hands —
+           honor it. */
+        ctrlHeld = false;
+        ctrlDissent = 0;
+        d = false;
+      } else {
+        /* Unconfirmed dissent: hold EVERYTHING (header,
+           strip, toggles, pointer) and ask again fast. */
+        d = true;
+        window.setTimeout(poll, 400);
+      }
+    } else {
+      d = false;
+    }
     driving = d;
-    paintHead(st);
+    paintHead(st, d ? 'visitor' : 'og');
     /* AUTO-OPEN (above): a session key this client has
        neither opened for nor parked on raises the
        window unprompted; a keyless session raises it
@@ -1102,15 +1206,18 @@
     } else if (winWanted) {
       /* Watching OG drive, full-screen: the input
          toggles retire (the server refuses input while
-         OG drives anyway) but the window stays up. */
+         OG drives anyway) but the window stays up.
+         Ticket A4b: the routine clear is guarded — a
+         failed input's word survives the mode change
+         that follows it (the ogtest11 erasure). */
       if (kbOn) setKb(false);
       if (ptrOn) setPtr(false);
-      say('');
+      clearSay();
       applyFull();
     } else {
       if (kbOn) setKb(false);
       if (ptrOn) setPtr(false);
-      say('');
+      clearSay();
       removeFull();
     }
   }
@@ -1126,6 +1233,7 @@
          while the server confirmation is in flight.
          Ticket A: a takeover also opens the window. */
       takeAsked = true; takeMisses = 0; takeWarned = false;
+      handAsked = false;
       winWanted = true;
       window.setTimeout(poll, 350);
     });
@@ -1134,8 +1242,13 @@
     handBtn.addEventListener('click', function () {
       /* Ticket A: handing back returns the DRIVING to OG;
          the window stays up so the visitor keeps watching
-         (the ✕ parks the window). The poll confirms. */
+         (the ✕ parks the window). The poll confirms.
+         Ticket A4b: the hand-back is the visitor's own
+         intent (handAsked) — reconcile settles it on the
+         first agreeing read, never behind the two-read
+         dissent rule that guards against noise. */
       takeAsked = false;
+      handAsked = true;
       window.setTimeout(poll, 400);
     });
   }
@@ -1167,6 +1280,8 @@
     winWanted = false;
     parkedKey = curKey;
     takeAsked = false;
+    handAsked = false;
+    stickyErr = '';
     if (kbOn) setKb(false);
     if (ptrOn) setPtr(false);
     say('');
@@ -1175,6 +1290,7 @@
   stopBtn.addEventListener('click', function () {
     winWanted = false;
     takeAsked = false;
+    handAsked = false;
     if (endTaskBtn) endTaskBtn.click();
     removeFull();
   });
