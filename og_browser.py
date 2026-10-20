@@ -1173,6 +1173,91 @@ def _field_len(cdp: _Cdp):
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         return None
     return int(v)
+
+
+# --- Ticket A4e: the writing spot's ANCHOR ----------------
+# Brent's drill (2026-10-20): the caret "follows the
+# mouse" — every tap relocates the page's focus, and the
+# type path typed into whatever happened to be focused
+# when its ~70 sequential CDP calls finally dispatched.
+# The writing spot now has a NAME. A click that lands in
+# a text field reads the field's identity off the live
+# page (its name or id attribute + its ordinal among the
+# elements sharing that value — the A3d census pattern);
+# the click's ack carries it to the client, the type
+# carries it back, and the type path puts the caret BACK
+# in that exact field before a single key is dispatched.
+# The A4b delivery readback then measures the field the
+# visitor actually chose, because the refocus made it
+# the active element. A field with neither attribute
+# earns no anchor and the ambient behavior stands.
+_ANCHOR_READ_JS = (
+    "(function(){var a=document.activeElement;"
+    " if(!a) return null;"
+    " var t=(a.tagName||'').toLowerCase();"
+    " if(t!=='input'&&t!=='textarea'&&!a.isContentEditable)"
+    " return null;"
+    " function probe(attr){var v=a.getAttribute(attr);"
+    " if(!v) return null;"
+    " var sel='['+attr+'=\"'+v.replace(/\\\\/g,'\\\\\\\\')"
+    " .replace(/\"/g,'\\\\\"')+'\"]';"
+    " var els=document.querySelectorAll(sel);"
+    " for(var i=0;i<els.length;i++)"
+    " if(els[i]===a) return {by:attr,v:v,ord:i};"
+    " return null;}"
+    " return probe('name')||probe('id');})()")
+
+
+def _check_anchor(raw):
+    """A client-supplied anchor, validated to the shape
+    _ANCHOR_READ_JS mints — anything else is no anchor."""
+    if not isinstance(raw, dict):
+        return None
+    by = raw.get("by")
+    v = raw.get("v")
+    o = raw.get("ord")
+    if by not in ("name", "id"):
+        return None
+    if not isinstance(v, str) or not v or len(v) > 200:
+        return None
+    if isinstance(o, bool) or not isinstance(o, int) \
+            or o < 0 or o > 500:
+        return None
+    return {"by": by, "v": v, "ord": o}
+
+
+def _read_anchor(cdp: _Cdp):
+    """The focused field's anchor, or None — best-effort
+    by design: a click must never fail because the
+    anchor probe did."""
+    try:
+        return _check_anchor(_eval(cdp, _ANCHOR_READ_JS))
+    except Exception:
+        return None
+
+
+def _refocus_anchor(cdp: _Cdp, anchor: Dict) -> str:
+    """Put the caret back in the anchored field: 'ok'
+    when the field was found, is still a text field, and
+    holds focus afterwards; 'gone' otherwise."""
+    js = ("(function(){var by=%s, v=%s, ord=%d;"
+          " var sel='['+by+'=\"'+v.replace(/\\\\/g,'\\\\\\\\')"
+          " .replace(/\"/g,'\\\\\"')+'\"]';"
+          " var el=document.querySelectorAll(sel)[ord];"
+          " if(!el) return 'gone';"
+          " var t=(el.tagName||'').toLowerCase();"
+          " if(t!=='input'&&t!=='textarea'"
+          " &&!el.isContentEditable) return 'gone';"
+          " el.scrollIntoView({block:'center'});"
+          " if(el.focus) el.focus();"
+          " return document.activeElement===el"
+          " ? 'ok' : 'gone';})()") % (
+              json.dumps(anchor["by"]), json.dumps(anchor["v"]),
+              anchor["ord"])
+    try:
+        return "ok" if _eval(cdp, js) == "ok" else "gone"
+    except Exception:
+        return "gone"
 _VIEW_JS = ("(function(){return {w: window.innerWidth || 0,"
             " h: window.innerHeight || 0};})()")
 _INPUT_KEYS = {"enter": ("Enter", "Enter", 13),
@@ -1538,6 +1623,24 @@ def _page_view(cdp: _Cdp) -> Dict:
     return view
 
 
+def _clear_client_view(rec: Dict) -> None:
+    """Ticket A4e: undo the phone-shaped page (the
+    viewport input's Emulation override) when the visitor
+    hands control back — OG drives the desktop-shaped
+    page it started with. Best-effort: the override dies
+    with the page regardless, so a failed clear costs
+    nothing but a narrower page until the session ends."""
+    try:
+        cdp = _cdp_connect(rec)
+        try:
+            _attach_page(cdp)
+            cdp.call("Emulation.clearDeviceMetricsOverride")
+        finally:
+            cdp.close()
+    except Exception:
+        pass
+
+
 def _visitor_input(rec: Dict, payload: Dict) -> Dict:
     """Run ONE input from the session's owner while THEY drive:
     a click, typed text, a special key, a scroll, or a
@@ -1552,7 +1655,8 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
     devicePixelRatio maps truthfully. Raises _DriveError on
     transport failure."""
     kind = str(payload.get("kind") or "")
-    if kind not in ("click", "type", "key", "scroll", "drag"):
+    if kind not in ("click", "type", "key", "scroll", "drag",
+                    "viewport"):
         return {"ok": False, "error": "unknown input kind"}
     dbg = _input_debug_enabled()  # Ticket A3b: off = fully inert
     cdp = _cdp_connect(rec)
@@ -1560,6 +1664,39 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
         _attach_page(cdp)
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
+        if kind == "viewport":
+            # Ticket A4e: the client reports the screen it
+            # drives FROM (CSS pixels + devicePixelRatio)
+            # once per confirmed take-control, and the
+            # page itself is fitted to it — the Steel
+            # session is born 1280x800 landscape, so on a
+            # portrait phone every fit was squeeze-or-crop
+            # (Brent's drill: the login form's right edge
+            # off-screen in Fill, a thin band in Width).
+            # With the page laid out at the phone's own
+            # size, the stills come back phone-shaped and
+            # Fit: Width is nearly exact. Hand-back clears
+            # the override (see /browser/control); a dead
+            # session takes it with it. Bounded hard: a
+            # phone-shaped window, never a funhouse.
+            try:
+                vw = int(payload.get("vw") or 0)
+                vh = int(payload.get("vh") or 0)
+                dpr = float(payload.get("dpr") or 1)
+            except Exception:
+                return {"ok": False, "error": "bad screen size"}
+            vw = max(240, min(520, vw))
+            vh = max(400, min(1100, vh))
+            dpr = max(1.0, min(3.0, dpr))
+            try:
+                cdp.call("Emulation.setDeviceMetricsOverride",
+                         {"width": vw, "height": vh,
+                          "deviceScaleFactor": dpr,
+                          "mobile": True})
+            except _DriveError:
+                return {"ok": False,
+                        "error": "the page would not resize"}
+            return {"ok": True}
         if kind == "click":
             try:
                 x = float(payload["x"])
@@ -1583,6 +1720,16 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
             if dbg:
                 _input_debug(cdp, kind,
                              "xy=%.1f,%.1f at=%s" % (cx, cy, at))
+            # Ticket A4e: a click that landed in a text
+            # field names the writing spot — the ack
+            # carries its anchor and the type path will
+            # return the caret to THIS field (see the
+            # anchor block at _ANCHOR_READ_JS). A click
+            # anywhere else leaves the spot unnamed, and
+            # the ack is byte-identical to before.
+            anchor = _read_anchor(cdp)
+            if anchor:
+                return {"ok": True, "anchor": anchor}
             return {"ok": True}
         if kind == "type":
             text = payload.get("text")
@@ -1590,6 +1737,23 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
                 return {"ok": False, "error": "nothing to type"}
             if len(text) > 2000:
                 return {"ok": False, "error": "that text is too long"}
+            # Ticket A4e: the writing spot, restored. The
+            # client names the field the visitor tapped to
+            # write in (the anchor its click earned); put
+            # the caret back THERE before the focus gate —
+            # whatever the visitor's taps touched while
+            # the send queued, the text goes to the field
+            # they chose, and the A4b readback below
+            # measures that same field (the refocus made
+            # it the active element). An anchor whose
+            # field is gone is an honest, immediate refusal
+            # — never a silent type into the void.
+            anchor = _check_anchor(payload.get("anchor"))
+            if anchor and _refocus_anchor(cdp, anchor) != "ok":
+                return {"ok": False,
+                        "error": "The field you tapped isn't "
+                                 "on the page anymore — tap "
+                                 "it again, then type."}
             if _eval(cdp, _FOCUS_JS) != "ok":
                 if dbg:
                     _input_debug(cdp, kind, "gate=refused focus=" + _dbg_el(
@@ -1656,6 +1820,16 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
             spec = _INPUT_KEYS.get(str(payload.get("key") or ""))
             if not spec:
                 return {"ok": False, "error": "unknown key"}
+            # Ticket A4e: keys ride the same anchor — an
+            # Enter belongs to the form the visitor is
+            # writing in, not to whatever a stray tap
+            # focused while the send queued.
+            anchor = _check_anchor(payload.get("anchor"))
+            if anchor and _refocus_anchor(cdp, anchor) != "ok":
+                return {"ok": False,
+                        "error": "The field you tapped isn't "
+                                 "on the page anymore — tap "
+                                 "it again."}
             key, code, vk = spec
             for t in ("keyDown", "keyUp"):
                 cdp.call("Input.dispatchKeyEvent", {
@@ -3367,6 +3541,11 @@ def register_browser_routes(app):
         rec["control_ts"] = time.time()
         rec["last_action"] = time.time()
         await asyncio.to_thread(_set_session, uid, rec)
+        if mode == "og":
+            # Ticket A4e: hand-back also hands the page
+            # its desktop shape back (the phone fit was
+            # the visitor's driving aid, not OG's).
+            await asyncio.to_thread(_clear_client_view, rec)
         return {"ok": True, "control": mode}
 
     @app.post("/browser/input")
