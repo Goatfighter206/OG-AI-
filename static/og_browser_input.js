@@ -135,7 +135,7 @@
   stopBtn.setAttribute('aria-label', 'Stop task');
   var fitBtn = document.createElement('button');
   fitBtn.type = 'button'; fitBtn.id = 'ogWinFit';
-  fitBtn.className = 'og-win-fit'; fitBtn.textContent = 'Fit: Fill';
+  fitBtn.className = 'og-win-fit'; fitBtn.textContent = 'Fit: Width';
   fitBtn.title = 'Toggle how the page fills the window';
   fitBtn.setAttribute('aria-label', 'Toggle page fit');
   var winTakeBtn = document.createElement('button');
@@ -187,8 +187,29 @@
      geometry; the Round 43 reparent + inline-style pin
      is retired, because a second mechanism holding half
      the state is what kept the letterbox alive). --- */
+  /* Ticket A4e: THE FIT STATE. The window's default is
+     the WHOLE page on screen (Fit: Width — the CSS
+     default is contain). Fill (cover, cropped) exists
+     only as the visitor's explicit Fit-button gesture
+     (fitFill), and it never outlives the state that
+     asked for it: applyFull (the window opening) and a
+     confirmed take-control both return the window to
+     Width — Brent's drill showed the cropped state
+     arriving unasked and stranding the form's right
+     edge off-screen, and his requirement is that the
+     full screen fits ALL of the page, not part of it. */
+  var fitFill = false;
+  function setFit(fill) {
+    fitFill = !!fill;
+    panel.classList.toggle('og-win-fill', fitFill);
+    fitBtn.textContent = fitFill ? 'Fit: Fill' : 'Fit: Width';
+    paintMarker();
+  }
+  function assertFitWidth() { if (fitFill) setFit(false); }
+
   function applyFull() {
     if (fullApplied) return;
+    assertFitWidth();
     panel.classList.add('og-r43-full');
     document.body.classList.add('og-r43-lock');
     /* Ticket A follow-up (the invisible-bar root): the panel
@@ -405,6 +426,25 @@
     }
     stillStart(cb);
   }
+  /* Ticket A4e: a fresh load NOW, even while one is in
+     flight — the in-flight load is abandoned exactly
+     the way the 9 s watchdog abandons it (slot freed,
+     its late settle may still paint under the
+     generation rule), because a type that just landed
+     must become VISIBLE, not wait out a starved load
+     (Brent's drill: the field stayed empty-looking for
+     the whole video; ogtest15's operator had to press
+     refresh by hand to see the dots). */
+  function stillForce() {
+    if (stillBusyGen) {
+      stillBusyGen = 0;
+      if (stillWatchdog) {
+        window.clearTimeout(stillWatchdog);
+        stillWatchdog = null;
+      }
+    }
+    stillStart(null);
+  }
   window.ogStillLoad = stillLoad;
   /* Gate/debug handle (the OG79ZOOM precedent): the
      loader's vitals, so a drill can see generations
@@ -507,17 +547,108 @@
       }
     }, delay || 0);
   }
+  /* Ticket A4e: sends are SERIALIZED, a type is VISIBLE
+     while it flies, and the writing spot is ANCHORED.
+     Brent's drill (2026-10-20): he tapped the Email
+     field, pressed Type it — and nothing he could see
+     happened for the rest of the video, while the text
+     sat in the box and the field stayed empty. The
+     anatomy, proven in the A4e hunt: one type is ~70
+     sequential CDP round trips on the server (connect,
+     attach, per-character key events, the delivery
+     readback), so under the frame starvation his
+     session already had, a type flies for tens of
+     seconds. The old sendInput fired every input the
+     moment it was tapped — concurrent requests racing
+     on separate server connections against one page —
+     said nothing while a send was in flight, and typed
+     into whatever the page happened to focus at
+     dispatch time: his extra taps while waiting (the
+     caret "follows the mouse", his words) moved the
+     writing spot, and the send had no memory of the
+     field he chose. Now:
+       - one input is in flight at a time; taps and keys
+         queue behind a type instead of racing it;
+       - a type shows itself: the button reads "Typing…"
+         and the line says so; at 20 s it says it is
+         still working; at 100 s the client stops waiting
+         and says plainly the answer never came (the text
+         stays in the box — the server may still land it,
+         and the line says that too);
+       - a click that lands in a field earns an ANCHOR
+         from the server (the field's identity), the type
+         carries it, and the server puts the caret back
+         in THAT field before typing and verifies the
+         text grew THERE — the writing spot stays put. */
+  var sendChain = Promise.resolve();
+  var typeAnchor = null;
+  var typeBtn = $('ogKbSend');
   function sendInput(payload, shotDelay) {
+    var run = sendChain.then(function () {
+      return sendInputNow(payload, shotDelay);
+    });
+    sendChain = run.then(function () {}, function () {});
+    return run;
+  }
+  function sendInputNow(payload, shotDelay) {
+    var isType = !!(payload && payload.kind === 'type');
+    if ((isType || (payload && payload.kind === 'key')) &&
+        typeAnchor) {
+      payload = Object.assign({}, payload,
+                              { anchor: typeAnchor });
+    }
+    var ctl = null, slowTimer = null, deadTimer = null;
+    if (isType) {
+      if (typeBtn) {
+        typeBtn.disabled = true;
+        typeBtn.textContent = 'Typing…';
+      }
+      if (!stickyErr) say('✍️ Typing into the page…');
+      try {
+        if (window.AbortController) {
+          ctl = new AbortController();
+          slowTimer = window.setTimeout(function () {
+            if (!stickyErr) {
+              say('✍️ Still typing — the page is answering ' +
+                  'slowly. Your text is on its way.');
+            }
+          }, 20000);
+          deadTimer = window.setTimeout(function () {
+            try { ctl.abort(); } catch (e) {}
+          }, 100000);
+        }
+      } catch (e) { ctl = null; }
+    }
+    function settle() {
+      if (slowTimer) window.clearTimeout(slowTimer);
+      if (deadTimer) window.clearTimeout(deadTimer);
+      if (isType && typeBtn) {
+        typeBtn.disabled = false;
+        typeBtn.textContent = 'Type it';
+      }
+    }
     return fetch(API + '/browser/input', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: ctl ? ctl.signal : undefined
     }).then(function (r) {
       return r.json().catch(function () { return {}; });
     }).then(function (res) {
+      settle();
       if (res && res.ok) {
         stickyErr = '';
         say(''); refreshShot(shotDelay);
+        /* Ticket A4e: a landed type is also SHOWN — the
+           frame loop may be starved, so a second, forced
+           frame is requested once the first has had its
+           chance to settle (ogtest15's operator had to
+           press ↻ by hand to see the dots). */
+        if (isType) {
+          window.setTimeout(function () {
+            if (!shot.hidden) stillForce();
+          }, 1600);
+        }
         /* Ticket A4: a landed input CONFIRMS the pointer
            position it carried — the marker's freshness
            rides the ack, not just the gesture (the
@@ -525,6 +656,12 @@
         if (payload && payload.kind === 'click' &&
             typeof payload.x === 'number') {
           notePtr(payload.x, payload.y);
+          /* Ticket A4e: the server names the field this
+             tap landed in, when it landed in one — that
+             field becomes the writing spot (see the
+             block above). A tap outside any field leaves
+             the spot where it was. */
+          if (res.anchor) typeAnchor = res.anchor;
         } else if (payload && payload.kind === 'drag' &&
                    payload.path && payload.path.length) {
           var lastPt = payload.path[payload.path.length - 1];
@@ -539,10 +676,42 @@
       }
       return res;
     }).catch(function () {
-      stickyErr = 'Connection hiccup — try again.';
+      settle();
+      if (isType && ctl && ctl.signal && ctl.signal.aborted) {
+        /* Ticket A4e: the client stopped waiting at
+           100 s. The server thread is NOT cancelled by
+           the abort — the honest word is that the text
+           may still land, and it stays in the box so
+           the visitor keeps both copies of the truth. */
+        stickyErr = '⌛ That type never answered back — it ' +
+          'may still land on the page. Your text is still ' +
+          'in the box; check the field before sending again.';
+      } else {
+        stickyErr = 'Connection hiccup — try again.';
+      }
       say(stickyErr);
       return { ok: false };
     });
+  }
+  /* Ticket A4e: the screen this window is driven FROM,
+     reported once per confirmed take-control. The
+     server fits the page itself to these CSS pixels
+     (Emulation device metrics), so the picture that
+     comes back is phone-shaped: the whole page, at a
+     readable size, with the Width fit nearly exact.
+     Best-effort: any failure leaves the desktop-shaped
+     page and the Width default still shows all of it. */
+  function sendClientView() {
+    var w = 0, h = 0, dpr = 1;
+    try {
+      w = Math.round(document.documentElement.clientWidth ||
+                     window.innerWidth || 0);
+      h = Math.round(document.documentElement.clientHeight ||
+                     window.innerHeight || 0);
+      dpr = window.devicePixelRatio || 1;
+    } catch (e) {}
+    if (!w || !h) return;
+    sendInput({ kind: 'viewport', vw: w, vh: h, dpr: dpr }, 400);
   }
 
   /* --- keyboard strip actions --- */
@@ -1204,6 +1373,16 @@
          state the picture shows. */
       prevDriving = d;
       refreshShot(150);
+      if (d) {
+        /* Ticket A4e: taking control returns the window
+           to the whole page (a Fill chosen while watching
+           never follows the visitor into the driver's
+           seat), and the page is told the size of the
+           screen it is being driven from (sendClientView
+           — the server fits the page itself to it). */
+        assertFitWidth();
+        sendClientView();
+      }
     }
     /* Round 61: the toggles follow the takeover INTENT too.
        They used to be fail-closed on the confirmed flip
@@ -1366,13 +1545,12 @@
     else if (takeBtn) takeBtn.click();
   });
   fitBtn.addEventListener('click', function () {
-    var contain = panel.classList.toggle('og-win-contain');
-    fitBtn.textContent = contain ? 'Fit: Width' : 'Fit: Fill';
-    /* Ticket A4: Fit/Fill changes the frame mapping —
-       the marker follows it, and the frame itself is
+    /* Ticket A4e: the ONLY road into Fill is this tap
+       (see setFit) — and the same button is always the
+       way back to the whole page. The frame itself is
        untouched (same img, same loaded frame: the flip
        can never blank the picture). */
-    paintMarker();
+    setFit(!fitFill);
   });
   poll();
   window.setInterval(poll, 2500);
