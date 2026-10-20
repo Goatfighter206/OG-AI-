@@ -369,7 +369,155 @@ def _mark_taste_used(uid: str) -> None:
 def _get_session(uid: str) -> Optional[Dict]:
     if not uid:
         return None
-    return _usage_get(f"browser_sess:{uid}")
+    rec = _usage_get(f"browser_sess:{uid}")
+    if rec:
+        # Ticket A4h: the change of hands is remembered
+        # in the grant record (below) — a stale
+        # whole-store save can erase it from THIS record,
+        # never from the record of hands.
+        rec = _control_recall(uid, rec)
+    return rec
+
+
+# --- Ticket A4h: the grant record -----------------------
+# ogtest18 (2026-10-20, the landed A4g build): Take
+# control NEVER engaged — not once across ~7 attempts
+# in ~12 minutes — while the same operator machinery
+# had engaged on A4d/A4e/A4f. The A4g diff stands
+# exonerated: it touches neither the control route nor
+# the client's take path, and the landed client passes
+# the A4f take gate 12/12. The conviction is the A4f
+# store race in its CONTINUOUS shape. The usage store
+# is one file that app.py-side writers load and save
+# WHOLE, around og_browser entirely, so _carry_control
+# never arbitrates their saves: one stale save erases a
+# control grant whole, stamp and all (the A4f server
+# proof). A4f's client defense — re-post the grant,
+# hold through dissent — assumed the erasure is an
+# EVENT: a re-post eventually lands and STAYS.
+# ogtest18's session start ran ~5 minutes under load
+# (the drill's black window) with both workers writing
+# the store, and EVERY grant — the tap's post and every
+# repair re-post — met a fresh stale save before the
+# next status read: no read ever saw 'visitor', so the
+# take could never confirm (reproduced with this
+# tree's real store code in repro/a4/drive_a4h_server
+# .py, and at the window in drive_a4h_gate.js). No
+# client can out-ask a server that erases every answer
+# before it is read, and no key inside that file can
+# survive its whole saves — so the change of hands
+# gets its OWN record, outside the store file's blast
+# radius: one small file beside the usage store (the
+# env var overrides the path), written only from
+# _set_session below, arbitrated by the same stamps
+# _carry_control uses, and bound to the Steel session
+# the hand-off belongs to — a grant dies with its
+# session (the No Junk Drawer rule) and is forgotten
+# when the session ends. _get_session (above) merges
+# it over the store record whenever it is the newer
+# word on the same session, so every reader — status,
+# the input gate, the drive guard, the warmth
+# rotation — sees the true hand-off even while the
+# store record itself still says 'og'. The general
+# whole-store cure stays Ticket D's; this is the
+# grant's escape hatch only.
+_GRANT_FILE = os.environ.get("OG_BROWSER_CONTROL_FILE") \
+    or "browser_control.json"
+_GRANT_LOCK = threading.Lock()
+
+
+def _grant_load() -> Dict:
+    try:
+        with open(_GRANT_FILE, "r") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _grant_save(data: Dict) -> None:
+    # Atomic, the A4d store pattern: a reader in the
+    # other worker only ever sees a complete file.
+    try:
+        tmp = f"{_GRANT_FILE}.tmp{os.getpid()}"
+        with open(tmp, "w") as f:
+            json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _GRANT_FILE)
+    except Exception as e:
+        logger.warning(
+            f"Browser grant record save failed: {e}")
+
+
+def _control_remember(uid: str, rec: Dict) -> None:
+    """Record a change of hands from a session write.
+    Only a NEWER stamp moves the record — a stale
+    writer's older word never overwrites a newer
+    grant — and an unchanged hand-off writes nothing,
+    so the file is touched at changes of hands, not
+    on every session write."""
+    ctl = rec.get("control")
+    if ctl not in ("visitor", "og"):
+        return
+    try:
+        ts = float(rec.get("control_ts") or 0)
+    except Exception:
+        ts = 0.0
+    sid = str(rec.get("steel_id") or "")
+    with _GRANT_LOCK:
+        data = _grant_load()
+        cur = data.get(uid)
+        if isinstance(cur, dict):
+            try:
+                c_ts = float(cur.get("control_ts") or 0)
+            except Exception:
+                c_ts = 0.0
+            if c_ts > ts:
+                return
+            if c_ts == ts and cur.get("control") == ctl \
+                    and str(cur.get("steel_id") or "") == sid:
+                return
+        data[uid] = {"control": ctl, "control_ts": ts,
+                     "steel_id": sid}
+        _grant_save(data)
+
+
+def _control_forget(uid: str) -> None:
+    with _GRANT_LOCK:
+        data = _grant_load()
+        if uid in data:
+            del data[uid]
+            _grant_save(data)
+
+
+def _control_recall(uid: str, rec: Dict) -> Dict:
+    """Merge the remembered change of hands into a
+    freshly read session record: the grant record wins
+    when its stamp is NEWER than the record's AND it
+    names the record's own Steel session. Anything
+    else — no entry, an older entry, a dead session's
+    entry — leaves the record exactly as read."""
+    entry = _grant_load().get(uid)
+    if not isinstance(entry, dict):
+        return rec
+    if str(entry.get("steel_id") or "") != \
+            str(rec.get("steel_id") or ""):
+        return rec
+    ctl = entry.get("control")
+    if ctl not in ("visitor", "og"):
+        return rec
+    try:
+        e_ts = float(entry.get("control_ts") or 0)
+        r_ts = float(rec.get("control_ts") or 0)
+    except Exception:
+        return rec
+    if e_ts <= r_ts:
+        return rec
+    rec = dict(rec)
+    rec["control"] = ctl
+    rec["control_ts"] = e_ts
+    return rec
 
 
 def _carry_control(cur, rec: Dict) -> Dict:
@@ -418,6 +566,15 @@ def _set_session(uid: str, rec: Optional[Dict]) -> None:
         rec = _warm.carry_meter(cur, rec)
         rec = _carry_control(cur, rec)
     _usage_set(f"browser_sess:{uid}", rec)
+    # Ticket A4h: keep the grant record in step — a
+    # change of hands is remembered here (the one
+    # writer every hand-off funnels through: the
+    # /browser/control route, _do_control, session
+    # creation), and the session's end forgets it.
+    if rec is None:
+        _control_forget(uid)
+    else:
+        _control_remember(uid, rec)
 
 
 def _all_sessions() -> Dict[str, Dict]:
