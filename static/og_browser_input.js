@@ -617,10 +617,65 @@
        - AMBIENT (no tap yet this session) still types
          the way Round 43 did: the anchor only ever
          improved on that flow, it never gated it. */
-  var spotState = 'ambient'; /* 'ambient'|'armed'|'refused' */
+  /* Ticket A4j: the spot also follows the LATEST PRESS,
+     not just the latest settled tap. ogtest20's step 6
+     (the ogtest17 signature, third production time):
+     the operator tapped Password and typed test1234 in
+     the same breath; the server logged ONE input POST —
+     the type, carrying the still-armed EMAIL anchor —
+     and the Password tap never arrived at all. A press
+     can die between the finger and sendInput without a
+     word: pointercancel (a browser gesture takeover, a
+     second finger converting the gesture to a zoom —
+     the zoom layer nulls the press outright), a release
+     frame() cannot map (the still mid-swap, naturalWidth
+     0), a release point the letterbox rejects, a control
+     flip mid-press. Every one of those exits left the
+     PREVIOUS spot armed, and a type dispatched after
+     them bound the stale anchor at send time and landed
+     in the old field with an honest ok. A DISPATCHED
+     tap was already safe — the send chain settles its
+     ack before a later type dispatches (proven in the
+     A4j gate's slow-ack phase) — so the hole is exactly
+     the undispatched press. Now a recorded press
+     RETIRES the settled spot on the spot
+     ('pending', anchor dropped, the settled spot kept
+     in spotBackup): the press's own dispatch + ack
+     settles the spot as before; a SCROLL dispatch
+     restores the backup (a wheel at the page center
+     never moved the page's focus, so the scroll is not
+     a tap and earns no verdict); and EVERY silent exit
+     leaves the spot 'pending' — a type/key then stops
+     HERE, in the window, with the honest word, and is
+     never sent against the previous field. Unsettled
+     means blocked, never silently rebound. */
+  var spotState = 'ambient'; /* 'ambient'|'armed'|'refused'|'pending' */
+  var spotBackup = null; /* the settled spot a press retired */
+  var pressBackups = {}; /* tap number -> its retired spot,
+                            held until the tap's ack settles */
   var tapSeq = 0;
   function applySpotAck(payload, res) {
     if (!res || res.ok !== true) return;
+    if (spotState === 'pending' && !('tap' in res) &&
+        !res.anchor) {
+      /* Ticket A4j: a LEGACY ack (no echo — a pre-A4g
+         server) cannot verdict the press that retired
+         the spot, and A4g's rule for legacy silence is
+         "the spot as it was": restore the retired spot
+         this tap carried in with it, so a mixed deploy
+         degrades to A4e and never wedges 'pending'.
+         An echo-carrying ack never reaches this
+         branch — its word below is final. */
+      var bak = pressBackups[payload.tap];
+      delete pressBackups[payload.tap];
+      if (bak) {
+        spotState = bak.state; typeAnchor = bak.anchor;
+      } else {
+        spotState = 'ambient'; typeAnchor = null;
+      }
+      return;
+    }
+    delete pressBackups[payload.tap];
     if ('tap' in res) {
       if (res.tap !== payload.tap) {
         /* A stale or garbled ack: it is not this tap's
@@ -675,6 +730,20 @@
        sent, the box keeps its text (typeFromField only
        clears on an ok answer), and the word — sticky,
        like any refused input's — says what to do. */
+    if ((isType || (payload && payload.kind === 'key')) &&
+        spotState === 'pending') {
+      /* Ticket A4j: the latest press never settled —
+         it either never dispatched or its answer never
+         came back. There is no honest field to type
+         into, and the previous field's anchor is gone
+         on purpose: the type stops HERE, the box keeps
+         its text, the word says to tap again. */
+      stickyErr = 'Your last tap didn\'t reach the ' +
+        'page — nothing was typed. Tap the field ' +
+        'again, then type.';
+      say(stickyErr);
+      return Promise.resolve({ ok: false });
+    }
     if ((isType || (payload && payload.kind === 'key')) &&
         spotState === 'refused') {
       stickyErr = 'Tap the field you want to type in ' +
@@ -905,6 +974,13 @@
     press = { x: e.clientX, y: e.clientY, t: Date.now(),
               samples: [{ x: e.clientX, y: e.clientY, t: Date.now() }],
               lastPush: Date.now() };
+    /* Ticket A4j: a recorded press retires the settled
+       spot NOW — the visitor's hand has chosen a new
+       target, and until this press dispatches and its
+       ack settles, no type may ride the old field's
+       anchor (see the spot machine's A4j note). */
+    spotBackup = { state: spotState, anchor: typeAnchor };
+    typeAnchor = null; spotState = 'pending';
     try { shot.setPointerCapture(e.pointerId); } catch (err) {}
     /* Ticket A4: the finger IS the pointer — the marker
        (below) takes the position from this press and
@@ -942,6 +1018,13 @@
        the release point under its staleness rule. */
     ptrHeld = false;
     paintMarker();
+    /* Ticket A4j: every exit from here that sends
+       NOTHING (cancelled, no longer driving, no
+       mappable frame, a release point in the bars)
+       leaves the spot 'pending' on purpose — the
+       press retired the old spot at pointerdown and
+       never earned a new one, so the next type blocks
+       in the window instead of riding the old field. */
     if (!driving || !ptrOn || cancelled) return;
     var f = frame(); if (!f) return;
     var dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -950,8 +1033,19 @@
     if (disp < 10 && dur < 600) {
       var pt = toNatural(e.clientX, e.clientY, f, false);
       if (pt) {
-        sendInput({ kind: 'click', x: pt.x, y: pt.y,
-                    nw: f.nw, nh: f.nh }, 450);
+        /* Ticket A4j: the press dispatched — its ack
+           owns the spot's settlement now. The retired
+           spot rides along keyed by the tap's number
+           (stamped inside sendInput), in case the ack
+           is a legacy one whose silence restores it
+           (see applySpotAck). */
+        var clickPayload = { kind: 'click', x: pt.x,
+          y: pt.y, nw: f.nw, nh: f.nh };
+        sendInput(clickPayload, 450);
+        if (clickPayload.tap != null) {
+          pressBackups[clickPayload.tap] = spotBackup;
+        }
+        spotBackup = null;
       }
       return;
     }
@@ -963,6 +1057,15 @@
          The server clamps the delta and wheels at the
          page center; a slow press-and-hold below stays
          a real mouse drag. */
+      /* Ticket A4j: a scroll is not a tap — the wheel
+         rides at the page center and never moves the
+         page's focus, so the spot the press retired is
+         restored exactly as it was. */
+      if (spotBackup) {
+        spotState = spotBackup.state;
+        typeAnchor = spotBackup.anchor;
+        spotBackup = null;
+      }
       sendInput({ kind: 'scroll', dx: 0,
                   dy: Math.round(-dy * 3) }, 350);
       return;
@@ -977,8 +1080,16 @@
       if (np) path.push(np);
     }
     if (path.length < 2) path.push(path[0] || { x: 0, y: 0 });
-    sendInput({ kind: 'drag', path: path, nw: f.nw, nh: f.nh,
-                dur: dur }, 500);
+    /* Ticket A4j: dispatched — the drag's ack settles
+       the spot (it mints at its press point, A4g);
+       the retired spot rides along as for a click. */
+    var dragPayload = { kind: 'drag', path: path,
+      nw: f.nw, nh: f.nh, dur: dur };
+    sendInput(dragPayload, 500);
+    if (dragPayload.tap != null) {
+      pressBackups[dragPayload.tap] = spotBackup;
+    }
+    spotBackup = null;
   }
   shot.addEventListener('pointerup', function (e) { endPress(e, false); });
   shot.addEventListener('pointercancel', function (e) { endPress(e, true); });
@@ -1489,6 +1600,8 @@
          tapless, the way Round 43 typed. */
       typeAnchor = null;
       spotState = 'ambient'; spotKey = ''; spotUrl = '';
+      spotBackup = null; /* Ticket A4j: no press outlives it either */
+      pressBackups = {};
       say('');
       removeFull();
       return;
