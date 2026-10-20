@@ -372,12 +372,51 @@ def _get_session(uid: str) -> Optional[Dict]:
     return _usage_get(f"browser_sess:{uid}")
 
 
+def _carry_control(cur, rec: Dict) -> Dict:
+    """Ticket A4b: carry the CONTROL hand-off forward, the
+    carry_meter pattern one field over. og_browser writes
+    session records WHOLE, and several writers hold a copy
+    across a slow operation — OG's drive (read, seconds of
+    CDP, _update_rec_from_snap writes the copy back), the
+    warmth rotation (read, a Steel create, write back),
+    an input's own writeback. A copy that predates a
+    takeover therefore handed the wheel silently back to
+    OG when it landed: /browser/status then truthfully
+    served control="og" to a visitor who never handed
+    back, the panel dropped out of control mode, and the
+    visitor's inputs started meeting the 409 (ogtest11's
+    flap). The two control writers (the /browser/control
+    route and _do_control) stamp control_ts on every
+    change of hands; a whole-record write whose stamp is
+    OLDER than the stored record's keeps the stored
+    control + stamp. Same Steel-session guard as the
+    meter carry: a different steel_id is a new session
+    and carries nothing."""
+    if not isinstance(cur, dict):
+        return rec
+    if cur.get("steel_id") != rec.get("steel_id"):
+        return rec
+    try:
+        c_ts = float(cur.get("control_ts") or 0)
+        r_ts = float(rec.get("control_ts") or 0)
+    except Exception:
+        return rec
+    if c_ts > r_ts:
+        rec = dict(rec)
+        rec["control"] = cur.get("control", "og")
+        rec["control_ts"] = c_ts
+    return rec
+
+
 def _set_session(uid: str, rec: Optional[Dict]) -> None:
     if rec is not None:
         # Round 72: carry the meter forward (og_browser_warm)
         # — a stale whole-record write can never unspend
         # banked seconds or close an open window it predates.
-        rec = _warm.carry_meter(_get_session(uid), rec)
+        # Ticket A4b: the same carry for control (above).
+        cur = _get_session(uid)
+        rec = _warm.carry_meter(cur, rec)
+        rec = _carry_control(cur, rec)
     _usage_set(f"browser_sess:{uid}", rec)
 
 
@@ -1059,6 +1098,36 @@ _FOCUS_JS = ("(function(){var a=document.activeElement;"
              " var t=(a.tagName||'').toLowerCase();"
              " if(t==='input'||t==='textarea'||t==='select'"
              " ||a.isContentEditable) return 'ok'; return '';})()")
+# Ticket A4b: the type path's DELIVERY receipt — the
+# focused field's value length (text length for a
+# contentEditable), or -1 when the focused element has
+# no measurable text (a select, a button, nothing).
+# _visitor_input reads it before and after dispatching
+# keystrokes: ok means the text is IN the field, not
+# merely that the key events left the server.
+_VLEN_JS = ("(function(){/*a4b-vlen*/ var a=document.activeElement;"
+            " if(!a) return -1;"
+            " var t=(a.tagName||'').toLowerCase();"
+            " if(t==='input'||t==='textarea')"
+            " return (typeof a.value==='string')"
+            " ? a.value.length : -1;"
+            " if(a.isContentEditable)"
+            " return (a.textContent||'').length;"
+            " return -1;})()")
+
+
+def _field_len(cdp: _Cdp):
+    """The focused field's text length, or None when it
+    cannot be read (page moved, transport hiccup) —
+    distinct from _VLEN_JS's -1 (read fine, nothing
+    measurable focused)."""
+    try:
+        v = _eval(cdp, _VLEN_JS)
+    except Exception:
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return int(v)
 _VIEW_JS = ("(function(){return {w: window.innerWidth || 0,"
             " h: window.innerHeight || 0};})()")
 _INPUT_KEYS = {"enter": ("Enter", "Enter", 13),
@@ -1485,7 +1554,43 @@ def _visitor_input(rec: Dict, payload: Dict) -> Dict:
                                  "then type."}
             focus = _dbg_el(_dbg_desc(
                 cdp, "document.activeElement")) if dbg else ""
+            # Ticket A4b: measure the field BEFORE the
+            # keystrokes — the delivery receipt below is
+            # meaningless without the baseline.
+            len_before = _field_len(cdp)
             _type_text(cdp, text)  # Ticket A3c: real keystrokes
+            # Ticket A4b: DELIVERY CONFIRMATION. ok used to
+            # mean "the key events were dispatched" — the
+            # A3b/A3d probes read the field's value length
+            # only under the debug flag, so in production
+            # a type could dispatch cleanly and still never
+            # be in the field (focus elsewhere under the
+            # control flap, a wipe in the same window) while
+            # the client cleared the keyboard bar on the ok
+            # and the text was gone for good (ogtest11).
+            # Now the field must have GROWN by exactly the
+            # typed length; anything else — no growth, a
+            # partial landing (a maxlength trim), an
+            # unreadable field — is an honest failure, and
+            # the client keeps the text in the bar with the
+            # reason showing. A field with no measurable
+            # text (-1: a select's type-ahead) keeps the
+            # old dispatched-ok — there is nothing to
+            # measure it against.
+            if len_before is not None and len_before >= 0:
+                len_after = _field_len(cdp)
+                if len_after is None or \
+                        len_after - len_before != len(text):
+                    if dbg:
+                        _input_debug(
+                            cdp, kind,
+                            "confirm=failed before=%s after=%s"
+                            % (len_before, len_after))
+                    return {"ok": False,
+                            "error": "That text didn't reach "
+                                     "the field — tap the "
+                                     "field on the page, then "
+                                     "type again."}
             if dbg:
                 after_desc = _dbg_desc(cdp, "document.activeElement")
                 after = _dbg_el(after_desc)
@@ -2450,6 +2555,7 @@ def _do_control(uid: str, mode: str) -> List[Dict]:
                        "hand over. Ask me to open a page first.")
     rec = dict(rec)
     rec["control"] = mode
+    rec["control_ts"] = time.time()
     rec["last_action"] = time.time()
     _set_session(uid, rec)
     # Round 72: takeover is an active-use window — opens
@@ -3210,6 +3316,10 @@ def register_browser_routes(app):
                                 status_code=400)
         rec = dict(rec)
         rec["control"] = mode
+        # Ticket A4b: stamp the change of hands — stale
+        # whole-record writes can never unmake it (see
+        # _carry_control at _set_session).
+        rec["control_ts"] = time.time()
         rec["last_action"] = time.time()
         await asyncio.to_thread(_set_session, uid, rec)
         return {"ok": True, "control": mode}
