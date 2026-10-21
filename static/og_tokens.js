@@ -294,7 +294,7 @@
    Loaded before og_stoplisten.js, which stays LAST. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r97.js' + '?v=98';
+  s.src = '/static/og_r97.js' + '?v=99';
   document.head.appendChild(s);
 })();
 
@@ -350,7 +350,7 @@
    which stays LAST. */
 (function () {
   var s = document.createElement('script');
-  s.src = '/static/og_r275.js' + '?v=98';
+  s.src = '/static/og_r275.js' + '?v=99';
   document.head.appendChild(s);
 })();
 
