@@ -4,21 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OG-AI Agent - The Realest AI in the Game 🔥</title>
-<link rel="stylesheet" href="/static/styles.css?v=98">
+<link rel="stylesheet" href="/static/styles.css?v=99">
 <link href="https://fonts.googleapis.com/css2?family=Rubik+Spray+Paint&family=Permanent+Marker&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
 <body>
-
-<div class="animated-bg">
-
-<div class="energy-orb orb-1"></div>
-<div class="energy-orb orb-2"></div>
-<div class="energy-orb orb-3"></div>
-<div class="energy-orb orb-4"></div>
-<div class="energy-orb orb-5"></div>
-</div>
-
-<div id="effects-container"></div>
 
 <header class="og-topbar">
 <button id="menuBtn" class="og-circle-btn" type="button" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
@@ -459,9 +448,6 @@ let currentAudio = null;
 document.addEventListener('DOMContentLoaded', () => {
 initVoice();
 checkServerStatus();
-createEffects();
-setInterval(createFireParticle, 200);
-setInterval(createSmokeParticle, 1000);
 document.getElementById('welcome-time').textContent = new Date().toLocaleTimeString();
 });
 function initVoice() {
@@ -1038,82 +1024,7 @@ const div = document.createElement('div');
 div.textContent = text;
 return div.innerHTML.replace(/\n/g, '<br>');
 }
-function createEffects() {
-const container = document.getElementById('effects-container');
-container.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
-}
-function createFireParticle() {
-const container = document.getElementById('effects-container');
-const particle = document.createElement('div');
-particle.className = 'fire-particle';
-particle.style.left = Math.random() * 100 + '%';
-particle.style.bottom = '0';
-particle.style.animationDelay = Math.random() * 2 + 's';
-container.appendChild(particle);
-setTimeout(() => particle.remove(), 3000);
-}
-function createSmokeParticle() {
-const container = document.getElementById('effects-container');
-const particle = document.createElement('div');
-particle.className = 'smoke-particle';
-particle.style.left = Math.random() * 100 + '%';
-particle.style.bottom = '0';
-particle.style.animationDelay = Math.random() * 3 + 's';
-container.appendChild(particle);
-setTimeout(() => particle.remove(), 8000);
-}
-function createExplosion(x, y) {
-const container = document.getElementById('effects-container');
-const explosion = document.createElement('div');
-explosion.className = 'explosion-particle';
-explosion.style.left = x + 'px';
-explosion.style.top = y + 'px';
-explosion.style.animation = 'explosion 0.6s ease-out';
-container.appendChild(explosion);
-for (let i = 0; i < 3; i++) {
-setTimeout(() => {
-const ring = document.createElement('div');
-ring.className = 'explosion-particle';
-ring.style.left = (x + Math.random() * 100 - 50) + 'px';
-ring.style.top = (y + Math.random() * 100 - 50) + 'px';
-ring.style.animation = 'explosion 0.4s ease-out';
-ring.style.animationDelay = (i * 0.1) + 's';
-container.appendChild(ring);
-setTimeout(() => ring.remove(), 600);
-}, i * 100);
-}
-setTimeout(() => explosion.remove(), 600);
-}
-function randomExplosion() {
-const x = Math.random() * window.innerWidth;
-const y = Math.random() * window.innerHeight;
-createExplosion(x, y);
-}
-setInterval(randomExplosion, 15000);
-function createLightning() {
-const container = document.getElementById('effects-container');
-const bolt = document.createElement('div');
-bolt.className = 'lightning-bolt';
-bolt.style.left = Math.random() * 100 + '%';
-bolt.style.top = '0';
-bolt.style.animation = 'lightning 0.3s';
-container.appendChild(bolt);
-setTimeout(() => bolt.remove(), 300);
-}
-setInterval(() => {
-if (Math.random() > 0.7) {
-createLightning();
-}
-}, 5000);
-const originalSendMessage = sendMessage;
-sendMessage = function(...args) {
-if (Math.random() > 0.5) {
-const x = Math.random() * window.innerWidth;
-const y = Math.random() * (window.innerHeight / 2);
-createExplosion(x, y);
-}
-return originalSendMessage.apply(this, args);
-};</script>
+</script>
 <script id="og-restyle-js">(function () {
 var $ = function (id) { return document.getElementById(id); };
 var menu = $('sideMenu'), scrim = $('menuScrim');
@@ -2166,7 +2077,7 @@ paint();
 <script src="/static/og_tokens.js?v=98"></script>
 <script src="/static/og_dashboards.js?v=2"></script>
 <script src="/static/og_markets.js?v=1"></script>
-<script src="/static/og_rain.js?v=2"></script>
+<script src="/static/og_rain.js?v=3"></script>
 <script>
 /* Round 321: pagehide leave beacons (browser + chat). */
 window.addEventListener('pagehide', function () {
