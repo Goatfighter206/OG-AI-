@@ -46,24 +46,32 @@ body.og-r43-lock{overflow:hidden}
 #browserActions .og-icon-btn.og-on{background:#ffc107;
   border-color:#ffc107;color:#111}
 
-/* Keyboard strip — shows only while the ⌨️ toggle is on. The
-   input is a REAL field on our page, so the phone keyboard
-   opens; font-size 16px keeps iOS from auto-zooming on focus. */
-#ogKbStrip{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;
-  padding:8px;background:#111;border-top:1px solid #2a2a2a}
-#ogKbStrip[hidden]{display:none}
-#ogKbText{flex:1 1 150px;min-width:0;font-size:16px;padding:9px 10px;
-  border-radius:10px;border:1px solid #3a3a3a;background:#0a0a0a;
-  color:#f5f5f5}
-#ogKbText:focus{outline:none;border-color:#ffc107}
-#ogKbStrip button{flex:0 0 auto;font:inherit;font-size:13px;
-  padding:8px 11px;border-radius:999px;border:1px solid #444;
-  background:#1b1b1b;color:#eee;cursor:pointer}
-#ogKbStrip button:active{border-color:#ffc107;color:#ffc107}
-#ogKbSend{background:#ffc107;border-color:#ffc107;color:#111;
-  font-weight:700}
+/* Ticket A5: the keyboard CAPTURE — the strip is gone.
+   One invisible field on the panel: while the visitor
+   drives it holds focus and the phone keyboard types
+   into it; its words flush straight into the page (the
+   JS). It keeps a real box (so focus can land on it)
+   but no face at all — opacity 0, no border, transparent
+   text and caret, pointer-events none (it never eats a
+   tap meant for the page; focus is raised by the
+   control flip and by field taps, both in the JS).
+   font-size 16px keeps iOS from auto-zooming on focus.
+   KEYBOARD UP = page + keyboard ONLY: while the capture
+   holds focus the panel carries og-kb-up and the
+   header, the note, the input line and the bottom bar
+   all step off screen until the keyboard goes down. */
+#ogKbText{position:absolute;left:50%;bottom:6px;z-index:8;
+  width:min(92%,430px);height:44px;transform:translateX(-50%);
+  opacity:0;border:none;background:transparent;
+  color:transparent;caret-color:transparent;
+  font-size:16px;pointer-events:none}
+#browserPanel.og-kb-up #ogWinHead,
+#browserPanel.og-kb-up #ogWinBar,
+#browserPanel.og-kb-up #ogInputMsg,
+#browserPanel.og-kb-up .og-browser-note,
+#browserPanel.og-kb-up #ogTaskPillTop{display:none!important}
 
-/* Input feedback line (errors/hints), under the strip. */
+/* Input feedback line (errors/hints), under the view. */
 #ogInputMsg{margin:0;padding:6px 12px;font-size:12px;color:#ffc107;
   background:#111}
 #ogInputMsg[hidden]{display:none}
@@ -156,7 +164,6 @@ body.og-r43-lock{overflow:hidden}
 #browserPanel.og-r43-full.og-win-fill #browserShot{object-fit:cover}
 #browserPanel.og-r43-full #browserFrame{display:none!important}
 #browserPanel.og-r43-full .og-browser-note{order:3;flex:0 0 auto}
-#browserPanel.og-r43-full #ogKbStrip{order:4;flex:0 0 auto}
 #browserPanel.og-r43-full #ogInputMsg{order:5;flex:0 0 auto}
 #browserPanel.og-r43-full #ogWinBar{display:flex;order:6;
   flex:0 0 auto;align-items:center;gap:6px;flex-wrap:wrap;
@@ -175,19 +182,18 @@ body.og-r43-lock{overflow:hidden}
 #ogWinClose{flex:0 0 auto;width:38px;height:38px;border-radius:50%;
   border:1px solid #333;background:#1b1b1b;color:#e8e8e8;
   font-size:15px;cursor:pointer;font-family:inherit}
+/* Ticket N: the window's bottom bar buttons are real
+   icon+label buttons — tall, rounded, obviously
+   tappable, never bare text. */
 #ogWinBar button{border:1px solid rgba(255,193,7,.5);
-  background:#1b1b1b;color:#ffc107;border-radius:999px;
-  padding:8px 13px;font-size:.82rem;cursor:pointer;
-  font-family:inherit;white-space:nowrap;min-height:42px}
+  background:#1d1d1d;color:#ffc107;border-radius:16px;
+  padding:10px 16px;font-size:.9rem;font-weight:700;cursor:pointer;
+  font-family:inherit;white-space:nowrap;min-height:50px}
 #ogWinBar button:hover{background:rgba(255,193,7,.18)}
 #ogWinBar .og-win-stop{border-color:rgba(255,110,110,.55);
   color:#ff9d9d}
 #ogWinBar .og-win-take{margin-left:auto;background:#ffc107;
-  border-color:#ffc107;color:#151515;font-weight:700}
-#ogWinBar .og-icon-btn{font-size:19px;line-height:1;
-  min-width:42px;padding:7px 0;text-align:center}
-#ogWinBar .og-icon-btn.og-on{background:#ffc107;
-  border-color:#ffc107;color:#111}
+  border-color:#ffc107;color:#151515;font-weight:800}
 
 /* --- Round 321 Ticket A4: the pointer marker -------------
    The stills carry no OS pointer, so og_browser_input.js
