@@ -34,7 +34,15 @@
     box-shadow: none;
 }
 .message.user .message-content {
-    background: rgba(255,193,7,.17);
+    /* Ticket H2 round 4 (cand-h7, Brent: "make the gold
+       have solid bubbles in text"): SOLID — the old 17%
+       gold tint let the rain show through the bubble.
+       This hex is that exact tint composited over the
+       page's near-black (#0a0a0a), frozen opaque: same
+       gold the eye already knows, alpha 1.0, no rain
+       through it ever. The OG bubble opposite (#1b1b1b)
+       was already solid. */
+    background: #342909;
     border: 1px solid rgba(255,193,7,.5);
     border-bottom-right-radius: 6px;
 }
