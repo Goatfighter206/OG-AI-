@@ -44,8 +44,10 @@
  * While it runs it owns the backdrop (see the surface
  * contract at the style injection): the legacy nebula
  * layer retires and the chat column wears a veil (55% in
- * cand-h3/h4; deepened to 70% in cand-h5 to hold the
- * readability bound under the +50% brightness round), so
+ * cand-h3/h4; 70% in cand-h5; cand-h6 restructures it —
+ * chat state only at 60%, the hero state unveiled — so
+ * the rain can chase the OG name's brightness without
+ * spending the chat text bound), so
  * what Brent sees behind OG is the rain, on-palette.
  * FIX ROUND cand-h3 (2026-10-21): the column's own
  * backdrop-filter (styles.css blur) made the compositor
@@ -102,13 +104,27 @@
      change; glyphs, rhythm, density and the sprite halo
      are untouched. The chat column's veil deepens
      0.55 -> 0.70 (see boot) to hold the readability
-     bound the brighter field spends. */
-  var HEAD_RGB  = [255, 246, 204];  /* pale gold head, +50% round */
-  var TRAIL_HI  = [255, 229, 121];  /* antique gold, +50% round   */
-  var TRAIL_LO  = [206, 174, 64];   /* deep amber, +50% round     */
+     bound the brighter field spends.
+     cand-h6 (Ticket H2 round 3, Brent: "as bright as OG
+     name"; round 2's verdict: "still not brighter" in
+     chat — the veil deepening had eaten the lift as
+     seen, 1.49 x (0.30/0.45) ~= 1.0x): the caps were
+     already at 1.00, so this round spends the remaining
+     levers — stops climb to the family's white-gold
+     edge (head was [255,246,204], hi [255,229,121], lo
+     [206,174,64]), the trail falloff exponent flattens
+     1.6 -> 0.45 so a fall carries its light down its
+     whole length instead of dying along it, the night
+     canvas opacity goes 0.85 -> 1.00, and the veil
+     stops taxing the hero (see boot): it now lives
+     only where messages stack. Glyphs, rhythm, density,
+     trail lengths and the sprite halo are untouched. */
+  var HEAD_RGB  = [255, 252, 240];  /* white-gold head, name-bright round */
+  var TRAIL_HI  = [255, 246, 196];  /* bright antique gold, name-bright   */
+  var TRAIL_LO  = [240, 214, 128];  /* lifted amber, name-bright round    */
   var HEAD_ALPHA = 1.00;           /* caps, before canvas  */
   var TRAIL_ALPHA = 1.00;          /* opacity + mode mult  */
-  var CANVAS_OPACITY_NIGHT = 0.85;
+  var CANVAS_OPACITY_NIGHT = 1.00;
   var CANVAS_OPACITY_DAY = 0.30;
 
   var FONT = '15px "Share Tech Mono", ui-monospace, Menlo, Consolas, monospace';
@@ -312,7 +328,7 @@
           step = GLOW_STEPS;
         } else {
           var u = 1 - t;
-          a = TRAIL_ALPHA * Math.pow(u, 1.6) * colSwell * mult;
+          a = TRAIL_ALPHA * Math.pow(u, 0.45) * colSwell * mult;
           rgb = [
             Math.round(TRAIL_LO[0] + (TRAIL_HI[0] - TRAIL_LO[0]) * u),
             Math.round(TRAIL_LO[1] + (TRAIL_HI[1] - TRAIL_LO[1]) * u),
@@ -449,7 +465,15 @@
        through any opening off-palette. So while the rain
        runs it OWNS the backdrop: body becomes a context,
        the nebula retires, and the chat column wears a
-       veil of its own near-black (70% since cand-h5) — the rain reads clearly
+       veil of its own near-black (60% since cand-h6 —
+       chat state only, at the frontier value: the
+       shallowest veil whose worst-block contrast still
+       holds >= 4.5:1 over this round's brighter field;
+       it was 55% in cand-h3/h4 and 70% in cand-h5, and
+       the hero state — body.og-hero-on, the landing
+       view with the big OG-AI name — now carries NO
+       veil at all, so the rain shows there at full
+       composite brightness) — the rain reads clearly
        in the open field and stays dimmed under the reading
        column (the gate measures text contrast over exactly
        this composite). Kill the rain (ogRain=off) and this
@@ -461,8 +485,10 @@
       'margin:0;padding:0}' +
       'body{position:relative;z-index:0}' +
       '.animated-bg{display:none}' +
-      'body .chat-container{background:rgba(10,10,10,0.70);' +
-      'backdrop-filter:none;-webkit-backdrop-filter:none}';
+      'body .chat-container{background:rgba(10,10,10,0.60);' +
+      'backdrop-filter:none;-webkit-backdrop-filter:none}' +
+      'body.og-hero-on .chat-container{background:' +
+      'rgba(10,10,10,0)}';
     document.body.insertBefore(style, document.body.firstChild);
     document.body.insertBefore(canvas, document.body.firstChild);
     canvas.style.opacity = String(
