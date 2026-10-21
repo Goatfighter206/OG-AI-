@@ -13,7 +13,15 @@
 
      breathing    — a swell whose period (3.4-5.2 s) and
                     depth are re-drawn at the end of every
-                    single breath, so no two breaths match;
+                    single breath, so no two breaths match.
+                    Ticket E4 (Brent's drill, 2026-10-21):
+                    the breath rides the FACE inside the ring
+                    — the still itself rises (up to 2.4 px)
+                    and swells (1.2-2.6%) on the breath phase
+                    while the wrapper (and the ring on it)
+                    stays steady — at medallion size the old
+                    wrapper-scale breath (<=1.3%) was under a
+                    pixel and read as frozen;
      head drift   — six slow sines with incommensurate
                     periods (7.3-17.9 s) summed for rotate /
                     translate — the sum's true period is far
@@ -123,7 +131,7 @@
         g.bPeriod = rr(3400, 5200);
         g.bAmp = rr(0.006, 0.013);
       }
-      var breath = g.bAmp * (1 - Math.cos(g.bPhase)) / 2;
+      var breath01 = (1 - Math.cos(g.bPhase)) / 2;
 
       /* weight shift: new target, new easing constant */
       if (t >= g.nextShift) {
@@ -146,13 +154,36 @@
                 0.35 * Math.sin(t / 11700 * 6.28318 + g.ph[1]);
 
       var x = dx + g.sx, y = dy + g.sy, r = rot + g.sr,
-          s = 1 + breath;
+          s = 1;
       g.el.style.transform = "translate3d(" + x.toFixed(2) + "px," +
         y.toFixed(2) + "px,0) rotate(" + r.toFixed(3) + "deg) " +
         "scale(" + s.toFixed(4) + ")";
       if (i === 0) api.sample = { tx: +x.toFixed(2),
         ty: +y.toFixed(2), rot: +r.toFixed(3),
         scale: +s.toFixed(4) };
+
+      /* Ticket E4: the breath itself rides the still INSIDE
+         the wrapper — chest rise (translateY up to -2.4 px)
+         + swell (1 + depth, depth = bAmp*2 = 1.2-2.6%) on
+         the breath phase, so the face visibly breathes
+         while the wrapper and its ring hold steady. Only
+         while the still is the face showing (a playing
+         clip owns the frame instead); a mood-class CSS
+         animation on the still overrides this inline
+         transform while it runs, as before. */
+      if (g.img) {
+        var vidPlaying = g.vid && !g.vid.hidden &&
+          g.vid.readyState >= 2 && !g.vid.paused;
+        var stillShown = g.img.style.visibility !== "hidden" &&
+          g.img.offsetWidth > 0;
+        if (stillShown && !vidPlaying) {
+          g.img.style.transform = "translate3d(0," +
+            (-(breath01 * 2.4)).toFixed(2) + "px,0) scale(" +
+            (1 + breath01 * g.bAmp * 2).toFixed(4) + ")";
+        } else if (g.img.style.transform) {
+          g.img.style.transform = "";
+        }
+      }
 
       /* blink: only when the poster still is what's showing
          (the avatar JS hides the still while a clip plays) */
