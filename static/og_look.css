@@ -117,6 +117,27 @@ body:has(.og-menu.open) #ogTopAvatarBar { display: none !important; }
 #browserPanel .og-browser-actions button {
     border-radius: 999px; padding: 10px 14px; font-weight: 700;
 }
+/* Ticket N2 (ogtest24 fix): the card state must defeat
+   og_shell.css's Round 70 "small bar" shaping, which keys
+   on the panel carrying NEITHER page full class — exactly
+   the card's class set — and would otherwise pin the card
+   fixed mid-screen as a one-row bar with the preview
+   hidden (the drill never saw a card in the thread).
+   Scoped to the docked states (neither full class), so
+   the window states are untouched; the shell's [hidden]
+   rule still governs when there is no session. */
+#browserPanel:not(.og-r43-full):not(.og-panel-full) {
+    position: relative; left: auto; top: auto;
+    transform: none; z-index: auto;
+    display: block; align-items: stretch; gap: 0;
+    padding: 0;
+}
+#browserPanel:not(.og-r43-full):not(.og-panel-full) .og-browser-view {
+    display: block !important;
+}
+#browserPanel:not(.og-r43-full):not(.og-panel-full) .og-browser-x {
+    position: absolute;
+}
 
 /* --- 4. Bottom bar ----------------------------------------------------
    The seat pill + composer dock: one rounded bar, icon over
