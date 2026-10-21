@@ -1910,8 +1910,11 @@ if (big) vids.push(big);
 if (small) vids.push(small);
 if (topVid) vids.push(topVid);
 if (profVid) vids.push(profVid);
-var SRC = { idle: '/avatar/idle.mp4', working: '/avatar/working.mp4', making: '/avatar/hood.mp4', milestone: '/avatar/drinking.mp4', connecting: '/avatar/idle.mp4' };
-var dead = false, cur = '', holdTimer = null;
+var SRC = { idle: '/avatar/idle.mp4', talking: '/avatar/idle.mp4', working: '/avatar/working.mp4', making: '/avatar/hood.mp4', milestone: '/avatar/drinking.mp4', connecting: '/avatar/idle.mp4' };
+var dead = false, cur = '';
+var lastMood = '';
+var delivering = false;
+var job = null;
 function showStills(show) {
 document.querySelectorAll('img.og-avatar, img.og-avatar-sm').forEach(function (i) { i.style.visibility = show ? '' : 'hidden'; });
 }
@@ -1921,10 +1924,51 @@ vids.forEach(function (v) { v.hidden = true; v.removeAttribute('src'); });
 showStills(true);
 }
 vids.forEach(function (v) { v.addEventListener('error', fail); });
-function swap(state) {
+/* Ticket E2: he talks ONLY while OG is responding. The clip
+   served as "idle" (/avatar/idle.mp4) is a talking loop
+   (og_avatar.py: "breathing / blinking / talking-idle") and
+   the old machine played it as the RESTING state — on load
+   ('connecting'), on every mood reset ('talking', 'listening'
+   and '' all mapped to it) and after every hold expired —
+   so he talked to nobody all day. Now ONE presenter decides
+   what shows, from the page's real response signals:
+   isProcessing (a reply is being composed / streamed /
+   generated) and speakingNow (TTS is playing).
+     responding + mood 'thinking' -> 'working' clip (composing)
+     responding, any other mood    -> the talking clip
+     not responding                -> the poster stills
+       (Ticket E's og_idle.js owns their motion), unless an
+       explicit tool-activity state is up: the job pollers'
+       'making' (persists, as before) and held beats
+       ('milestone', the browser panel's 'working') run
+       until their hold expires.
+   The still layer gets the same discipline: 'talking' /
+   'thinking' classes (styles.css ogTalk2 / ogThink2) are
+   stripped whenever no response is in progress, so a mood
+   a caller forgot to clear can never keep him "talking".
+   Within a response, the talking clip needs the DELIVERY
+   latch, not just the latest mood: addMessage's 'nod'
+   lands inside the busy window on the error path (between
+   sendMessage's catch and its finally) and must not flash
+   the talking clip for a reply that never existed — so
+   'talking' latches only from the mood streamReply and
+   speakReply actually set, and unlatches when busy falls.
+   A 500 ms reconciler enforces all of it even when some
+   path forgets a transition (error paths included), and
+   it is also Ticket F's gate: lip sync rides busy(). */
+function busy() {
+var p = false, s = false;
+try { p = (typeof isProcessing !== 'undefined') && !!isProcessing; } catch (e) {}
+try { s = (typeof speakingNow !== 'undefined') && !!speakingNow; } catch (e) {}
+return p || s;
+}
+function showClip(state) {
 if (dead || reduced || !vids.length) return;
-var src = SRC[state] || SRC.idle;
-if (src === cur) return;
+var src = SRC[state] || SRC.talking;
+if (src === cur) {
+vids.forEach(function (v) { if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function () {}); } });
+return;
+}
 cur = src;
 vids.forEach(function (v) {
 v.hidden = false;
@@ -1933,20 +1977,41 @@ var p = v.play(); if (p && p.catch) p.catch(function () {});
 });
 showStills(false);
 }
+function showRest() {
+if (dead || reduced || !vids.length) return;
+if (cur === '') return;
+cur = '';
+vids.forEach(function (v) { try { v.pause(); } catch (e) {} v.hidden = true; });
+showStills(true);
+}
+function reconcileClasses() {
+document.querySelectorAll('img.og-avatar.talking, img.og-avatar.thinking').forEach(function (i) { i.classList.remove('talking', 'thinking'); });
+if (document.body) document.body.classList.remove('og-mood-talking', 'og-mood-thinking');
+}
+function present() {
+if (!busy()) { delivering = false; reconcileClasses(); }
+if (dead || reduced || !vids.length) return;
+if (busy()) { showClip(delivering || lastMood === 'talking' ? 'talking' : 'working'); return; }
+if (job && (job.persist || job.until > Date.now())) { showClip(job.state); return; }
+job = null;
+showRest();
+}
 window.ogSetAvatar = function (state, holdMs) {
-if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-swap(state);
-if (holdMs) holdTimer = setTimeout(function () { swap('idle'); }, holdMs);
+if (!SRC[state] || state === 'idle' || state === 'talking' || state === 'connecting') job = null;
+else job = { state: state, until: holdMs ? Date.now() + holdMs : 0, persist: !holdMs };
+present();
 };
 if (typeof setMood === 'function') {
 var prevMood = setMood;
 setMood = function (state) {
 prevMood(state);
-if (state === 'thinking') ogSetAvatar('working');
-else if (state === 'win') ogSetAvatar('milestone', 5500);
-else if (state === 'talking' || state === 'listening' || state === '') ogSetAvatar('idle');
+lastMood = state;
+if (state === 'talking') delivering = true;
+if (state === 'win') job = { state: 'milestone', until: Date.now() + 5500, persist: false };
+present();
 };
 }
+setInterval(present, 500);
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { ogSetAvatar('connecting'); });
 else ogSetAvatar('connecting');
 })();</script>
