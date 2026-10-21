@@ -34,8 +34,10 @@
  * in squads of 3-5 sharing a speed tier, fall at a slow
  * drizzle (never a rush), run SHORT trails (8-15 glyphs),
  * and clock out for a beat when they finish — the field
- * breathes instead of walling. A slow brightness swell
- * drifts sideways across the columns (~18 s period).
+ * breathes instead of walling. (A slow brightness swell
+ * used to drift across the columns; cand-h7 removed it
+ * on the owner's "dont have it dim" order — lit glyphs
+ * burn steady now, see drawFrame.)
  *
  * SURFACE DISCIPLINE — one fixed canvas, z-index -1 (the
  * .animated-bg pattern this page already ships), pointer-
@@ -43,12 +45,13 @@
  * never a stacked page. It carries no OG face or avatar.
  * While it runs it owns the backdrop (see the surface
  * contract at the style injection): the legacy nebula
- * layer retires and the chat column wears a veil (55% in
- * cand-h3/h4; 70% in cand-h5; cand-h6 restructures it —
- * chat state only at 60%, the hero state unveiled — so
- * the rain can chase the OG name's brightness without
- * spending the chat text bound), so
- * what Brent sees behind OG is the rain, on-palette.
+ * layer retires and the chat column is TRANSPARENT in
+ * every state (the veil — 55% in cand-h3/h4, 70% in
+ * cand-h5, 60% chat-only in cand-h6 — is REMOVED in
+ * cand-h7: the bubbles went solid and carry their own
+ * text, so nothing taxes the rain anywhere), so
+ * what Brent sees behind OG is the rain, on-palette,
+ * at full brightness, steady over time.
  * FIX ROUND cand-h3 (2026-10-21): the column's own
  * backdrop-filter (styles.css blur) made the compositor
  * capture the backdrop WITHOUT this canvas's layer —
@@ -118,7 +121,17 @@
      canvas opacity goes 0.85 -> 1.00, and the veil
      stops taxing the hero (see boot): it now lives
      only where messages stack. Glyphs, rhythm, density,
-     trail lengths and the sprite halo are untouched. */
+     trail lengths and the sprite halo are untouched.
+     cand-h7 (Ticket H2 round 4, Brent's phone verdict
+     on cand-h6: "the rain looks good at first and then
+     dims — dont have it dim" + "make the gold have
+     solid bubbles in text"): the palette does NOT move
+     this round. Two dimmers die instead — the chat
+     veil is removed outright (see boot; the bubbles
+     went solid in og_look.css and carry their own
+     text now) and the brightness swell is flattened
+     in drawFrame — so the field burns at full palette
+     brightness in every state, steady over time. */
   var HEAD_RGB  = [255, 252, 240];  /* white-gold head, name-bright round */
   var TRAIL_HI  = [255, 246, 196];  /* bright antique gold, name-bright   */
   var TRAIL_LO  = [240, 214, 128];  /* lifted amber, name-bright round    */
@@ -254,8 +267,9 @@
      step into a small offscreen canvas with its halo
      baked in (shadowBlur paid at build time only). The
      frame loop blits with drawImage + globalAlpha, so the
-     continuous alpha curve (pow falloff x swell x mode)
-     stays exact while color rides the nearest step. Any
+     continuous alpha curve (pow falloff x mode — the
+     brightness swell factor died in cand-h7) stays
+     exact while color rides the nearest step. Any
      failure flips spritesOff and the loop uses the plain
      fillText path below — the glow can never break the
      rain. */
@@ -311,24 +325,31 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     var mult = alphaMult();
-    var swell = 0.92 + 0.08 * Math.sin(nowMs / 9000);
+    /* cand-h7 (Ticket H2 round 4): NO DIMMING. The slow
+       brightness swell (a global sine x a per-column
+       phase sine, alpha dipping to ~0.76-0.83 of full on
+       a ~1 min cycle) is GONE — the owner watched the
+       landed cand-h6 and ordered "dont have it dim."
+       Every lit glyph now burns at its full palette alpha
+       in every frame; the only alpha factors left are the
+       spatial trail falloff (a glyph's place in its own
+       fall — the rain's locked design) and the day/night
+       theme multiplier (Ticket G's hook, owner-set). */
     for (var c = 0; c < columns.length; c++) {
       var col = columns[c];
       if (col.idle > 0) continue;
-      var colSwell = swell * (0.9 + 0.1 *
-        Math.sin(nowMs / 9000 + col.phase));
       for (var i = 0; i < col.len; i++) {
         var gy = col.y - i * CELL_H;
         if (gy < -CELL_H || gy > H) continue;
         var t = col.len <= 1 ? 0 : i / (col.len - 1);
         var a, rgb, step;
         if (i === 0) {
-          a = HEAD_ALPHA * colSwell * mult;
+          a = HEAD_ALPHA * mult;
           rgb = HEAD_RGB;
           step = GLOW_STEPS;
         } else {
           var u = 1 - t;
-          a = TRAIL_ALPHA * Math.pow(u, 0.45) * colSwell * mult;
+          a = TRAIL_ALPHA * Math.pow(u, 0.45) * mult;
           rgb = [
             Math.round(TRAIL_LO[0] + (TRAIL_HI[0] - TRAIL_LO[0]) * u),
             Math.round(TRAIL_LO[1] + (TRAIL_HI[1] - TRAIL_LO[1]) * u),
@@ -464,31 +485,31 @@
        (orange/purple/blue) shares the z-plane and floods
        through any opening off-palette. So while the rain
        runs it OWNS the backdrop: body becomes a context,
-       the nebula retires, and the chat column wears a
-       veil of its own near-black (60% since cand-h6 —
-       chat state only, at the frontier value: the
-       shallowest veil whose worst-block contrast still
-       holds >= 4.5:1 over this round's brighter field;
-       it was 55% in cand-h3/h4 and 70% in cand-h5, and
-       the hero state — body.og-hero-on, the landing
-       view with the big OG-AI name — now carries NO
-       veil at all, so the rain shows there at full
-       composite brightness) — the rain reads clearly
-       in the open field and stays dimmed under the reading
-       column (the gate measures text contrast over exactly
-       this composite). Kill the rain (ogRain=off) and this
-       style is never injected: the page is byte-for-byte
-       its old self. */
+       the nebula retires, and the chat column's own
+       background goes FULLY TRANSPARENT in every state
+       (cand-h7, Ticket H2 round 4 — the veil is REMOVED:
+       it was 55% in cand-h3/h4, 70% in cand-h5, 60%
+       chat-only in cand-h6, and the owner's phone
+       verdict on cand-h6 was "the rain looks good at
+       first and then dims — dont have it dim": entering
+       chat taxed the rain 0.60 for text the bubbles now
+       carry themselves — the message bubbles are SOLID
+       as of this round (og_look.css), so the veil has
+       no job left). The rain reads at full composite
+       brightness in the open field AND behind the
+       thread; text contrast is measured on the bubble
+       interiors, where the text actually sits. Kill the
+       rain (ogRain=off) and this style is never
+       injected: the page is byte-for-byte its old
+       self. */
     style.textContent =
       '#ogRainCanvas{position:fixed;inset:0;width:100%;height:100%;' +
       'z-index:-1;pointer-events:none;display:block;border:0;' +
       'margin:0;padding:0}' +
       'body{position:relative;z-index:0}' +
       '.animated-bg{display:none}' +
-      'body .chat-container{background:rgba(10,10,10,0.60);' +
-      'backdrop-filter:none;-webkit-backdrop-filter:none}' +
-      'body.og-hero-on .chat-container{background:' +
-      'rgba(10,10,10,0)}';
+      'body .chat-container{background:rgba(10,10,10,0);' +
+      'backdrop-filter:none;-webkit-backdrop-filter:none}';
     document.body.insertBefore(style, document.body.firstChild);
     document.body.insertBefore(canvas, document.body.firstChild);
     canvas.style.opacity = String(
