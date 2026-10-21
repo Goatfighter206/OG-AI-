@@ -43,7 +43,9 @@
  * never a stacked page. It carries no OG face or avatar.
  * While it runs it owns the backdrop (see the surface
  * contract at the style injection): the legacy nebula
- * layer retires and the chat column wears a 55% veil, so
+ * layer retires and the chat column wears a veil (55% in
+ * cand-h3/h4; deepened to 70% in cand-h5 to hold the
+ * readability bound under the +50% brightness round), so
  * what Brent sees behind OG is the rain, on-palette.
  * FIX ROUND cand-h3 (2026-10-21): the column's own
  * backdrop-filter (styles.css blur) made the compositor
@@ -91,12 +93,21 @@
   /* ---------------- palette (black + gold, no green) ---- */
   /* cand-h4 lift: every stop brighter, same family —
      head was [255,223,138], hi [212,175,55], lo [110,85,16],
-     alphas were 0.78 / 0.52. */
-  var HEAD_RGB  = [255, 232, 160];  /* pale gold head, lifted */
-  var TRAIL_HI  = [230, 192, 70];   /* antique gold, lifted   */
-  var TRAIL_LO  = [130, 102, 24];   /* deep amber, lifted     */
-  var HEAD_ALPHA = 0.85;           /* caps, before canvas  */
-  var TRAIL_ALPHA = 0.57;          /* opacity + mode mult  */
+     alphas were 0.78 / 0.52.
+     cand-h5 (Ticket H2 round 2, Brent's phone verdict on
+     the landed glow: "go 50% brighter"): the stops and
+     caps lift again — head was [255,232,160] @ 0.85, hi
+     [230,192,70], lo [130,102,24], trail cap 0.57. Same
+     antique-gold family, R>=G>=B at every stop, no hue
+     change; glyphs, rhythm, density and the sprite halo
+     are untouched. The chat column's veil deepens
+     0.55 -> 0.70 (see boot) to hold the readability
+     bound the brighter field spends. */
+  var HEAD_RGB  = [255, 246, 204];  /* pale gold head, +50% round */
+  var TRAIL_HI  = [255, 229, 121];  /* antique gold, +50% round   */
+  var TRAIL_LO  = [206, 174, 64];   /* deep amber, +50% round     */
+  var HEAD_ALPHA = 1.00;           /* caps, before canvas  */
+  var TRAIL_ALPHA = 1.00;          /* opacity + mode mult  */
   var CANVAS_OPACITY_NIGHT = 0.85;
   var CANVAS_OPACITY_DAY = 0.30;
 
@@ -437,8 +448,8 @@
        (orange/purple/blue) shares the z-plane and floods
        through any opening off-palette. So while the rain
        runs it OWNS the backdrop: body becomes a context,
-       the nebula retires, and the chat column wears a 55%
-       veil of its own near-black — the rain reads clearly
+       the nebula retires, and the chat column wears a
+       veil of its own near-black (70% since cand-h5) — the rain reads clearly
        in the open field and stays dimmed under the reading
        column (the gate measures text contrast over exactly
        this composite). Kill the rain (ogRain=off) and this
@@ -450,7 +461,7 @@
       'margin:0;padding:0}' +
       'body{position:relative;z-index:0}' +
       '.animated-bg{display:none}' +
-      'body .chat-container{background:rgba(10,10,10,0.55);' +
+      'body .chat-container{background:rgba(10,10,10,0.70);' +
       'backdrop-filter:none;-webkit-backdrop-filter:none}';
     document.body.insertBefore(style, document.body.firstChild);
     document.body.insertBefore(canvas, document.body.firstChild);
