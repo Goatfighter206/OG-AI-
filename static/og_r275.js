@@ -11,9 +11,10 @@
    recorded from the REAL routing result, + the
    caller's live background work read off the watch /
    monitor / crew stores) — and paints the composed
-   line into BOTH status pills (#ogTaskPillTop +
-   #ogTaskPillProfile, the shell coordinator's two
-   instances).
+   line into the status pills (#ogTaskPillTop +
+   #ogTaskPillProfile + #ogTaskPillHero, the shell
+   coordinator's instances — the hero pill added by
+   Ticket E3).
 
    PRIORITY LAW (never demote the truth):
    - This layer writes ONLY over the idle text
@@ -40,7 +41,7 @@
      not come from /activity/status on this poll. */
 (function () {
   var IDLE = 'Online & Ready';
-  var PILL_IDS = ['ogTaskPillTop', 'ogTaskPillProfile'];
+  var PILL_IDS = ['ogTaskPillTop', 'ogTaskPillProfile', 'ogTaskPillHero'];
   var mine = null; /* the text this layer last painted */
 
   function shown(el) {
