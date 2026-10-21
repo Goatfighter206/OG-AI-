@@ -654,6 +654,47 @@
   var pressBackups = {}; /* tap number -> its retired spot,
                             held until the tap's ack settles */
   var tapSeq = 0;
+  /* Ticket A4l: the window's per-action self-report —
+     production instrumentation for the step-6 mis-land
+     that has now survived four drills (ogtest21: the
+     text appended to Email with every ack honest, no
+     block raised, and body-less access logs that cannot
+     name the mechanism after the fact). The lab
+     convicted a class — the page moved under a stale
+     still, after which every check in the chain
+     verifies the wrong field honestly — but which
+     mechanism fires in production is still unproven,
+     and a press that never records leaves no trace
+     anywhere today. Every input action now reports
+     itself: press outcome, the spot before and after,
+     the ack's anchor echo, the geometry used.
+     Fire-and-forget to /browser/report, which
+     logs it under the session — the A4f side-channel
+     discipline (never on the send chain, outcome
+     swallowed whole, nothing waits on it). Descriptors
+     and lengths only, never a typed value (the A3b
+     rule). Built to be deleted whole once the
+     mechanism is convicted in production. */
+  var reportSeq = 0;
+  function anchorTag(a) {
+    if (!a) return null;
+    return { by: String(a.by || ''), v: String(a.v || ''),
+             ord: a.ord || 0 };
+  }
+  function spotTag() {
+    return { state: spotState, anchor: anchorTag(typeAnchor) };
+  }
+  function reportAction(rec) {
+    try {
+      rec.seq = ++reportSeq;
+      rec.t = Date.now();
+      fetch(API + '/browser/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rec)
+      }).then(function () {}, function () {});
+    } catch (e) {}
+  }
   function applySpotAck(payload, res) {
     if (!res || res.ok !== true) return;
     if (spotState === 'pending' && !('tap' in res) &&
@@ -724,6 +765,28 @@
   }
   function sendInputNow(payload, shotDelay) {
     var isType = !!(payload && payload.kind === 'type');
+    /* Ticket A4l: the spot as this action found it —
+       the settle report below pairs it with the spot
+       the action left behind. */
+    var spotBeforeTag = spotTag();
+    function reportSettle(res, failed) {
+      reportAction({ ev: 'input',
+        kind: payload && payload.kind,
+        tap: (payload && payload.tap) || null,
+        pt: (payload && payload.kind === 'click')
+          ? { x: payload.x, y: payload.y,
+              nw: payload.nw, nh: payload.nh }
+          : (payload && payload.kind === 'drag' &&
+             payload.path && payload.path[0])
+          ? { x: payload.path[0].x, y: payload.path[0].y,
+              nw: payload.nw, nh: payload.nh } : null,
+        len: isType ? (payload.text || '').length : null,
+        anchorSent: anchorTag(payload && payload.anchor),
+        ackOk: !!(res && res.ok),
+        ackAnchor: anchorTag(res && res.anchor),
+        failed: !!failed,
+        spotBefore: spotBeforeTag, spotNow: spotTag() });
+    }
     /* Ticket A4g: a REFUSED spot stops the type HERE —
        the visitor's latest tap verified no field, so
        there is nowhere honest to type. Nothing is
@@ -742,6 +805,9 @@
         'page — nothing was typed. Tap the field ' +
         'again, then type.';
       say(stickyErr);
+      reportAction({ ev: 'input', kind: payload.kind,
+        blocked: spotState, spotBefore: spotBeforeTag,
+        spotNow: spotTag() });
       return Promise.resolve({ ok: false });
     }
     if ((isType || (payload && payload.kind === 'key')) &&
@@ -750,6 +816,9 @@
         'first — your last tap didn\'t land in one, ' +
         'so nothing was typed.';
       say(stickyErr);
+      reportAction({ ev: 'input', kind: payload.kind,
+        blocked: spotState, spotBefore: spotBeforeTag,
+        spotNow: spotTag() });
       return Promise.resolve({ ok: false });
     }
     if ((isType || (payload && payload.kind === 'key')) &&
@@ -841,6 +910,7 @@
         stickyErr = (res && res.error) || "That didn't go through.";
         say(stickyErr);
       }
+      reportSettle(res, false);
       return res;
     }).catch(function () {
       settle();
@@ -857,6 +927,7 @@
         stickyErr = 'Connection hiccup — try again.';
       }
       say(stickyErr);
+      reportSettle(null, true);
       return { ok: false };
     });
   }
@@ -973,7 +1044,11 @@
     if (!driving || !ptrOn) return;
     press = { x: e.clientX, y: e.clientY, t: Date.now(),
               samples: [{ x: e.clientX, y: e.clientY, t: Date.now() }],
-              lastPush: Date.now() };
+              lastPush: Date.now(),
+              /* Ticket A4l: the spot this press retires,
+                 for its self-report. */
+              spotBefore: { state: spotState,
+                            anchor: anchorTag(typeAnchor) } };
     /* Ticket A4j: a recorded press retires the settled
        spot NOW — the visitor's hand has chosen a new
        target, and until this press dispatches and its
@@ -991,6 +1066,15 @@
       var pDown = toNatural(e.clientX, e.clientY, fDown, true);
       if (pDown) notePtr(pDown.x, pDown.y);
     }
+    /* Ticket A4l: a recorded press announces itself —
+       a drill step whose type arrives with NO press
+       report before it is a press that never recorded,
+       which no log anywhere can distinguish from a
+       dispatched press today. */
+    reportAction({ ev: 'press-down',
+      spotBefore: press.spotBefore, spotNow: spotTag(),
+      pt: (fDown && typeof pDown !== 'undefined' && pDown)
+        ? { x: pDown.x, y: pDown.y } : null });
     e.preventDefault();
   });
   shot.addEventListener('pointermove', function (e) {
@@ -1025,8 +1109,21 @@
        press retired the old spot at pointerdown and
        never earned a new one, so the next type blocks
        in the window instead of riding the old field. */
-    if (!driving || !ptrOn || cancelled) return;
-    var f = frame(); if (!f) return;
+    if (!driving || !ptrOn || cancelled) {
+      /* Ticket A4l: a press that dies wordlessly still
+         leaves a word in the log. */
+      reportAction({ ev: 'press', cls: 'dead',
+        why: cancelled ? 'cancelled' : 'state',
+        spotBefore: p.spotBefore, spotNow: spotTag() });
+      return;
+    }
+    var f = frame();
+    if (!f) {
+      reportAction({ ev: 'press', cls: 'dead',
+        why: 'noframe', spotBefore: p.spotBefore,
+        spotNow: spotTag() });
+      return;
+    }
     var dx = e.clientX - p.x, dy = e.clientY - p.y;
     var disp = Math.sqrt(dx * dx + dy * dy);
     var dur = Date.now() - p.t;
@@ -1046,6 +1143,10 @@
           pressBackups[clickPayload.tap] = spotBackup;
         }
         spotBackup = null;
+      } else {
+        reportAction({ ev: 'press', cls: 'dead',
+          why: 'letterbox', spotBefore: p.spotBefore,
+          spotNow: spotTag() });
       }
       return;
     }
