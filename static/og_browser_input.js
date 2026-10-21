@@ -71,44 +71,43 @@
   var API = (typeof API_URL !== 'undefined' && API_URL)
     ? API_URL : window.location.origin;
 
-  /* --- the two toggle icons (inserted before Hand back, so the
-     full-screen bar reads: End task · ⌨️ · 👆 ····· Hand back) --- */
-  var kbBtn = document.createElement('button');
-  kbBtn.type = 'button'; kbBtn.id = 'ogKbBtn';
-  kbBtn.className = 'og-icon-btn'; kbBtn.textContent = '⌨️';
-  kbBtn.title = 'Keyboard'; kbBtn.setAttribute('aria-label', 'Keyboard');
-  kbBtn.setAttribute('aria-pressed', 'false'); kbBtn.hidden = true;
-  var ptrBtn = document.createElement('button');
-  ptrBtn.type = 'button'; ptrBtn.id = 'ogPtrBtn';
-  ptrBtn.className = 'og-icon-btn'; ptrBtn.textContent = '👆';
-  ptrBtn.title = 'Tap & drag'; ptrBtn.setAttribute('aria-label', 'Tap and drag');
-  ptrBtn.setAttribute('aria-pressed', 'false'); ptrBtn.hidden = true;
-  actions.insertBefore(kbBtn, handBtn);
-  actions.insertBefore(ptrBtn, handBtn);
-
-  /* --- the keyboard strip: appears ONLY while ⌨️ is on --- */
-  var strip = document.createElement('div');
-  strip.id = 'ogKbStrip'; strip.hidden = true;
-  strip.innerHTML =
-    '<input id="ogKbText" type="text" autocomplete="off" ' +
-    'autocapitalize="off" autocorrect="off" spellcheck="false" ' +
-    'placeholder="Type here — it goes into the page">' +
-    '<button type="button" id="ogKbSend">Type it</button>' +
-    '<button type="button" id="ogKbEnter">↵ Enter</button>' +
-    '<button type="button" id="ogKbBack">⌫</button>';
-  panel.insertBefore(strip, actions);
+  /* --- Ticket A5: NO toggle icons, NO keyboard strip.
+     Brent (2026-10-20): once the visitor is driving, the
+     mouse (tap/drag) and the keyboard are LIVE — there is
+     no Keyboard enable button and no pointer-mode button
+     to tap first. The pointer turns itself on with the
+     confirmed control flip (see reconcile); typing rides
+     ONE invisible capture field (below): while the
+     visitor drives it holds focus and everything typed
+     in it flushes straight into the page (flushCapture).
+     The capture keeps the strip field's id (ogKbText) —
+     it IS the typing field now, not a box in a strip.
+     KEYBOARD UP = page + keyboard ONLY: while the
+     capture holds focus the panel carries og-kb-up and
+     the CSS steps the bar, the header and the note off
+     screen (og_browser_input.css). --- */
+  var kbText = document.createElement('input');
+  kbText.type = 'text'; kbText.id = 'ogKbText';
+  kbText.className = 'og-kb-cap';
+  kbText.setAttribute('autocomplete', 'off');
+  kbText.setAttribute('autocapitalize', 'off');
+  kbText.setAttribute('autocorrect', 'off');
+  kbText.setAttribute('spellcheck', 'false');
+  kbText.setAttribute('aria-label',
+    'Type here — it goes into the page');
+  panel.appendChild(kbText);
   var msg = document.createElement('p');
   msg.id = 'ogInputMsg'; msg.hidden = true;
   panel.insertBefore(msg, actions);
-  var kbText = $('ogKbText');
 
   /* --- Round 321 Ticket A: the window's own chrome.
      A header (state + site + minutes left, plus the ✕
      that parks the window back to the docked panel) and
-     a bottom bar that carries Stop task, the ⌨️/👆
-     toggles (moved here from the legacy actions row —
-     same buttons, same handlers), a fit toggle, and
-     Take control / Hand back. Both are ordinary panel
+     a bottom bar that carries Stop task, a fit toggle,
+     and Take control / Hand back — real icon+label
+     buttons (Ticket N). Ticket A5: the bar carries NO
+     keyboard/pointer toggles — while driving, both are
+     simply live. Both chrome rows are ordinary panel
      children; the og-r43-full CSS lays the panel out as
      a column and orders them (header first, bar last),
      and hides the legacy actions row / Open button /
@@ -144,15 +143,21 @@
   winTakeBtn.textContent = 'Take control';
   winTakeBtn.setAttribute('aria-label', 'Take control');
   bar.appendChild(stopBtn);
-  bar.appendChild(kbBtn);   /* moves the ⌨️ toggle into the bar */
-  bar.appendChild(ptrBtn);  /* moves the 👆 toggle into the bar */
   bar.appendChild(fitBtn);
   bar.appendChild(winTakeBtn);
   panel.appendChild(bar);
   var endTaskBtn = $('browserEndTaskBtn'),
       openBtn = $('browserOpenBtn'), pageCloseBtn = $('browserCloseBtn');
 
-  var driving = false, kbOn = false, ptrOn = false;
+  var driving = false, ptrOn = false;
+  /* Ticket A5: the keyboard latch. kbWanted arms when
+     control confirms (and re-arms when a tap verifies a
+     field — applySpotAck); the visitor dismissing the
+     keyboard (capture blur) disarms it, and reconcile
+     never re-raises it unasked. kbBusy serializes
+     capture flushes the way the strip's sends were
+     serialized by sendInput's own queue. */
+  var kbWanted = false, kbBusy = false;
   /* Round 61: a takeover the visitor has ASKED for (Take
      control tapped) whose server confirmation has not landed
      yet. The full-screen bar must stay whole on the intent
@@ -274,6 +279,11 @@
     panel.style.top = '';
     document.body.classList.remove('og-r43-lock');
     fullApplied = false;
+    /* Ticket N: the page script hears the park so its
+       card can collapse back to card size (its expanded
+       state existed only to reach this window). */
+    try { window.dispatchEvent(new Event('og:winparked')); }
+    catch (e) {}
     /* Ticket A4: the marker lives only while the window
        is up — parking the window hides it (its position
        is kept, so a quick reopen within the staleness
@@ -297,9 +307,31 @@
     panel.style.height = vv.height + 'px';
     panel.style.top = vv.offsetTop + 'px';
   }
+  /* Ticket A5: the keyboard-up face follows the REAL
+     keyboard — on the viewport's OWN motion only. If
+     the visitor dismisses the OS keyboard under a
+     still-focused capture, the visual viewport grows
+     back and the bar returns with it (kbUpShow stepping
+     down also blurs the capture, which disarms the
+     latch: a dismissed keyboard stays dismissed until
+     the next field tap). This must NOT ride fitWin's
+     sizing calls: applyFull sizes the window in the
+     same task as the control flip's focus, before the
+     keyboard has begun to rise — reading the viewport
+     then would step the just-raised keyboard straight
+     back down. */
+  function kbFit() {
+    if (!fullApplied) return;
+    var vv = window.visualViewport;
+    if (!vv) return;
+    if (document.activeElement === kbText) {
+      kbUpShow(window.innerHeight - vv.height > 80);
+    }
+  }
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', fitWin);
     window.visualViewport.addEventListener('scroll', fitWin);
+    window.visualViewport.addEventListener('resize', kbFit);
   }
 
   /* --- Round 321 Ticket A: the still's frame loop while
@@ -499,25 +531,43 @@
     }
   }
 
-  /* --- toggles --- */
-  function setKb(on) {
-    kbOn = on;
-    kbBtn.classList.toggle('og-on', on);
-    kbBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    strip.hidden = !on;
-    if (on) { try { kbText.focus(); } catch (e) {} }
-    else clearSay();
-  }
+  /* --- Ticket A5: input liveness (the toggles are gone) ---
+     setPtr is driven by reconcile alone now: the pointer
+     turns on with the confirmed driving flip and off when
+     driving ends — the visitor never enables it. The
+     keyboard side is the capture: focusCapture raises it
+     while the latch is armed; kbUpShow carries the
+     page+keyboard-only state (the og-kb-up class) and
+     stepping it down blurs the capture so nothing keeps
+     typing into a page the visitor stopped driving. */
   function setPtr(on) {
+    if (on === ptrOn) return;
     ptrOn = on;
-    ptrBtn.classList.toggle('og-on', on);
-    ptrBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     shot.classList.toggle('og-ptr-on', on);
-    if (on) say('👆 Tap the picture to click. Swipe to scroll. Hold and drag to drag.');
+    if (on) say('👆 Tap the picture to click. Swipe to scroll. Hold and drag to drag. Tap a field and type — the keyboard is live.');
     else clearSay();
   }
-  kbBtn.addEventListener('click', function () { setKb(!kbOn); });
-  ptrBtn.addEventListener('click', function () { setPtr(!ptrOn); });
+  function focusCapture() {
+    if (!kbWanted || !driving) return;
+    try { kbText.focus({ preventScroll: true }); }
+    catch (e) { try { kbText.focus(); } catch (e2) {} }
+  }
+  function kbUpShow(on) {
+    panel.classList.toggle('og-kb-up', !!on);
+    if (!on && document.activeElement === kbText) {
+      try { kbText.blur(); } catch (e) {}
+    }
+  }
+  /* Gate/debug handle (the OGSTILL precedent): the A5
+     liveness vitals, so a drill can prove the pointer
+     and keyboard came up with ZERO enable taps. */
+  window.OGA5 = {
+    state: function () {
+      return { ptrOn: ptrOn, kbWanted: kbWanted,
+               kbUp: panel.classList.contains('og-kb-up'),
+               kbFocused: document.activeElement === kbText };
+    }
+  };
 
   /* --- input plumbing --- */
   /* Ticket A4b: a FAILED input's word is STICKY. sendInput
@@ -533,7 +583,7 @@
      reconcile's routine clears respect it, and only a
      SUCCESSFUL input (or the session's confirmed end)
      clears it. The typed text itself was never cleared
-     on failure (typeFromField) — now the reason survives
+     on failure (flushCapture) — now the reason survives
      alongside it, so a type across a flap either lands
      or visibly fails with the text still in the bar. */
   var stickyErr = '';
@@ -728,11 +778,22 @@
       }
       if (res.anchor) {
         typeAnchor = res.anchor; spotState = 'armed';
+        /* Ticket A5: an anchor exists ONLY when the tap
+           verified a text field (the mint's rule) — so an
+           arming ack is exactly "the visitor tapped a
+           field": arm the keyboard latch and raise it,
+           and typing goes straight into that field. A
+           button/link tap earns no anchor and raises
+           nothing. */
+        kbWanted = true;
+        focusCapture();
       } else {
         typeAnchor = null; spotState = 'refused';
       }
     } else if (res.anchor) {
       typeAnchor = res.anchor; spotState = 'armed';
+      kbWanted = true;
+      focusCapture();
     }
   }
   var spotKey = '', spotUrl = '';
@@ -747,7 +808,6 @@
     }
     if (url) spotUrl = url;
   }
-  var typeBtn = $('ogKbSend');
   function sendInput(payload, shotDelay) {
     /* Ticket A4g: every press carries its sequence
        number, stamped HERE — at call time, in gesture
@@ -790,7 +850,7 @@
     /* Ticket A4g: a REFUSED spot stops the type HERE —
        the visitor's latest tap verified no field, so
        there is nowhere honest to type. Nothing is
-       sent, the box keeps its text (typeFromField only
+       sent, the box keeps its text (flushCapture only
        clears on an ok answer), and the word — sticky,
        like any refused input's — says what to do. */
     if ((isType || (payload && payload.kind === 'key')) &&
@@ -828,10 +888,11 @@
     }
     var ctl = null, slowTimer = null, deadTimer = null;
     if (isType) {
-      if (typeBtn) {
-        typeBtn.disabled = true;
-        typeBtn.textContent = 'Typing…';
-      }
+      /* Ticket A5: the strip's send button carried the
+         busy face ('Typing…'); the capture carries it
+         now (aria-busy — the note line below carries
+         the visible word, as it always did). */
+      kbText.setAttribute('aria-busy', 'true');
       if (!stickyErr) say('✍️ Typing into the page…');
       try {
         if (window.AbortController) {
@@ -851,10 +912,7 @@
     function settle() {
       if (slowTimer) window.clearTimeout(slowTimer);
       if (deadTimer) window.clearTimeout(deadTimer);
-      if (isType && typeBtn) {
-        typeBtn.disabled = false;
-        typeBtn.textContent = 'Type it';
-      }
+      if (isType) kbText.removeAttribute('aria-busy');
     }
     return fetch(API + '/browser/input', {
       method: 'POST',
@@ -971,26 +1029,66 @@
     } catch (e) {}
   }
 
-  /* --- keyboard strip actions --- */
-  function typeFromField() {
+  /* --- Ticket A5: typing goes straight into the page ---
+     The capture's words flush as ONE type through the
+     same serialized sendInput the strip used, with the
+     strip's contract kept: the field clears ONLY when
+     the type lands (a refusal keeps the text and the
+     sticky word says why — A4b/A4e). Enter flushes; an
+     Enter on an empty capture presses the page's own
+     Enter. A Backspace on an empty capture deletes in
+     the page; inside the capture it just edits words
+     not yet flushed. A short idle debounce flushes too,
+     so text lands as it is typed, not only on Enter.
+     The flush re-focuses the capture (focus never
+     actually leaves on a send, but a platform that
+     dropped it mid-send gets it back while the latch
+     is armed). */
+  var kbFlushTimer = null;
+  function flushCapture(force) {
+    if (kbBusy) return;
     var text = kbText.value;
-    if (!text) { say('Type something first.'); return; }
+    if (!text) {
+      if (force) sendInput({ kind: 'key', key: 'enter' }, 700);
+      return;
+    }
+    kbBusy = true;
     sendInput({ kind: 'type', text: text }, 300).then(function (res) {
+      kbBusy = false;
       if (res && res.ok) {
         kbText.value = '';
-        try { kbText.focus(); } catch (e) {}
+        focusCapture();
       }
-    });
+    }, function () { kbBusy = false; });
   }
-  $('ogKbSend').addEventListener('click', typeFromField);
+  kbText.addEventListener('input', function () {
+    if (kbFlushTimer) window.clearTimeout(kbFlushTimer);
+    kbFlushTimer = window.setTimeout(function () {
+      kbFlushTimer = null;
+      flushCapture(false);
+    }, 800);
+  });
   kbText.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); typeFromField(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (kbFlushTimer) {
+        window.clearTimeout(kbFlushTimer);
+        kbFlushTimer = null;
+      }
+      flushCapture(true);
+    } else if (e.key === 'Backspace' && !kbText.value) {
+      sendInput({ kind: 'key', key: 'backspace' }, 250);
+    }
   });
-  $('ogKbEnter').addEventListener('click', function () {
-    sendInput({ kind: 'key', key: 'enter' }, 700);
-  });
-  $('ogKbBack').addEventListener('click', function () {
-    sendInput({ kind: 'key', key: 'backspace' }, 250);
+  kbText.addEventListener('focus', function () { kbUpShow(true); });
+  kbText.addEventListener('blur', function () {
+    /* The visitor put the keyboard away (or the window
+       stepped the capture down): the latch disarms, so
+       reconcile never re-raises it unasked — the next
+       raise is a field tap's (applySpotAck) or a fresh
+       control flip's. */
+    kbWanted = false;
+    kbUpShow(false);
   });
 
   /* --- pointer: tap = click, hold-and-move = real mouse drag ---
@@ -1691,7 +1789,8 @@
          no state outlives the session it points at. */
       takeAsked = false;
       winWanted = false;
-      if (kbOn) setKb(false);
+      kbWanted = false;
+      kbUpShow(false);
       if (ptrOn) setPtr(false);
       stickyErr = '';
       /* Ticket A4g: the writing spot dies with the
@@ -1826,6 +1925,15 @@
            — the server fits the page itself to it). */
         assertFitWidth();
         viewOwed = true;
+        /* Ticket A5: the flip arms the keyboard latch and
+           raises the capture — driving means the keyboard
+           is live from the first moment, no enable tap.
+           (A platform that refuses a programmatic raise
+           still gets it on the first field tap —
+           applySpotAck focuses from inside the tap's own
+           resolution chain.) */
+        kbWanted = true;
+        focusCapture();
       }
     }
     if (d && viewOwed) {
@@ -1837,22 +1945,17 @@
       viewOwed = false;
       sendClientView();
     }
-    /* Round 61: the toggles follow the takeover INTENT too.
-       They used to be fail-closed on the confirmed flip
-       alone, so an unconfirmed take left the full-screen
-       bar carrying only End task (Brent's 2026-10-10
-       photo). While a take the visitor asked for is still
-       unconfirmed, the buttons stay up; an input the
-       server refuses is answered in words by sendInput,
-       never silently — and Hand back always steps back
-       out. (Ticket A: the toggles live in the window's
-       bottom bar now, so intent alone no longer needs
-       the page's full-screen class to keep them up.) */
-    var showToggles = d || takeAsked;
-    kbBtn.hidden = !showToggles;
-    ptrBtn.hidden = !showToggles;
+    /* Ticket A5: there are no toggles to show or hide —
+       input liveness IS the driving state. The pointer
+       turns on with the confirmed flip (setPtr is
+       idempotent; the flip block above armed the
+       keyboard latch). While a take the visitor asked
+       for is still unconfirmed, an input the server
+       refuses is answered in words by sendInput, never
+       silently — and Hand back always steps back out. */
     if (d) {
       takeAsked = false;
+      setPtr(true);
       applyFull();
     } else if (takeAsked) {
       if (winWanted) applyFull();
@@ -1864,23 +1967,26 @@
       } else if (!takeWarned) {
         takeWarned = true;
         say("Take control didn't go through — OG is still " +
-            'driving. The buttons stay here; tap Hand back ' +
-            'to step out, or try Take control again.');
+            'driving. Tap Hand back to step out, or try ' +
+            'Take control again.');
       }
     } else if (winWanted) {
-      /* Watching OG drive, full-screen: the input
-         toggles retire (the server refuses input while
-         OG drives anyway) but the window stays up.
+      /* Watching OG drive, full-screen: input retires
+         (the server refuses input while OG drives
+         anyway) but the window stays up. The keyboard
+         latch disarms and the capture steps down.
          Ticket A4b: the routine clear is guarded — a
          failed input's word survives the mode change
          that follows it (the ogtest11 erasure). */
-      if (kbOn) setKb(false);
-      if (ptrOn) setPtr(false);
+      setPtr(false);
+      kbWanted = false;
+      kbUpShow(false);
       clearSay();
       applyFull();
     } else {
-      if (kbOn) setKb(false);
-      if (ptrOn) setPtr(false);
+      setPtr(false);
+      kbWanted = false;
+      kbUpShow(false);
       clearSay();
       removeFull();
     }
@@ -2035,7 +2141,8 @@
     takeAsked = false;
     handAsked = false;
     stickyErr = '';
-    if (kbOn) setKb(false);
+    kbWanted = false;
+    kbUpShow(false);
     if (ptrOn) setPtr(false);
     say('');
     removeFull();
