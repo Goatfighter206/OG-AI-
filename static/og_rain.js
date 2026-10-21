@@ -14,6 +14,20 @@
  * COLOR — Brent's black + gold. Trails run deep amber to
  * antique gold (#6e5510 -> #d4af37); the head of each fall
  * is pale gold (#ffdf8a). No green exists in this file.
+ * GLOW ROUND cand-h4 (Ticket H2, Brent's look call
+ * 2026-10-21: "glow neon gold and a little brighter"):
+ * the palette takes a modest lift (brighter stops, alpha
+ * caps up a touch — same antique-gold family, no hue
+ * change) and every glyph wears a neon halo. The halo is
+ * NOT a per-glyph shadowBlur in the hot loop: each glyph
+ * is pre-rendered ONCE per quantized trail step into a
+ * small sprite (shadow baked in at build time), and the
+ * frame loop blits sprites with drawImage — cheaper than
+ * the fillText it replaces, and the shadow cost is paid
+ * ~340 times at build, not ~300 times per frame. If
+ * sprite building ever fails, the loop falls back to the
+ * plain fillText path. Glyphs, rhythm, density, the veil
+ * and the kill switch are untouched.
  *
  * RHYTHM — Matrix rain is a uniform wall rushing at one
  * speed. OG's falls clock in like a crew: columns arrive
@@ -75,11 +89,14 @@
                    GLYPH_GROUPS.shapes;
 
   /* ---------------- palette (black + gold, no green) ---- */
-  var HEAD_RGB  = [255, 223, 138];  /* pale gold head      */
-  var TRAIL_HI  = [212, 175, 55];   /* antique gold #d4af37 */
-  var TRAIL_LO  = [110, 85, 16];    /* deep amber  #6e5510  */
-  var HEAD_ALPHA = 0.78;           /* caps, before canvas  */
-  var TRAIL_ALPHA = 0.52;          /* opacity + mode mult  */
+  /* cand-h4 lift: every stop brighter, same family —
+     head was [255,223,138], hi [212,175,55], lo [110,85,16],
+     alphas were 0.78 / 0.52. */
+  var HEAD_RGB  = [255, 232, 160];  /* pale gold head, lifted */
+  var TRAIL_HI  = [230, 192, 70];   /* antique gold, lifted   */
+  var TRAIL_LO  = [130, 102, 24];   /* deep amber, lifted     */
+  var HEAD_ALPHA = 0.85;           /* caps, before canvas  */
+  var TRAIL_ALPHA = 0.57;          /* opacity + mode mult  */
   var CANVAS_OPACITY_NIGHT = 0.85;
   var CANVAS_OPACITY_DAY = 0.30;
 
@@ -192,6 +209,7 @@
     W = window.innerWidth || 0;
     H = window.innerHeight || 0;
     var dpr = Math.min(window.devicePixelRatio || 1, profile.dprCap);
+    if (dpr !== curDpr) spriteCache = {};
     curDpr = dpr;
     canvas.width = Math.max(1, Math.round(W * dpr));
     canvas.height = Math.max(1, Math.round(H * dpr));
@@ -202,6 +220,61 @@
   function rgba(rgb, a) {
     return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' +
            Math.max(0, Math.min(1, a)).toFixed(3) + ')';
+  }
+
+  /* ---------------- neon glow sprites (cand-h4) ----------
+     Each glyph is pre-rendered once per quantized color
+     step into a small offscreen canvas with its halo
+     baked in (shadowBlur paid at build time only). The
+     frame loop blits with drawImage + globalAlpha, so the
+     continuous alpha curve (pow falloff x swell x mode)
+     stays exact while color rides the nearest step. Any
+     failure flips spritesOff and the loop uses the plain
+     fillText path below — the glow can never break the
+     rain. */
+  var GLOW_STEPS = 12;            /* quantized trail colors */
+  var GLOW_PAD = 11;              /* css px of halo room    */
+  var SPR_W = 36;                 /* sprite box, css px     */
+  var SPR_H = CELL_H + 2 * GLOW_PAD;
+  var GLOW_BLUR = 7;              /* css px, scaled by dpr  */
+  var GLOW_PASSES = 3;            /* halo strength at build */
+  var spriteCache = {};
+  var spritesOff = false;
+
+  function stepRgb(step) {
+    if (step >= GLOW_STEPS) return HEAD_RGB;
+    var u = GLOW_STEPS <= 1 ? 0 : step / (GLOW_STEPS - 1);
+    return [
+      Math.round(TRAIL_LO[0] + (TRAIL_HI[0] - TRAIL_LO[0]) * u),
+      Math.round(TRAIL_LO[1] + (TRAIL_HI[1] - TRAIL_LO[1]) * u),
+      Math.round(TRAIL_LO[2] + (TRAIL_HI[2] - TRAIL_LO[2]) * u)
+    ];
+  }
+
+  function spriteFor(ch, step) {
+    var key = ch + '|' + step;
+    var cv = spriteCache[key];
+    if (cv) return cv;
+    try {
+      var s = Math.max(1, curDpr);
+      cv = document.createElement('canvas');
+      cv.width = Math.max(2, Math.round(SPR_W * s));
+      cv.height = Math.max(2, Math.round(SPR_H * s));
+      var g = cv.getContext('2d');
+      if (!g) { spritesOff = true; return null; }
+      var rgb = stepRgb(step);
+      g.font = FONT.replace('15px', (15 * s) + 'px');
+      g.textAlign = 'center';
+      g.textBaseline = 'top';
+      g.shadowColor = rgba(rgb, 0.85);
+      g.shadowBlur = GLOW_BLUR * s;
+      g.fillStyle = rgba(rgb, 1);
+      for (var p = 0; p < GLOW_PASSES; p++) {
+        g.fillText(ch, cv.width / 2, GLOW_PAD * s);
+      }
+    } catch (e) { spritesOff = true; return null; }
+    spriteCache[key] = cv;
+    return cv;
   }
 
   function drawFrame(nowMs) {
@@ -221,19 +294,32 @@
         var gy = col.y - i * CELL_H;
         if (gy < -CELL_H || gy > H) continue;
         var t = col.len <= 1 ? 0 : i / (col.len - 1);
-        var a, rgb;
+        var a, rgb, step;
         if (i === 0) {
           a = HEAD_ALPHA * colSwell * mult;
           rgb = HEAD_RGB;
+          step = GLOW_STEPS;
         } else {
-          a = TRAIL_ALPHA * Math.pow(1 - t, 1.6) * colSwell * mult;
+          var u = 1 - t;
+          a = TRAIL_ALPHA * Math.pow(u, 1.6) * colSwell * mult;
           rgb = [
-            Math.round(TRAIL_LO[0] + (TRAIL_HI[0] - TRAIL_LO[0]) * (1 - t)),
-            Math.round(TRAIL_LO[1] + (TRAIL_HI[1] - TRAIL_LO[1]) * (1 - t)),
-            Math.round(TRAIL_LO[2] + (TRAIL_HI[2] - TRAIL_LO[2]) * (1 - t))
+            Math.round(TRAIL_LO[0] + (TRAIL_HI[0] - TRAIL_LO[0]) * u),
+            Math.round(TRAIL_LO[1] + (TRAIL_HI[1] - TRAIL_LO[1]) * u),
+            Math.round(TRAIL_LO[2] + (TRAIL_HI[2] - TRAIL_LO[2]) * u)
           ];
+          step = Math.round(u * (GLOW_STEPS - 1));
         }
         if (a <= 0.004) continue;
+        if (!spritesOff) {
+          var spr = spriteFor(col.glyphs[i], step);
+          if (spr) {
+            ctx.globalAlpha = a;
+            ctx.drawImage(spr, col.x - SPR_W / 2, gy - GLOW_PAD,
+                          SPR_W, SPR_H);
+            ctx.globalAlpha = 1;
+            continue;
+          }
+        }
         ctx.fillStyle = rgba(rgb, a);
         ctx.fillText(col.glyphs[i], col.x, gy);
       }
@@ -419,7 +505,9 @@
       head: HEAD_RGB, trailHi: TRAIL_HI, trailLo: TRAIL_LO,
       headAlpha: HEAD_ALPHA, trailAlpha: TRAIL_ALPHA,
       canvasOpacityNight: CANVAS_OPACITY_NIGHT,
-      canvasOpacityDay: CANVAS_OPACITY_DAY
+      canvasOpacityDay: CANVAS_OPACITY_DAY,
+      glow: { steps: GLOW_STEPS, pad: GLOW_PAD,
+              blur: GLOW_BLUR, passes: GLOW_PASSES }
     },
     profile: OG_RAIN_PROFILE,
     setMode: setMode,
@@ -436,6 +524,7 @@
         trimmed: profile.trimmed,
         fps: profile.fps,
         columns: columns.length,
+        sprites: Object.keys(spriteCache).length,
         frames: frames,
         canvas: !!canvas,
         killed: killed()
