@@ -3922,6 +3922,42 @@ def register_browser_routes(app):
         await asyncio.to_thread(_set_session, uid, rec)
         return out
 
+    @app.post("/browser/report")
+    async def browser_input_report(request: Request):
+        """Ticket A4l: the window's per-action self-report
+        (see og_browser_input.js) — a pure log sink. The
+        client reports each input action's press outcome,
+        the spot before/after, and the ack's anchor echo;
+        the line lands in the server log under the
+        visitor's uid, so a drill's log names what the
+        window believed at every step — the evidence the
+        body-less access logs could never give ogtest21.
+        Descriptors and lengths only: the client never
+        sends a typed value. No session state is read or
+        written and nothing is stored (the log line IS
+        the record and expires with log retention); the
+        answer is always ok, so a report can never
+        disturb the window. Temporary by design: delete
+        with the client reporter once the mis-land
+        mechanism is convicted in production."""
+        if not enabled():
+            return JSONResponse({"error": "not found"},
+                                status_code=404)
+        uid = _route_uid(request)
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        try:
+            line = json.dumps(payload, default=str)[:2000]
+        except Exception:
+            line = "<unserializable>"
+        logger.info("og_input_report uid=%s %s",
+                    uid or "-", line)
+        return {"ok": True}
+
     @app.post("/browser/end")
     async def browser_end(request: Request):
         if not enabled():
