@@ -358,6 +358,7 @@ checkMe();
 
 <div id="browserPanel" class="og-browser-panel" hidden>
 <button id="browserCloseBtn" class="og-browser-x" type="button" aria-label="Close window" title="Close window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+<div class="og-card-head" id="browserCardHead"><span class="og-card-head-ico" aria-hidden="true">🌐</span><span class="og-card-head-main"><span class="og-card-head-title">Browser</span><span class="og-card-head-status" id="browserCardStatus">OG is browsing</span></span></div>
 <div class="og-browser-view" id="browserView">
 <div class="og-browser-face" id="browserViewFace">🖼 Getting the picture…</div>
 <iframe id="browserFrame" title="OG browser — live view"></iframe>
@@ -1137,7 +1138,7 @@ if (mirror) mirror.textContent = text;
 if (ts && window.MutationObserver) new MutationObserver(syncToken).observe(ts, { childList: true, characterData: true, subtree: true });
 syncToken();
 var area = $('messagesArea'), empty = $('emptyState');
-function syncEmpty() { if (empty) empty.hidden = area.querySelector('.message') !== null; }
+function syncEmpty() { if (empty) empty.hidden = area.querySelector('.message') !== null; if (empty) document.body.classList.toggle('og-hero-on', !empty.hidden); }
 if (area && window.MutationObserver) new MutationObserver(syncEmpty).observe(area, { childList: true });
 syncEmpty();
 var input = $('messageInput'), send = $('sendBtn');
@@ -1520,6 +1521,44 @@ yesBtn = $('approveYesBtn'), noBtn = $('approveNoBtn'),
 alwaysBtn = $('approveAlwaysBtn'),
 cardOutcome = $('approveOutcome');
 if (!menuBtn || !panel || !frame) return;
+/* Ticket N: the panel is a CARD IN THE THREAD while a
+session runs — it moves into the messages area when the
+session starts and returns to its home slot (here,
+before the approve card) when the session ends. Its
+header status line is painted from the same status
+poll as everything else. The input layer's own
+reparenting (to <body> while the window is full) is
+untouched: it records whatever parent the panel has
+when the window opens, and its park returns the panel
+to that parent — the thread, mid-session. */
+var cardStatus = $('browserCardStatus');
+var panelHomeParent = panel.parentNode,
+    panelHomeNext = panel.nextSibling;
+function panelToThread() {
+var ma = $('messagesArea');
+if (ma && panel.parentNode !== ma) ma.appendChild(panel);
+}
+function panelToHome() {
+if (!panelHomeParent || panel.parentNode === panelHomeParent) return;
+if (panel.classList.contains('og-r43-full')) return;
+if (panelHomeNext && panelHomeNext.parentNode === panelHomeParent) panelHomeParent.insertBefore(panel, panelHomeNext);
+else panelHomeParent.appendChild(panel);
+}
+function paintCardStatus(st) {
+if (!cardStatus || !st) return;
+var host = '';
+try { host = st.page_url ? new URL(st.page_url).hostname : ''; } catch (e) {}
+var what = st.page_title || host || 'the page';
+if (!st.active && st.phase === 'starting') cardStatus.textContent = 'Starting the browser…';
+else if (st.loading_host) cardStatus.textContent = 'Opening ' + st.loading_host + '…';
+else if (st.control === 'visitor') cardStatus.textContent = "You're driving — " + what;
+else if (st.frame_ready || st.phase === 'ready') cardStatus.textContent = 'Working — ' + what;
+else cardStatus.textContent = 'Browsing — ' + what;
+}
+/* Ticket N: when the input layer parks the full window,
+the card collapses back to card size — its expanded
+state existed only to reach the window. */
+window.addEventListener('og:winparked', function () { expanded = false; renderPanel(); });
 var lastSrc = '', active = false, wasActive = false;
 var driving = false, viewerUrl = '';
 var expanded = false, dismissedFor = null, lastKey = '', sessionKey = '';
@@ -1558,13 +1597,13 @@ handed a frame that finished loading (assigning src
 directly aborted slow /browser/screenshot loads
 mid-flight, freezing the still on an old frame). */
 window.ogStillLoad(function (ok) {
-if (ok) { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. Driving? Tap 👆 Tap, then tap the picture to click; ⌨️ Keyboard types.' : ''); }
+if (ok) { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. Driving? Tap the picture to click; tap a field and type — the keyboard is live.' : ''); }
 else note("Still view couldn't load a picture right now — the Open browser button below is your reliable window.");
 });
 return;
 }
 shot.onerror = function () { note("Still view couldn't load a picture right now — the Open browser button below is your reliable window."); };
-shot.onload = function () { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. Driving? Tap 👆 Tap, then tap the picture to click; ⌨️ Keyboard types.' : ''); };
+shot.onload = function () { viewLive(true); note(viewMode === 'still' ? '🖼 Still view — a fresh picture every few seconds. Driving? Tap the picture to click; tap a field and type — the keyboard is live.' : ''); };
 shot.src = API_URL + '/browser/screenshot?ts=' + Date.now();
 }
 function setMode(mode, auto) {
@@ -1626,11 +1665,12 @@ cardExp.textContent = '⏳ Expires in ~' + pa.minutes_left + ' min. You can also
 }
 function refresh() {
 fetch(API_URL + '/browser/status').then(function (r) { return r.json(); }).then(function (st) {
-if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
+if (!st || !st.enabled) { menuBtn.hidden = true; panel.hidden = true; active = false; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); panelToHome(); if (card) card.hidden = true; if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; } return; }
 menuBtn.hidden = false;
 active = !!st.active;
+paintCardStatus(st);
 renderPending(st.pending_action || null);
-if (!active) { if (st.phase === 'starting') { panel.hidden = false; viewLive(false); return; } panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
+if (!active) { if (st.phase === 'starting') { panelToThread(); panel.hidden = false; viewLive(false); return; } panel.hidden = true; wasActive = false; driving = false; viewerUrl = ''; sessionKey = ''; lastKey = ''; expanded = false; fullScreen = false; fsConfirmed = false; dismissedFor = null; renderPanel(); panelToHome(); if (viewMode === 'still') setMode('live', false); if (lastSrc) { frame.src = 'about:blank'; lastSrc = ''; viewLive(false); } return; }
 driving = st.control === 'visitor';
 if (driving) fsConfirmed = true;
 else if (fullScreen && fsConfirmed) { fullScreen = false; fsConfirmed = false; }
@@ -1639,6 +1679,7 @@ if (sessionKey && sessionKey !== lastKey) { lastKey = sessionKey; if (sessionKey
 renderPanel();
 if (sessionKey && sessionKey === dismissedFor) { panel.hidden = true; }
 else {
+panelToThread();
 panel.hidden = false;
 if (!wasActive) setTimeout(function () { try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }, 350);
 wasActive = true;
@@ -2103,16 +2144,17 @@ paint();
 <link rel="stylesheet" href="/static/og_library.css?v=98">
 <link rel="stylesheet" href="/static/og_store.css?v=98">
 <link rel="stylesheet" href="/static/og_notification_settings.css?v=98">
-<link rel="stylesheet" href="/static/og_browser_input.css?v=110">
+<link rel="stylesheet" href="/static/og_browser_input.css?v=111">
 <link rel="stylesheet" href="/static/og_shell.css?v=98">
 <link rel="stylesheet" href="/static/og_tokens.css?v=98">
 <link rel="stylesheet" href="/static/og_dashboards.css?v=2">
 <link rel="stylesheet" href="/static/og_markets.css?v=1">
+<link rel="stylesheet" href="/static/og_look.css?v=1">
 <script src="/static/og_connections.js?v=98"></script>
 <script src="/static/og_library.js?v=98"></script>
 <script src="/static/og_store.js?v=98"></script>
 <script src="/static/og_notification_settings.js?v=98"></script>
-<script src="/static/og_browser_input.js?v=110"></script>
+<script src="/static/og_browser_input.js?v=111"></script>
 <script src="/static/og_shell.js?v=98"></script>
 <script src="/static/og_tokens.js?v=98"></script>
 <script src="/static/og_dashboards.js?v=2"></script>
