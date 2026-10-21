@@ -94,7 +94,8 @@
   kbText.setAttribute('autocorrect', 'off');
   kbText.setAttribute('spellcheck', 'false');
   kbText.setAttribute('aria-label',
-    'Type here — it goes into the page');
+    'Keyboard capture — while you drive, typing goes ' +
+    'into the page');
   panel.appendChild(kbText);
   var msg = document.createElement('p');
   msg.id = 'ogInputMsg'; msg.hidden = true;
@@ -1641,7 +1642,14 @@
 
   /* --- Round 321 Ticket A4: AUTO-OPEN + the confirmed-
      end rule.
-     AUTO-OPEN: a browser session that becomes active
+     AUTO-OPEN — RETIRED by Ticket N2 (2026-10-20,
+     ogtest24): Ticket N's card-in-the-thread replaced
+     the unprompted full-screen raise; the window now
+     opens only on the visitor's tap. The history below
+     stands as the record of the A4 rule and of the
+     park-respect bookkeeping (autoKey / parkedKey)
+     that reconcile still maintains.
+     AUTO-OPEN (A4): a browser session that becomes active
      surfaces the window BY ITSELF, the way a text
      arrives (Brent, on his drill: OG's chat showed a
      status pill and an "Open browser" button he had to
@@ -1889,17 +1897,15 @@
     }
     driving = d;
     paintHead(st, d ? 'visitor' : 'og');
-    /* AUTO-OPEN (above): a session key this client has
-       neither opened for nor parked on raises the
-       window unprompted; a keyless session raises it
-       on the inactive->active edge unless the visitor
-       parked this client session. */
-    if (key && key !== autoKey && key !== parkedKey) {
-      autoKey = key;
-      winWanted = true;
-    } else if (!layerActive && !key && parkedKey === null) {
-      winWanted = true;
-    }
+    /* Ticket N2 (ogtest24 fix): NO AUTO-OPEN. Ticket N
+       replaced the A4 auto-open (below, retired) with
+       the browser CARD in the thread — the card is the
+       surface a session arrives on, and the window
+       opens only on the visitor's own tap (Open browser
+       / Take control / the bar). The session key is
+       still tracked for the spot/session bookkeeping;
+       parkedKey keeps recording the visitor's parks. */
+    if (key) autoKey = key;
     layerActive = true;
     if (d !== prevDriving) {
       /* The control flip gets a fresh frame of its own
