@@ -329,6 +329,7 @@ checkMe();
 </div>
 <div id="emptyState" class="og-empty" hidden>
 <span class="og-ava-wrap"><img class="og-avatar og-empty-avatar" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogAvatarVideo" class="og-avatar-video og-empty-avatar" muted loop playsinline preload="none" hidden></video></span>
+<span class="og-name-bubble" id="ogHeroBubble" data-state="rest"><span class="og-top-name og-hero-name">OG</span><span class="og-task-pill" id="ogTaskPillHero">Online &amp; Ready</span></span>
 <h2 class="og-empty-name">OG-AI <span class="age-badge">18+</span></h2>
 <p class="og-empty-tag">The realest AI in the game 🔥<br>Talk to him, get code, ask anything.</p>
 <div class="og-rows">
@@ -600,6 +601,7 @@ const streamed = await streamReply(message, coords, imgFlag);
 if (!streamed) await classicReply(message, coords, imgFlag);
 } catch (error) {
 console.error('Error:', error);
+if (window.ogAvatarEvent) ogAvatarEvent('error');
 addMessage('ai', 'Yo my bad, something went wrong on my end. Ask me again in a second.');
 updateStatus('Error - Check connection');
 } finally {
@@ -1385,6 +1387,7 @@ try {
 var streamed = await streamReply(message, pos.coords);
 if (!streamed) await classicReply(message, pos.coords);
 } catch (error) {
+if (window.ogAvatarEvent) ogAvatarEvent('error');
 addMessage('ai', 'Yo my bad, something went wrong on my end. Ask me again in a second.');
 updateStatus('Error - Check connection');
 } finally {
@@ -1955,7 +1958,23 @@ vids.forEach(function (v) { v.addEventListener('error', fail); });
    speakReply actually set, and unlatches when busy falls.
    A 500 ms reconciler enforces all of it even when some
    path forgets a transition (error paths included), and
-   it is also Ticket F's gate: lip sync rides busy(). */
+   it is also Ticket F's gate: lip sync rides busy().
+   Ticket E4 amendment (Brent's drill, 2026-10-21 15:21):
+   the gating above passed his eye; the PRESENTATION did
+   not — the talking clip read as a visible repeat loop,
+   the composing window cut to different artwork, and a
+   typed exchange flapped the clip with no audio playing.
+   So the response path no longer shows clips at all: the
+   SAME poster face stays up through composing and
+   delivering (Ticket E motion on the wrapper, the calm
+   state treatments on the still, the status line naming
+   the phase), and speech itself is drawn by the
+   audio-driven mouth (og_mouth.js, fed by og_r97's
+   analyser on the real TTS element — mouth moves only
+   while real voice energy flows). The talking clip is
+   unreachable from the presenter now; the job states
+   (making / milestone) keep their clips — they are the
+   workbench and the celebration, not the conversation. */
 function busy() {
 var p = false, s = false;
 try { p = (typeof isProcessing !== 'undefined') && !!isProcessing; } catch (e) {}
@@ -1991,7 +2010,7 @@ if (document.body) document.body.classList.remove('og-mood-talking', 'og-mood-th
 function present() {
 if (!busy()) { delivering = false; reconcileClasses(); }
 if (dead || reduced || !vids.length) return;
-if (busy()) { showClip(delivering || lastMood === 'talking' ? 'talking' : 'working'); return; }
+if (busy()) { showRest(); return; }
 if (job && (job.persist || job.until > Date.now())) { showClip(job.state); return; }
 job = null;
 showRest();
@@ -2011,6 +2030,89 @@ if (state === 'win') job = { state: 'milestone', until: Date.now() + 5500, persi
 present();
 };
 }
+/* Ticket E3: the expressive repertoire — every move is
+   earned by a real event, never a rotation, never a
+   timer's whim. The presenter above stays the only thing
+   that shows a clip, and the E2 invariant is untouched:
+   nothing in this block can present the talking clip.
+     greeting — once per page session, the first time the
+       page is actually visible: a single nod beat on the
+       stills (the still layer's greeting motion; the baked
+       clip set has no wave — the Ticket E3 asset ceiling).
+       Latched: state changes, tab refocus and the 500 ms
+       reconciler can never re-fire it.
+     error — sendMessage's catch (and the location retry's
+       catch) calls ogAvatarEvent('error'): a brief subdued
+       dip on the stills (brightness down for 900 ms — the
+       og_idle blink's own JS-filter pattern, slower and
+       shallower) plus the status line's error beat, handed
+       to the pill updater through __ogPillEvent.
+   Thinking (composing), the nod on delivery and the
+   celebration on a win ride the signals that already
+   exist — the mood stream, addMessage's nod, the job
+   pollers' 'milestone' and the 'win' mood — wired and
+   named here, not re-invented. window.OGE3 exposes the
+   counters for the gate, OGIDLE / OGRAIN style. */
+var greeted = false, greetCount = 0, errCount = 0;
+var winProc = false, winDeliv = false, winErr = false;
+function classBeat(cls, ms) {
+document.querySelectorAll('img.og-avatar').forEach(function (i) {
+i.classList.add(cls);
+setTimeout(function () { i.classList.remove(cls); }, ms);
+});
+}
+function maybeGreet() {
+if (greeted) return;
+greeted = true;
+greetCount++;
+classBeat('nod', 650);
+}
+if (!document.hidden) maybeGreet();
+else document.addEventListener('visibilitychange', function greetOnVisible() {
+if (document.hidden) return;
+document.removeEventListener('visibilitychange', greetOnVisible);
+maybeGreet();
+});
+/* Nod on delivery — presenter-delivered, because the
+   page's own nod never actually shows: addMessage sets
+   mood 'nod' and speakReply, called synchronously right
+   after it on every spoken reply, sets mood 'talking'
+   and wipes the nod within the same tick (the E3 gate
+   measured ZERO nod samples on the success path before
+   this beat existed). So the presenter watches the
+   response window it already tracks — a window that held
+   real processing AND latched a delivery, with no error
+   beat inside it — and fires ONE nod beat on the stills
+   as the window closes. A 250 ms glance that only reads
+   state and flips a beat (Main Thread Rule shape). */
+var wasBusy = false;
+function procNow() {
+try { return (typeof isProcessing !== 'undefined') && !!isProcessing; } catch (e) { return false; }
+}
+setInterval(function () {
+var b = busy();
+if (b) {
+if (procNow()) winProc = true;
+if (delivering) winDeliv = true;
+} else if (wasBusy) {
+if (winProc && winDeliv && !winErr) classBeat('nod', 650);
+winProc = false; winDeliv = false; winErr = false;
+}
+wasBusy = b;
+}, 250);
+window.ogAvatarEvent = function (kind) {
+if (kind === 'error') {
+errCount++;
+winErr = true;
+document.querySelectorAll('img.og-avatar').forEach(function (i) {
+i.classList.add('og-err');
+i.style.filter = 'brightness(.8) saturate(.75)';
+setTimeout(function () { i.classList.remove('og-err'); i.style.filter = ''; }, 900);
+});
+}
+if (window.__ogPillEvent) { try { window.__ogPillEvent(kind); } catch (e) {} }
+};
+window.OGE3 = { version: 1, state: function () { return { version: 1, greeted: greeted, greetCount: greetCount, errCount: errCount }; } };
 setInterval(present, 500);
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { ogSetAvatar('connecting'); });
 else ogSetAvatar('connecting');
@@ -2051,14 +2153,42 @@ if (closeBtn) closeBtn.addEventListener('click', closeProfile);
 if (scrim) scrim.addEventListener('click', closeProfile);
 var shareBtn = $('profileShareBtn');
 if (shareBtn) shareBtn.addEventListener('click', function () { closeProfile(); if (typeof delegate === 'function') delegate('shareBtn'); });
-var pillTop = $('ogTaskPillTop'), pillProf = $('ogTaskPillProfile');
-var chatBusy = false, browsing = false, browseHost = '', loadingHost = '', videoBusy = false, songBusy = false, lastText = '';
+var pillTop = $('ogTaskPillTop'), pillProf = $('ogTaskPillProfile'), pillHero = $('ogTaskPillHero');
+/* E3/E4 (owner reference 2026-10-21 15:44): the hero pill under the
+   medallion is ONE pill — it shows OG's NAME at rest and the live
+   status while anything is happening. The swap is presentational
+   only: the pill element keeps the truthful status text (every
+   writer — this updater, the shell coordinator, R275 — writes it as
+   before); a watcher flips the bubble between its name face and its
+   status face from that text. */
+var heroBubble = pillHero ? pillHero.parentElement : null;
+function syncHeroBubble() {
+  if (!heroBubble || !pillHero) return;
+  heroBubble.setAttribute('data-state', pillHero.textContent === 'Online & Ready' ? 'rest' : 'busy');
+}
+if (heroBubble && window.MutationObserver) {
+  new MutationObserver(syncHeroBubble).observe(pillHero, { childList: true, characterData: true, subtree: true });
+  syncHeroBubble();
+}
+var chatBusy = false, delivering = false, listening = false, browsing = false, browseHost = '', loadingHost = '', videoBusy = false, songBusy = false, lastText = '';
+var errUntil = 0, doneUntil = 0;
 function compute() {
+/* Ticket E3: the status line names what OG is doing, from
+   the same real signals the avatar presenter runs on —
+   the mood stream (thinking = composing, talking =
+   delivering), dictation (listening), the job / browser
+   status polls — plus two event beats: a chat error
+   (ogAvatarEvent, via __ogPillEvent below) and a job done
+   (the pollers' milestone call / the 'win' mood). It
+   never invents activity: at rest it says so. */
+if (Date.now() < errUntil) return 'Something went wrong';
+if (Date.now() < doneUntil) return 'Done ✓';
 if (videoBusy) return 'Making your video';
 if (songBusy) return 'Making your song';
 if (loadingHost) return 'Opening ' + loadingHost + '…';
 if (browsing) return browseHost ? 'Browsing ' + browseHost : 'Browsing';
-if (chatBusy) return 'Thinking…';
+if (chatBusy) return delivering ? 'Answering…' : 'Thinking…';
+if (listening) return 'Listening…';
 return 'Online & Ready';
 }
 function paint() {
@@ -2067,13 +2197,21 @@ if (t === lastText) return;
 lastText = t;
 if (pillTop) pillTop.textContent = t;
 if (pillProf) pillProf.textContent = t;
+if (pillHero) pillHero.textContent = t;
 }
+function beatPaint(until) { setTimeout(paint, Math.max(0, until - Date.now()) + 60); }
+window.__ogPillEvent = function (kind) {
+if (kind === 'error') { errUntil = Date.now() + 2600; paint(); beatPaint(errUntil); }
+};
 if (typeof setMood === 'function') {
 var prevMood = setMood;
 setMood = function (s) {
 prevMood(s);
-if (s === 'thinking' || s === 'talking') { if (!chatBusy) { chatBusy = true; paint(); } }
-else if (s === '' || s === 'listening') { if (chatBusy) { chatBusy = false; paint(); } }
+if (s === 'thinking') { delivering = false; listening = false; if (!chatBusy) { chatBusy = true; } paint(); }
+else if (s === 'talking') { delivering = true; listening = false; if (!chatBusy) { chatBusy = true; } paint(); }
+else if (s === 'listening') { chatBusy = false; delivering = false; listening = true; paint(); }
+else if (s === '') { chatBusy = false; delivering = false; listening = false; paint(); }
+else if (s === 'win') { doneUntil = Date.now() + 5500; paint(); beatPaint(doneUntil); }
 };
 }
 function onStatus(kind, st) {
@@ -2087,6 +2225,18 @@ loadingHost = st.loading_host || '';
 else if (kind === 'video') videoBusy = !!(st.enabled && st.job && ['queued', 'drawing', 'voicing', 'stitching'].indexOf(st.job.state) !== -1);
 else if (kind === 'song') songBusy = !!(st.enabled && st.job && st.job.state === 'generating');
 paint();
+}
+if (typeof window.ogSetAvatar === 'function') {
+var prevSetAvatar = window.ogSetAvatar;
+window.ogSetAvatar = function (state, holdMs) {
+/* Ticket E3: a job landing is a real completion signal —
+   the video / song pollers call ogSetAvatar('milestone',
+   5500) only when a job's state reads done — so the
+   status line carries the done beat for the same hold.
+   Call-through: the presenter itself is untouched. */
+if (state === 'milestone') { doneUntil = Date.now() + (holdMs || 5500); paint(); beatPaint(doneUntil); }
+return prevSetAvatar(state, holdMs);
+};
 }
 if (window.fetch) {
 var origFetch = window.fetch;
@@ -2132,18 +2282,19 @@ paint();
 <link rel="stylesheet" href="/static/og_tokens.css?v=98">
 <link rel="stylesheet" href="/static/og_dashboards.css?v=2">
 <link rel="stylesheet" href="/static/og_markets.css?v=1">
-<link rel="stylesheet" href="/static/og_look.css?v=3">
+<link rel="stylesheet" href="/static/og_look.css?v=4">
 <script src="/static/og_connections.js?v=98"></script>
 <script src="/static/og_library.js?v=98"></script>
 <script src="/static/og_store.js?v=98"></script>
 <script src="/static/og_notification_settings.js?v=98"></script>
 <script src="/static/og_browser_input.js?v=112"></script>
-<script src="/static/og_shell.js?v=98"></script>
-<script src="/static/og_tokens.js?v=98"></script>
+<script src="/static/og_shell.js?v=99"></script>
+<script src="/static/og_tokens.js?v=99"></script>
 <script src="/static/og_dashboards.js?v=2"></script>
 <script src="/static/og_markets.js?v=1"></script>
 <script src="/static/og_rain.js?v=6"></script>
-<script src="/static/og_idle.js?v=1"></script>
+<script src="/static/og_idle.js?v=2"></script>
+<script src="/static/og_mouth.js?v=1"></script>
 <script>
 /* Round 321: pagehide leave beacons (browser + chat). */
 window.addEventListener('pagehide', function () {
