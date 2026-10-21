@@ -31,6 +31,17 @@
  * contract at the style injection): the legacy nebula
  * layer retires and the chat column wears a 55% veil, so
  * what Brent sees behind OG is the rain, on-palette.
+ * FIX ROUND cand-h3 (2026-10-21): the column's own
+ * backdrop-filter (styles.css blur) made the compositor
+ * capture the backdrop WITHOUT this canvas's layer —
+ * convicted in Chromium (canvas presents bare, vanishes
+ * under the filtered column, returns when the filter is
+ * stripped) and matching the owner's iPhone, where the
+ * column is the whole screen. The injected style now
+ * also neutralizes backdrop-filter on the column while
+ * rain runs, so the veil blends straight over the canvas
+ * in every engine. Kill switch unaffected: no style, no
+ * change. The rain's design is untouched.
  * A Ticket G hook (<html data-og-rain-mode="day|night">,
  * or OGRAIN.setMode) re-treats the rain per theme without
  * touching this file's logic.
@@ -353,7 +364,8 @@
       'margin:0;padding:0}' +
       'body{position:relative;z-index:0}' +
       '.animated-bg{display:none}' +
-      'body .chat-container{background:rgba(10,10,10,0.55)}';
+      'body .chat-container{background:rgba(10,10,10,0.55);' +
+      'backdrop-filter:none;-webkit-backdrop-filter:none}';
     document.body.insertBefore(style, document.body.firstChild);
     document.body.insertBefore(canvas, document.body.firstChild);
     canvas.style.opacity = String(
