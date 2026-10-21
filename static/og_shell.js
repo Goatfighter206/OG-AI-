@@ -524,7 +524,10 @@ function pillSiteName(host) {
 
 /* --- 4c. The pill's ONE writer (Round 79) ------------------------------
    Two painters used to write the status pills
-   (#ogTaskPillTop + #ogTaskPillProfile): the page's
+   (#ogTaskPillTop + #ogTaskPillProfile — Ticket E3 added
+   #ogTaskPillHero, the hero/empty-state instance, to every
+   list in this section, so the hero's status line runs
+   through this same ONE writer): the page's
    activity updater (Thinking… / Making your video /
    Browsing <host> / Online & Ready), deduped by a
    closure-private lastText the shell cannot see, and
@@ -604,7 +607,7 @@ function pillSetNeeds(t) {
   pillNeeds = t || null;
   pillPaint();
 }
-['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
+['ogTaskPillTop', 'ogTaskPillProfile', 'ogTaskPillHero'].forEach(function (id) {
   var el = $(id);
   if (!el) return;
   var ch = pillRawChannel(el);
@@ -671,7 +674,7 @@ function pillTap() {
   }
   /* activity / idle: no-op */
 }
-['ogTaskPillTop', 'ogTaskPillProfile'].forEach(function (id) {
+['ogTaskPillTop', 'ogTaskPillProfile', 'ogTaskPillHero'].forEach(function (id) {
   var p = $(id);
   if (!p) return;
   if (p.style) p.style.cursor = 'pointer';
