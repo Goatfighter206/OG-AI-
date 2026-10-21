@@ -184,3 +184,92 @@ body:has(.og-menu.open) #ogTopAvatarBar { display: none !important; }
     #ogSeatScreen { top: calc(130px + env(safe-area-inset-top)); }
     .message-content { max-width: 87%; }
 }
+
+/* --- Ticket E3 + E4: hero medallion, hero status pill,
+   the steady ring ------------------------------------------
+   Brent (2026-10-21): the hero/showcase avatar shrinks to a
+   medallion about the size of Maya's app avatar — roughly
+   1/6 of the phone's width. It was 88 px (styles.css's base
+   .og-avatar rule). The capsule and the profile sheet keep
+   their sizes; chat avatars untouched.
+   The hero also gains the status pill (#ogTaskPillHero in
+   the empty state): while the hero owns the screen the
+   capsule is hidden (section 2 — ONE OG), so the pill rides
+   with the hero, painted by the page's ONE pill updater
+   through the shell coordinator, naming what OG is doing
+   from the same real signals as everywhere else.
+   E4: the hero's gold ring moves onto the WRAPPER (the
+   capsule/profile shape) — constant across still and clip,
+   never hidden, never filter-pulsed. Measurement on
+   Brent's drill recording convicted the "flashing
+   circle": the border band's luminance never moved
+   (27-32 across rest/thinking/stream) — what flashed was
+   the artwork CUT inside the circle (face band 68 -> 25
+   -> 59 across the state changes) plus, on the still,
+   ogThink2's brightness pulse (1.14-1.22, 1.1 s) animating
+   the bordered img. Both die here: the presenter keeps
+   one face (Ticket E4), and the showcase state treatments
+   below are transform-only and calm. */
+#emptyState .og-ava-wrap {
+    width: 68px; height: 68px; border-radius: 50%;
+    overflow: hidden; box-sizing: border-box;
+    border: 2px solid rgba(255,193,7,.8);
+    box-shadow: 0 0 14px rgba(255,193,7,.35);
+    background: #111;
+}
+#emptyState .og-ava-wrap img.og-avatar {
+    width: 100%; height: 100%; display: block;
+    border: 0; box-shadow: none;
+}
+body.og-mood-listening #emptyState .og-ava-wrap {
+    border-color: rgba(255,193,7,.95);
+    box-shadow: 0 0 0 2px rgba(255,193,7,.30),
+                0 0 16px rgba(255,193,7,.35);
+}
+/* Calm state treatments on the three showcase stills.
+   thinking: a slow, small tilt — transform only, NO
+   brightness/contrast pulse (that pulse was the ring
+   flash's still-side mechanism). talking: no keyframe
+   flap at all — the audio-driven mouth (og_mouth.js)
+   does the talking; the still stays calm. listening: the
+   ogIdle2 blink-dip loop and the hard ring retire for a
+   steady, softer ring (the hero's lives on its wrapper,
+   above, via the body mood class — the (1,2,1) hero rule
+   keeps the hero img itself ring-free). */
+/* --- E4 reframe (owner reference 2026-10-21 15:44 — his Muse
+   medallion): the circle holds a HEAD-AND-SHOULDERS portrait, not
+   a tight face crop. The poster (measured: hair ~4% -> chin ~63%
+   of frame) is scaled to .75 and lifted 5% inside its circle via
+   the independent scale/translate properties, which COMPOSE with
+   the transform every driver writes (og_idle breathing, the mood
+   keyframes) instead of fighting them — the framing holds in
+   every state, and the head lands at ~44% of the circle height.
+   The clips in the same wrappers carry the same framing, so a
+   state change never reframes the face. --- */
+#emptyState .og-ava-wrap img.og-avatar, #ogTopAvatarBar .og-top-ava img.og-avatar, .og-profile-ava img.og-avatar,
+#emptyState .og-ava-wrap video, #ogTopAvatarBar .og-top-ava video, .og-profile-ava video { scale: .75; translate: 0 -5%; }
+/* The hero name/status bubble (the one pill under the medallion)
+   shows its NAME face at rest and its STATUS face while busy; the
+   updater flips data-state from the pill's truthful text. */
+#emptyState .og-name-bubble[data-state="rest"] .og-task-pill { display: none; }
+#emptyState .og-name-bubble[data-state="busy"] .og-hero-name { display: none; }
+
+@keyframes ogThinkCalm {
+    0%, 100% { transform: rotate(-1.6deg) translateY(0); }
+    50% { transform: rotate(1.2deg) translateY(-1px); }
+}
+.og-ava-wrap img.og-avatar.thinking,
+.og-top-ava img.og-avatar.thinking,
+.og-profile-ava img.og-avatar.thinking {
+    animation: ogThinkCalm 2.8s ease-in-out infinite;
+}
+.og-ava-wrap img.og-avatar.talking,
+.og-top-ava img.og-avatar.talking,
+.og-profile-ava img.og-avatar.talking { animation: none; }
+.og-ava-wrap img.og-avatar.listening,
+.og-top-ava img.og-avatar.listening,
+.og-profile-ava img.og-avatar.listening {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(255,193,7,.5),
+                0 0 12px rgba(255,193,7,.28);
+}
