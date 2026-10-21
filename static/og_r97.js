@@ -133,5 +133,28 @@
     } catch (e) { /* never throws */ }
   }
 
-  window.ogWaveMeter = { start: start, stop: stop };
+  /* Ticket E4: the mouth driver (og_mouth.js) reads the
+     SAME analyser — a time-domain RMS of the real TTS
+     signal, so the mouth tracks the actual speech
+     envelope. Zero whenever the meter is not running:
+     no audio through the graph, no level, mouth shut. */
+  var tdata = null;
+  function level() {
+    try {
+      if (!analyser || !running) return 0;
+      if (!tdata || tdata.length !== analyser.fftSize) {
+        tdata = new Uint8Array(analyser.fftSize);
+      }
+      analyser.getByteTimeDomainData(tdata);
+      var s = 0;
+      for (var i = 0; i < tdata.length; i++) {
+        var v = (tdata[i] - 128) / 128;
+        s += v * v;
+      }
+      return Math.sqrt(s / tdata.length);
+    } catch (e) { return 0; }
+  }
+
+  window.ogWaveMeter = { start: start, stop: stop,
+    level: level, active: function () { return running; } };
 })();
