@@ -1,0 +1,157 @@
+/* Round 321 — Ticket N (the look) + Ticket A5 surface, CANDIDATE.
+   Brent (2026-10-20): "get everything that we design in there
+   before we fix everything" — the design wave lands before the
+   fix wave. The reference is the video Brent recorded of a
+   modern chat app: tight text-message bubbles, the browser as
+   a CARD inside the thread, a presence capsule at the top, a
+   clean icon+label bottom bar, and pages whose entries are
+   cards under big clean headers. OG KEEPS BRENT'S COLORS —
+   black + gold — everything else matches the reference.
+   This sheet is linked LAST so its rules win the cascade for
+   the surfaces it restyles; the machinery sheets stay as they
+   are. Standing laws honored here: ONE OG on screen at a time
+   (hero vs presence capsule vs menu — see section 2), NO
+   PILE-UP (pages are pages; the seat screens already switch),
+   FIT-PERFECT (nothing here widens or crops the phone view). */
+
+/* --- 1. Chat goes tight ---------------------------------------------
+   Compact text-message bubbles: no per-message avatar (Ticket
+   N + the standing TEXT ONLY rule — OG's face lives in the
+   presence capsule, not beside every message), small padding,
+   snug line-height, gold for the visitor, quiet dark for OG. */
+.messages-area { padding: 16px 12px 20px; }
+.message { gap: 0; margin-bottom: 8px; animation: ogMsgIn .22s ease-out; }
+@keyframes ogMsgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.message-avatar { display: none !important; }
+.message-content {
+    max-width: 84%;
+    padding: 9px 13px 7px;
+    border-radius: 18px;
+    font-size: .95rem;
+    box-shadow: none;
+}
+.message.user .message-content {
+    background: rgba(255,193,7,.17);
+    border: 1px solid rgba(255,193,7,.5);
+    border-bottom-right-radius: 6px;
+}
+.message.ai .message-content {
+    background: #1b1b1b;
+    border: 1px solid #2b2b2b;
+    border-bottom-left-radius: 6px;
+}
+.message-text { line-height: 1.45; margin-bottom: 2px; overflow-wrap: anywhere; }
+.message-time { font-size: .68rem; opacity: .55; }
+
+/* --- 2. Presence capsule + ONE OG ------------------------------------
+   The capsule: a smaller avatar over a dark pill carrying the
+   name and the live status — the reference shape, OG's colors.
+   ONE OG: while the hero (empty state) owns the screen the
+   capsule is gone entirely — the hero IS OG's presence there.
+   The JS half (the page's syncEmpty) toggles body.og-hero-on;
+   the :has rule is the same law stated in pure CSS so it holds
+   even before the first sync runs. The slide-over menu is a
+   page of its own with its own small head — while it is open
+   the capsule steps aside too. The profile sheet (z 8001) and
+   the browser window (z 9000) already cover the capsule
+   (z 7500) outright, so exactly one OG face shows there too. */
+.og-top-avatar-bar { padding-top: calc(8px + env(safe-area-inset-top)); pointer-events: none; }
+.og-top-avatar {
+    width: 62px; height: 62px;
+    border: 2px solid rgba(255,193,7,.75);
+    box-shadow: 0 4px 18px rgba(0,0,0,.55);
+    pointer-events: auto;
+}
+.og-avatar-name-bubble {
+    margin-top: 5px; padding: 6px 16px 7px;
+    border-radius: 999px; background: rgba(14,14,14,.92);
+    border: 1px solid rgba(255,193,7,.4);
+    box-shadow: 0 6px 18px rgba(0,0,0,.5);
+    pointer-events: auto;
+}
+.og-avatar-name { font-size: .98rem; font-weight: 800; color: #fff; letter-spacing: .2px; }
+.og-task-pill-top { font-size: .74rem; margin-top: 1px; }
+body.og-hero-on #ogTopAvatarBar { display: none !important; }
+body:has(#emptyState:not([hidden])) #ogTopAvatarBar { display: none !important; }
+body:has(.og-menu.open) #ogTopAvatarBar { display: none !important; }
+
+/* --- 3. The browser CARD inside the chat ------------------------------
+   The panel's docked face is a card in the thread now (the
+   page script moves it into the messages area while a session
+   runs): a header row — globe chip, "Browser", and the live
+   status line — over the preview, with Open browser as one
+   wide, obviously-tappable button. In the full window the
+   card header steps aside (the window has its own header). */
+#browserPanel {
+    width: 100%; max-width: none; margin: 0 0 12px;
+    border-radius: 20px; border: 1px solid rgba(255,193,7,.42);
+    background: #101010; overflow: hidden;
+    box-shadow: 0 10px 28px rgba(0,0,0,.5);
+}
+.og-card-head {
+    display: flex; align-items: center; gap: 11px;
+    padding: 12px 52px 10px 14px;
+}
+.og-card-head-ico {
+    flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 1.05rem;
+    background: rgba(255,193,7,.16); border: 1px solid rgba(255,193,7,.45);
+}
+.og-card-head-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.og-card-head-title { font-weight: 800; font-size: .98rem; color: #f5f5f5; line-height: 1.2; }
+.og-card-head-status {
+    font-size: .8rem; color: #d8b34a; line-height: 1.3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#browserPanel.og-r43-full .og-card-head { display: none; }
+#browserPanel.og-panel-full .og-card-head { display: none; }
+#browserPanel .og-browser-open {
+    width: calc(100% - 24px); margin: 10px 12px 12px;
+    padding: 13px; border-radius: 999px;
+    font-size: .95rem; font-weight: 800;
+}
+#browserPanel .og-browser-actions { padding: 0 12px 12px; gap: 8px; }
+#browserPanel .og-browser-actions button {
+    border-radius: 999px; padding: 10px 14px; font-weight: 700;
+}
+
+/* --- 4. Bottom bar ----------------------------------------------------
+   The seat pill + composer dock: one rounded bar, icon over
+   label, the active seat filled gold so it reads at a glance. */
+#ogShellDock .og-seat-bar {
+    border-radius: 26px; background: rgba(16,16,16,.94);
+    border: 1px solid rgba(255,193,7,.32);
+    box-shadow: 0 12px 30px rgba(0,0,0,.55);
+    padding: 5px;
+}
+.og-seat { padding: 8px 2px 6px; border-radius: 21px; }
+.og-seat svg { width: 23px; height: 23px; }
+.og-seat-label { font-size: .62rem; }
+.og-seat.is-on { box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 2px 8px rgba(255,193,7,.25); }
+
+/* --- 5. Pages: Feed / Ideas / Progress --------------------------------
+   Same language as the thread: a big clean header, card-style
+   entries (icon + bold title + one-line sub), generous
+   spacing, pill tags. The seat screen's top edge follows the
+   slimmer capsule. Progress keeps the Manager Dashboard as
+   its ONLY content — untouched, just framed by the header. */
+#ogSeatScreen { top: calc(136px + env(safe-area-inset-top)); background: #0a0a0a; }
+.og-seat-screen-head { padding: 16px 18px 10px; }
+.og-seat-screen-title { font-size: 1.45rem; font-weight: 800; letter-spacing: .2px; }
+.og-seat-view { padding: 6px 18px 22px; }
+.og-appr-sec { font-size: .8rem; color: #d8b34a; margin: 22px 2px 10px; }
+.og-appr-item {
+    border-radius: 18px; background: #161616; border: 1px solid #262626;
+    padding: 15px 16px; margin: 0 0 12px; gap: 13px;
+}
+.og-appr-item-title { font-size: 1rem; }
+.og-appr-item-body { font-size: .9rem; }
+.og-feed-tabs { gap: 8px; padding: 8px 0 14px; }
+.og-feed-tab { padding: 8px 15px; border-radius: 999px; }
+@media (max-width: 768px) {
+    #ogSeatScreen { top: calc(130px + env(safe-area-inset-top)); }
+    .message-content { max-width: 87%; }
+}
