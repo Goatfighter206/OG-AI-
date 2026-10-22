@@ -54,29 +54,10 @@
 <div class="og-menu-card og-work-card" id="menuWorkCard">
 <div id="menuWorkBody"><div class="og-work-empty">Loading OG's board…</div></div>
 </div>
-<h3 class="og-menu-sec" id="menuAccountSec" hidden>Account</h3>
-<nav class="og-menu-card" id="menuAccountCard" hidden>
-<div class="og-menu-item og-nochev"><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuAccountEmail"></span></div>
-<button class="og-menu-item" id="menuSignOutBtn" type="button"><span class="og-mi"><svg><use href="#i-power"/></svg></span> Sign out</button>
-</nav>
-<h3 class="og-menu-sec">Chat</h3>
-<nav class="og-menu-card">
-<button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi"><svg><use href="#i-pencil"/></svg></span> New chat</button>
-<button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi"><svg><use href="#i-share"/></svg></span> Share conversation</button>
-<button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi"><svg><use href="#i-trash"/></svg></span> Clear chat</button>
-</nav>
-<h3 class="og-menu-sec">Tools</h3>
-<nav class="og-menu-card">
-<button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi"><svg><use href="#i-clip"/></svg></span> Upload a file</button>
-<button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-folder"/></svg></span> My file locker</button>
-<button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-globe"/></svg></span> OG's browser — live view</button>
-<button class="og-menu-item" id="menuLibraryBtn" type="button"><span class="og-mi"><svg><use href="#i-grid"/></svg></span> Library</button>
-</nav>
-<h3 class="og-menu-sec">Connections</h3>
-<nav class="og-menu-card">
-<button class="og-menu-item" id="menuConnectionsBtn" type="button"><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connections</button>
-<button class="og-menu-item" id="menuLoginsBtn" type="button"><span class="og-mi"><svg><use href="#i-globe"/></svg></span> Saved logins</button>
-</nav>
+<!-- Ticket N2 revision (Brent, 2026-10-22 04:36): the menu
+     is ONLY the pinned top + OG's work + the Settings door.
+     Account, GPS, Chat, Tools and Connections all live
+     inside the Settings page now (see #ogSettings below). -->
 <h3 class="og-menu-sec" id="menuSettingsSec">Settings</h3>
 <nav class="og-menu-card" id="menuSettingsCard">
 <button class="og-menu-item" id="menuSettingsBtn" type="button"><span class="og-mi"><svg><use href="#i-gear"/></svg></span> Settings</button>
@@ -145,8 +126,42 @@
 <div class="og-settings-top"><button id="ogSettingsClose" class="og-settings-close" type="button" aria-label="Close settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><h2>Settings</h2></div>
 <div class="og-settings-scroll">
 <p class="og-settings-note" id="ogSettingsAnonNote" hidden>Sign in for voice, security and the rest of OG's settings.</p>
+<!-- Ticket N2 revision (2026-10-22): Account / GPS / Chat /
+     Tools / Connections folded into this page under labeled
+     groups — the menu keeps only the pinned top, OG's work,
+     and the Settings door. The Account head + card keep
+     their ids: the round builders still build their rows
+     into #menuAccountCard, and og_r66 seats the GPS
+     section after it (og_settings.js re-seats it into
+     #ogSettingsGps). Every button keeps its id, so every
+     existing handler fires from the new home. -->
+<h3 class="og-menu-sec" id="menuAccountSec" hidden>Account</h3>
+<nav class="og-menu-card" id="menuAccountCard" hidden>
+<div class="og-menu-item og-nochev"><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuAccountEmail"></span></div>
+<button class="og-menu-item" id="menuSignOutBtn" type="button"><span class="og-mi"><svg><use href="#i-power"/></svg></span> Sign out</button>
+</nav>
+<h3 class="og-settings-sec" id="ogSettingsPrefsSec">Preferences</h3>
 <nav class="og-menu-card" id="ogSettingsCard"></nav>
 <div id="ogSettingsSections"></div>
+<div id="ogSettingsGps"></div>
+<h3 class="og-settings-sec">Chat</h3>
+<nav class="og-menu-card" id="ogSettingsChatCard">
+<button class="og-menu-item" id="menuNewBtn" type="button"><span class="og-mi"><svg><use href="#i-pencil"/></svg></span> New chat</button>
+<button class="og-menu-item" id="menuShareBtn" type="button"><span class="og-mi"><svg><use href="#i-share"/></svg></span> Share conversation</button>
+<button class="og-menu-item" id="menuClearBtn" type="button"><span class="og-mi"><svg><use href="#i-trash"/></svg></span> Clear chat</button>
+</nav>
+<h3 class="og-settings-sec">Tools</h3>
+<nav class="og-menu-card" id="ogSettingsToolsCard">
+<button class="og-menu-item" id="menuUploadBtn" type="button"><span class="og-mi"><svg><use href="#i-clip"/></svg></span> Upload a file</button>
+<button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-folder"/></svg></span> My file locker</button>
+<button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-globe"/></svg></span> OG's browser — live view</button>
+<button class="og-menu-item" id="menuLibraryBtn" type="button"><span class="og-mi"><svg><use href="#i-grid"/></svg></span> Library</button>
+</nav>
+<h3 class="og-settings-sec">Connections</h3>
+<nav class="og-menu-card" id="ogSettingsConnCard">
+<button class="og-menu-item" id="menuConnectionsBtn" type="button"><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connections</button>
+<button class="og-menu-item" id="menuLoginsBtn" type="button"><span class="og-mi"><svg><use href="#i-globe"/></svg></span> Saved logins</button>
+</nav>
 <h3 class="og-settings-sec">Privacy</h3>
 <nav class="og-menu-card">
 <button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
@@ -2331,7 +2346,7 @@ paint();
 <link rel="stylesheet" href="/static/og_theme.css?v=1">
 <link rel="stylesheet" href="/static/og_avatarid.css?v=1">
 <link rel="stylesheet" href="/static/og_workboard.css?v=1">
-<link rel="stylesheet" href="/static/og_settings.css?v=1">
+<link rel="stylesheet" href="/static/og_settings.css?v=2">
 <script src="/static/og_connections.js?v=98"></script>
 <script src="/static/og_library.js?v=98"></script>
 <script src="/static/og_store.js?v=98"></script>
@@ -2348,7 +2363,7 @@ paint();
 <script src="/static/og_avatarid.js?v=1"></script>
 <script src="/static/og_perform.js?v=1"></script>
 <script src="/static/og_workboard.js?v=1"></script>
-<script src="/static/og_settings.js?v=1"></script>
+<script src="/static/og_settings.js?v=2"></script>
 <script>
 /* Round 321: pagehide leave beacons (browser + chat). */
 window.addEventListener('pagehide', function () {
