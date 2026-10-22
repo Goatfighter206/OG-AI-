@@ -586,19 +586,45 @@ function pillRawChannel(el) {
     return null;
   }
 }
+/* Ticket E6: the hero pill's rest face is the name the
+   user set for OG (default 'OG'). ONE seam: every
+   hero-rest paint in this section reads ogDisplayName(),
+   and the identity module (og_avatarid.js) re-points it
+   through OGShell.setDisplayName when the account's name
+   loads or changes. */
+function ogDisplayName() {
+  var n = null;
+  try { n = window.OG_AVATAR_NAME; } catch (e) { }
+  return (typeof n === 'string' && n.trim()) ? n : 'OG';
+}
+window.ogDisplayName = ogDisplayName;
 function pillPaint() {
   var t = pillNeeds != null ? pillNeeds : pillActivityText;
   if (t == null || t === pillShown) return;
   pillShown = t;
   pillChannels.forEach(function (ch) {
-    ch.rawSet(ch.hero && t === 'Online & Ready' ? 'OG' : t);
+    ch.rawSet(ch.hero && t === 'Online & Ready' ? ogDisplayName() : t);
   });
   pillPlain.forEach(function (p) {
     /* unchanneled fallback: no trap lives here, so this
        direct write cannot re-enter the coordinator */
-    try { p.el.textContent = (p.hero && t === 'Online & Ready') ? 'OG' : t; } catch (e) { }
+    try { p.el.textContent = (p.hero && t === 'Online & Ready') ? ogDisplayName() : t; } catch (e) { }
   });
 }
+/* Ticket E6: the identity module's one door into the
+   coordinator — set (or clear, with null) the user's
+   name for OG and repaint through the ONE writer, so a
+   rename lands on the hero pill's rest face at once and
+   no second painter ever touches the pills. */
+window.OGSHELL = window.OGSHELL || {};
+window.OGSHELL.setDisplayName = function (n) {
+  try {
+    window.OG_AVATAR_NAME =
+      (typeof n === 'string' && n.trim()) ? n : null;
+  } catch (e) { }
+  pillShown = null;
+  pillPaint();
+};
 /* Ticket E5 (owner, 2026-10-21 17:08): "it should just be
    his name underneath him, and then when he doing
    something it will pop up and tell you what he is
@@ -649,7 +675,7 @@ pillShown = pillActivityText;
 pillChannels.forEach(function (ch) {
   if (ch.hero) {
     ch.rawSet(pillActivityText === 'Online & Ready'
-      ? 'OG' : pillActivityText);
+      ? ogDisplayName() : pillActivityText);
   }
 });
 pillPlain.forEach(function (p) {
@@ -657,7 +683,7 @@ pillPlain.forEach(function (p) {
     try {
       p.el.textContent =
         (pillActivityText === 'Online & Ready')
-          ? 'OG' : pillActivityText;
+          ? ogDisplayName() : pillActivityText;
     } catch (e) { }
   }
 });
