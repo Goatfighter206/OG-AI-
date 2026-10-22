@@ -1031,7 +1031,7 @@ if (!confirm('Clear conversation history?')) return;
 try {
 await fetch(`${API_URL}/clear`, { method: 'POST' });
 document.getElementById('messagesArea').innerHTML = '';
-addMessage('ai', 'Conversation cleared. What you need fam?');
+addMessage('ai', 'Conversation cleared. What you need, G?');
 } catch (error) {
 console.error('Error:', error);
 }
@@ -1305,7 +1305,7 @@ return st;
 menuBtn.addEventListener('click', function () {
 var close = $('menuClose'); if (close) close.click();
 fetch(API_URL + '/storage/status').then(function (r) { return r.json(); }).then(function (st) {
-if (!st || !st.enabled) { sayAi("Storage ain't switched on yet, fam."); return; }
+if (!st || !st.enabled) { sayAi("Storage ain't switched on yet, G."); return; }
 var lines = st.files.map(function (f) { return '• ' + f.name + ' — ' + f.date; }).join('\n');
 sayAi('🗄️ Your locker: ' + st.used_human + ' of ' + st.quota_human + ' used.' + (st.files.length ? '\n' + lines : ' Nothing in it yet — upload a file and hit "Save to my locker".'));
 }).catch(function () { sayAi("Yo, the locker check glitched — try again."); });
