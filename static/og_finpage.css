@@ -1,0 +1,88 @@
+/* Ticket L4 — the standalone Financial Smart Agent page
+   (/fin). This document is a plain page: the BODY is the
+   only scroller. There is deliberately no fixed shell
+   and no inner scroll container in this sheet — the
+   nested-scroller architecture is what ghosted on
+   Brent's phone (diagnosis og-l2-diagnosis-2026-10-22),
+   and this page exists so that architecture is gone.
+   Card internals reuse og_markets.css (.ogm-*, .ogf-*);
+   this sheet carries the page chrome and the budget /
+   guard pieces (.ogfp-*) plus their day faces. */
+html { background: #0b0b0b; }
+body { margin: 0; background: #0b0b0b; color: #f5f0e1;
+  font-family: inherit; -webkit-text-size-adjust: 100%; }
+.ogfp-head { display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px 0; max-width: 720px; margin: 0 auto; }
+.ogfp-back { color: #ffc107; text-decoration: none;
+  font-weight: 700; font-size: .95rem; white-space: nowrap; }
+.ogfp-title { color: #ffc107; font-size: 1.3rem; margin: 0; }
+.ogfp-main { padding: 4px 16px 28px; max-width: 720px;
+  margin: 0 auto; }
+.ogfp-sub { color: #bdb49a; font-size: .88rem; line-height: 1.45;
+  margin: 6px 0 14px; }
+.ogfp-foot { color: #8f876f; font-size: .78rem; line-height: 1.45;
+  margin-top: 4px; }
+
+/* The Budget — the workbook's table shape. */
+.ogfp-table { width: 100%; border-collapse: collapse;
+  font-size: .92rem; }
+.ogfp-table th, .ogfp-table td { padding: 7px 6px;
+  text-align: right; border-bottom: 1px solid rgba(255,255,255,.08); }
+.ogfp-table th:first-child, .ogfp-table td:first-child {
+  text-align: left; }
+.ogfp-table th { color: #ffc107; font-weight: 600; }
+.ogfp-group td { color: #ffc107; font-weight: 700;
+  text-align: left; background: rgba(255,193,7,.07); }
+.ogfp-total td { font-weight: 700; color: #fff; }
+.ogfp-bottom { margin-top: 12px; }
+
+/* Money Guard — the Cash Guard shape: the headline
+   number first and biggest. */
+.ogfp-big { font-size: 2rem; font-weight: 800; color: #fff;
+  line-height: 1.15; margin: 2px 0 2px; }
+.ogfp-big-label { color: #ffc107; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  font-size: .8rem; }
+
+/* Day face (Ticket G parity: the attribute is set by
+   the same bootstrap the main page runs) — warm paper,
+   bronze, ink, mirroring the .ogf-bank day rules in
+   og_markets.css. */
+html[data-og-rain-mode="day"] { background: #f7f2e4; }
+html[data-og-rain-mode="day"] body { background: #f7f2e4;
+  color: #241c07; }
+html[data-og-rain-mode="day"] .ogfp-back,
+html[data-og-rain-mode="day"] .ogfp-title { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogfp-sub { color: #6d5c22; }
+html[data-og-rain-mode="day"] .ogfp-foot { color: #8a7a44; }
+html[data-og-rain-mode="day"] .ogf-budget,
+html[data-og-rain-mode="day"] .ogf-guard {
+  background: #fffdf4; border-color: rgba(138,109,31,.45); }
+html[data-og-rain-mode="day"] .ogf-budget h3,
+html[data-og-rain-mode="day"] .ogf-guard h3,
+html[data-og-rain-mode="day"] .ogf-budget .ogf-h,
+html[data-og-rain-mode="day"] .ogf-guard .ogf-h { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogf-budget .ogm-note,
+html[data-og-rain-mode="day"] .ogf-guard .ogm-note,
+html[data-og-rain-mode="day"] .ogf-budget .ogm-asof,
+html[data-og-rain-mode="day"] .ogf-guard .ogm-asof { color: #6d5c22; }
+html[data-og-rain-mode="day"] .ogf-budget .ogm-metric b,
+html[data-og-rain-mode="day"] .ogf-guard .ogm-metric b,
+html[data-og-rain-mode="day"] .ogf-guard .ogf-txn b { color: #241c07; }
+html[data-og-rain-mode="day"] .ogf-budget .ogm-metric,
+html[data-og-rain-mode="day"] .ogf-guard .ogm-metric,
+html[data-og-rain-mode="day"] .ogf-guard .ogf-txn {
+  border-bottom-color: rgba(36,28,7,.14); }
+html[data-og-rain-mode="day"] .ogf-budget .ogm-honest,
+html[data-og-rain-mode="day"] .ogf-guard .ogm-honest {
+  color: #4a3c10; background: rgba(138,109,31,.08);
+  border-color: rgba(138,109,31,.5); }
+html[data-og-rain-mode="day"] .ogfp-table th { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogfp-table th,
+html[data-og-rain-mode="day"] .ogfp-table td {
+  border-bottom-color: rgba(36,28,7,.14); }
+html[data-og-rain-mode="day"] .ogfp-group td {
+  color: #8a6d1f; background: rgba(138,109,31,.09); }
+html[data-og-rain-mode="day"] .ogfp-total td { color: #241c07; }
+html[data-og-rain-mode="day"] .ogfp-big { color: #241c07; }
+html[data-og-rain-mode="day"] .ogfp-big-label { color: #8a6d1f; }
