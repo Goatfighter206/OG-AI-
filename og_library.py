@@ -871,6 +871,15 @@ def register_library_routes(app):
         _ogfindash.register_findash_routes(app)
     except Exception as e:
         logger.warning(f"Findash routes skipped: {e}")
+    # Ticket L4: the Financial Smart Agent's own page
+    # (GET /fin + GET /finagent/budget + GET
+    # /finagent/guard in og_finpage.py) rides the same
+    # registration.
+    try:
+        import og_finpage as _ogfinpage
+        _ogfinpage.register_finpage_routes(app)
+    except Exception as e:
+        logger.warning(f"Finpage routes skipped: {e}")
     # Round 81: the crew's one route (GET /crew/status — the
     # roster payload the chat answer also uses) rides the
     # same registration.
