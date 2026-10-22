@@ -3218,6 +3218,13 @@ _og_avatarid.bind_app({
     "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
     "get_api_key": lambda: os.getenv("OPENAI_API_KEY")})
 _og_avatarid.register_avatar_identity_routes(app)
+
+# OG performs (Ticket E7): the idle rap + the roast song
+# live in og_perform.py (bind + register only here).
+import og_perform as _og_perform
+_og_perform.bind_app({
+    "get_api_key": lambda: os.getenv("OPENAI_API_KEY")})
+_og_perform.register_perform_routes(app)
 _og_legal.register_legal_routes(app)
 _og_accounts.register_account_routes(app)
 _og_accounts.register_attach_hook(_og_tiers.migrate_entitlement)
