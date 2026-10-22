@@ -191,6 +191,31 @@ html[data-og-rain-mode="day"] .og-plan-val { color: #926d0e; }
  * self-contained cards — so those rules are dropped, not
  * re-aimed.) */
 
+/* --- Ticket N2: the work board + the Settings page -------- */
+/* The board rides inside the menu (its card is a .og-menu-card
+ * and picks up the menu's day shell above); its rows are its
+ * own classes, so they get day colors here. The Settings page
+ * is the menu's own settings — it takes the light face too,
+ * like the menu it opens from. */
+html[data-og-rain-mode="day"] .og-work-group { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-work-title { color: #2b2105; }
+html[data-og-rain-mode="day"] .og-work-state { color: #926d0e; }
+html[data-og-rain-mode="day"] .og-work-sub { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-work-more { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-work-empty { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-work-bar { background: rgba(146,110,20,.22); }
+html[data-og-rain-mode="day"] .og-work-bar-fill { background: #926d0e; }
+html[data-og-rain-mode="day"] .og-settings {
+  background: radial-gradient(120% 90% at 50% 0%, #fdf6de 0%, #f7f2e4 55%);
+}
+html[data-og-rain-mode="day"] .og-settings-top h2 { color: #211a06; }
+html[data-og-rain-mode="day"] .og-settings-close {
+  background: #fffdf6; border-color: rgba(146,110,20,.45); color: #57470f;
+}
+html[data-og-rain-mode="day"] .og-settings-sec { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-settings-note { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-settings .og-row-state { color: #926d0e; }
+
 /* --- reconnect chip ---------------------------------------- */
 html[data-og-rain-mode="day"] #ogReconnectChip {
   background: rgba(255,253,247,.96);
