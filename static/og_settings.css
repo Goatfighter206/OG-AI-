@@ -1,0 +1,22 @@
+/* Ticket N2 — the Settings page. Full-screen switch (the
+   No Pile-Up rule: screens switch, never stack), shaped
+   after og_notification_settings.css — the house settings
+   page language. The rows inside ride the menu's own
+   .og-menu-card / .og-menu-item styles; this sheet owns
+   only the page chrome. */
+.og-settings-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9004}
+.og-settings-scrim[hidden]{display:none!important}
+.og-settings{position:fixed;inset:0;z-index:9005;background:radial-gradient(120% 90% at 50% 0%,#171307 0%,#0b0b0b 55%);display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));overflow:hidden}
+.og-settings[hidden]{display:none!important}
+.og-settings [hidden]{display:none!important}
+.og-settings-top{width:min(680px,100%);margin:0 auto;display:flex;align-items:center;gap:14px;flex:0 0 auto}
+.og-settings-top h2{margin:0;font-size:1.55rem;line-height:1.1;color:#f5f5f5}
+.og-settings-close{order:2;margin-left:auto;width:42px;height:42px;border-radius:50%;background:#1b1b1b;border:1px solid #333;color:#e8e8e8;display:grid;place-items:center;cursor:pointer;padding:0;flex:0 0 auto}
+.og-settings-close svg{width:21px;height:21px}
+.og-settings-close:hover{border-color:rgba(255,193,7,.7);color:#ffc107}
+.og-settings-scroll{width:min(680px,100%);margin:0 auto;overflow-y:auto;min-height:0;padding:4px 0 12px}
+.og-settings-sec{margin:22px 4px 8px;font-size:.74rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#8f8f8f}
+.og-settings-note{color:#8a8a8a;font-size:.88rem;line-height:1.55;padding:10px 4px 0;margin:0}
+.og-settings .og-menu-card{margin:0}
+.og-settings .og-menu-sec{margin:22px 4px 8px}
+@media (max-width:560px){.og-settings{padding-left:14px;padding-right:14px}.og-settings-top h2{font-size:1.38rem}}
