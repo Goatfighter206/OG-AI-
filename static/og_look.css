@@ -210,21 +210,36 @@ body:has(.og-menu.open) #ogTopAvatarBar { display: none !important; }
    the bordered img. Both die here: the presenter keeps
    one face (Ticket E4), and the showcase state treatments
    below are transform-only and calm. */
+/* Ticket E5 (Brent, 2026-10-21 17:06): "take the circle
+   around the avatar off and move him up little more and
+   give him half body like yours" — the hero loses the
+   circle entirely: no ring, no border, no circular crop.
+   He stands as a FIGURE over the pill: the wrap is a tall
+   portrait box (86 x 122, the reference figure's ~1.42
+   height/width) and the artwork fills it by object-fit:
+   cover — the poster's full height (hair to chest; the
+   art audit: the poster is a bust, head + neck + upper
+   chest, no waist/arms exist in the art) with the sides
+   cropped symmetrically. A radial mask feathers the
+   poster's dark backdrop into the page so the bust reads
+   as a standing figure, not a photo card; the figure
+   itself stays opaque. The listening ring that used to
+   steady on this wrapper is gone with the ring. "Up a
+   little" rides the empty state's top padding (the page's
+   og-restyle-css: 6vh -> 4.5vh, phone 4vh -> 2.5vh —
+   ~13 px at phone height, measured by the E5 gate). */
 #emptyState .og-ava-wrap {
-    width: 68px; height: 68px; border-radius: 50%;
-    overflow: hidden; box-sizing: border-box;
-    border: 2px solid rgba(255,193,7,.8);
-    box-shadow: 0 0 14px rgba(255,193,7,.35);
-    background: #111;
+    width: 86px; height: 122px; border-radius: 0;
+    overflow: visible; box-sizing: border-box;
+    border: 0; box-shadow: none;
+    background: transparent;
+    -webkit-mask-image: radial-gradient(ellipse 90% 82% at 50% 42%, #000 64%, transparent 98%);
+    mask-image: radial-gradient(ellipse 90% 82% at 50% 42%, #000 64%, transparent 98%);
 }
 #emptyState .og-ava-wrap img.og-avatar {
     width: 100%; height: 100%; display: block;
-    border: 0; box-shadow: none;
-}
-body.og-mood-listening #emptyState .og-ava-wrap {
-    border-color: rgba(255,193,7,.95);
-    box-shadow: 0 0 0 2px rgba(255,193,7,.30),
-                0 0 16px rgba(255,193,7,.35);
+    border: 0; box-shadow: none; border-radius: 0;
+    object-fit: cover;
 }
 /* Calm state treatments on the three showcase stills.
    thinking: a slow, small tilt — transform only, NO
@@ -246,8 +261,13 @@ body.og-mood-listening #emptyState .og-ava-wrap {
    every state, and the head lands at ~44% of the circle height.
    The clips in the same wrappers carry the same framing, so a
    state change never reframes the face. --- */
-#emptyState .og-ava-wrap img.og-avatar, #ogTopAvatarBar .og-top-ava img.og-avatar, .og-profile-ava img.og-avatar,
-#emptyState .og-ava-wrap video, #ogTopAvatarBar .og-top-ava video, .og-profile-ava video { scale: .75; translate: 0 -5%; }
+#ogTopAvatarBar .og-top-ava img.og-avatar, .og-profile-ava img.og-avatar,
+#ogTopAvatarBar .og-top-ava video, .og-profile-ava video { scale: .75; translate: 0 -5%; }
+/* Ticket E5: the hero still/clips left the rule above —
+   no circle is left to reframe into; the tall wrap's
+   object-fit: cover does the hero's framing now (full
+   artwork height, symmetric side crop). The top-bar and
+   profile medallions keep the E4 reframe untouched. */
 /* The hero name/status bubble (the one pill under the medallion)
    shows its NAME face at rest and its STATUS face while busy; the
    updater flips data-state from the pill's truthful text. */
@@ -266,10 +286,14 @@ body.og-mood-listening #emptyState .og-ava-wrap {
 .og-ava-wrap img.og-avatar.talking,
 .og-top-ava img.og-avatar.talking,
 .og-profile-ava img.og-avatar.talking { animation: none; }
-.og-ava-wrap img.og-avatar.listening,
+.og-ava-wrap img.og-avatar.listening { animation: none; }
 .og-top-ava img.og-avatar.listening,
 .og-profile-ava img.og-avatar.listening {
     animation: none;
     box-shadow: 0 0 0 2px rgba(255,193,7,.5),
                 0 0 12px rgba(255,193,7,.28);
 }
+/* Ticket E5: the hero's listening treatment carried a
+   ring-shaped box-shadow on the still — gone with the
+   circle; the hero listens with a calm still, like the
+   other E4 treatments. Top/profile keep their ring. */
