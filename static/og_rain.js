@@ -135,10 +135,22 @@
   var HEAD_RGB  = [255, 252, 240];  /* white-gold head, name-bright round */
   var TRAIL_HI  = [255, 246, 196];  /* bright antique gold, name-bright   */
   var TRAIL_LO  = [240, 214, 128];  /* lifted amber, name-bright round    */
+  /* cand-g1 (Ticket G — automatic light/dark): the DAY
+     stops. On the light page the white-gold night stops
+     would wash out to nothing, so day rain burns in deep
+     bronze-gold — same family (R>=G>=B at every stop),
+     darker value, so the falls read on a light surface
+     instead of fighting it. The treatment is CONSTANT
+     within the mode (Ticket G's "lighter treatment"):
+     no time drift, no state tax — cand-h7's no-dimming
+     law holds in both modes. */
+  var HEAD_RGB_DAY = [148, 110, 18];   /* deep gold head, day */
+  var TRAIL_HI_DAY = [176, 138, 40];   /* bronze gold, day    */
+  var TRAIL_LO_DAY = [126, 96, 28];    /* deep amber, day     */
   var HEAD_ALPHA = 1.00;           /* caps, before canvas  */
   var TRAIL_ALPHA = 1.00;          /* opacity + mode mult  */
   var CANVAS_OPACITY_NIGHT = 1.00;
-  var CANVAS_OPACITY_DAY = 0.30;
+  var CANVAS_OPACITY_DAY = 0.85;
 
   var FONT = '15px "Share Tech Mono", ui-monospace, Menlo, Consolas, monospace';
   var CELL_H = 18;
@@ -201,7 +213,18 @@
            'night';
   } catch (e) {}
 
-  function alphaMult() { return mode === 'day' ? 0.5 : 1.0; }
+  function alphaMult() { return mode === 'day' ? 0.95 : 1.0; }
+
+  /* The active palette stops for the current mode
+     (cand-g1): night burns white-gold on black, day
+     burns bronze-gold on the light page. One switch,
+     read at draw time, so OGRAIN.setMode re-treats the
+     field on the very next frame. */
+  function curStops() {
+    return mode === 'day'
+      ? { head: HEAD_RGB_DAY, hi: TRAIL_HI_DAY, lo: TRAIL_LO_DAY }
+      : { head: HEAD_RGB, hi: TRAIL_HI, lo: TRAIL_LO };
+  }
 
   function pickGlyph() {
     return GLYPH_POOL.charAt(
@@ -283,17 +306,18 @@
   var spritesOff = false;
 
   function stepRgb(step) {
-    if (step >= GLOW_STEPS) return HEAD_RGB;
+    var st = curStops();
+    if (step >= GLOW_STEPS) return st.head;
     var u = GLOW_STEPS <= 1 ? 0 : step / (GLOW_STEPS - 1);
     return [
-      Math.round(TRAIL_LO[0] + (TRAIL_HI[0] - TRAIL_LO[0]) * u),
-      Math.round(TRAIL_LO[1] + (TRAIL_HI[1] - TRAIL_LO[1]) * u),
-      Math.round(TRAIL_LO[2] + (TRAIL_HI[2] - TRAIL_LO[2]) * u)
+      Math.round(st.lo[0] + (st.hi[0] - st.lo[0]) * u),
+      Math.round(st.lo[1] + (st.hi[1] - st.lo[1]) * u),
+      Math.round(st.lo[2] + (st.hi[2] - st.lo[2]) * u)
     ];
   }
 
   function spriteFor(ch, step) {
-    var key = ch + '|' + step;
+    var key = mode + '|' + ch + '|' + step;
     var cv = spriteCache[key];
     if (cv) return cv;
     try {
@@ -325,6 +349,7 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     var mult = alphaMult();
+    var stops = curStops();
     /* cand-h7 (Ticket H2 round 4): NO DIMMING. The slow
        brightness swell (a global sine x a per-column
        phase sine, alpha dipping to ~0.76-0.83 of full on
@@ -345,15 +370,15 @@
         var a, rgb, step;
         if (i === 0) {
           a = HEAD_ALPHA * mult;
-          rgb = HEAD_RGB;
+          rgb = stops.head;
           step = GLOW_STEPS;
         } else {
           var u = 1 - t;
           a = TRAIL_ALPHA * Math.pow(u, 0.45) * mult;
           rgb = [
-            Math.round(TRAIL_LO[0] + (TRAIL_HI[0] - TRAIL_LO[0]) * u),
-            Math.round(TRAIL_LO[1] + (TRAIL_HI[1] - TRAIL_LO[1]) * u),
-            Math.round(TRAIL_LO[2] + (TRAIL_HI[2] - TRAIL_LO[2]) * u)
+            Math.round(stops.lo[0] + (stops.hi[0] - stops.lo[0]) * u),
+            Math.round(stops.lo[1] + (stops.hi[1] - stops.lo[1]) * u),
+            Math.round(stops.lo[2] + (stops.hi[2] - stops.lo[2]) * u)
           ];
           step = Math.round(u * (GLOW_STEPS - 1));
         }
@@ -561,6 +586,8 @@
     GLYPH_GROUPS: GLYPH_GROUPS,
     PALETTE: {
       head: HEAD_RGB, trailHi: TRAIL_HI, trailLo: TRAIL_LO,
+      headDay: HEAD_RGB_DAY, trailHiDay: TRAIL_HI_DAY,
+      trailLoDay: TRAIL_LO_DAY,
       headAlpha: HEAD_ALPHA, trailAlpha: TRAIL_ALPHA,
       canvasOpacityNight: CANVAS_OPACITY_NIGHT,
       canvasOpacityDay: CANVAS_OPACITY_DAY,
