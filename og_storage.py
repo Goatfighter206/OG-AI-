@@ -1074,7 +1074,7 @@ def register_storage_routes(app):
         if not uid:
             return JSONResponse(content={
                 "ok": False,
-                "response": "Ain't nothin' attached right now, fam."})
+                "response": "Ain't nothin' attached right now, G."})
         tier = _tier_of(raw_request, uid)
         if quota_bytes(tier) <= 0:
             return JSONResponse(content={
@@ -1092,7 +1092,7 @@ def register_storage_routes(app):
                 return JSONResponse(content={
                     "ok": False,
                     "response": "Ain't nothin' attached right now, "
-                                "fam."})
+                                "G."})
             return JSONResponse(content={"ok": False,
                                          "response": str(e)})
         return JSONResponse(content={
