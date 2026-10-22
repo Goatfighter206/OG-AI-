@@ -320,8 +320,21 @@ checkMe();
 <button id="profileShareBtn" class="og-circle-btn" type="button" aria-label="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
 </div>
 <span class="og-profile-ava"><img class="og-avatar og-profile-img" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video id="ogProfileVideo" muted loop playsinline preload="none" hidden></video></span>
+<button id="profilePenBtn" class="og-pen-btn" type="button" aria-label="Make OG yours — his face and his name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
 <div class="og-name-bubble og-profile-bubble"><div class="og-profile-name" id="ogProfileName">OG</div>
 <span class="og-task-pill" id="ogTaskPillProfile">Online &amp; Ready</span></div>
+<div id="ogAvatarIdPanel" class="og-avatarid-panel" hidden>
+<p class="og-avatarid-title">Make OG yours</p>
+<p class="og-avatarid-label">His name</p>
+<div class="og-avatarid-row"><input id="ogNameInput" type="text" maxlength="24" autocomplete="off" placeholder="OG"><button id="ogNameSaveBtn" type="button">Save name</button></div>
+<p class="og-avatarid-label">His face</p>
+<div class="og-avatarid-row"><button id="ogSelfieBtn" type="button">📸 Take a selfie</button><button id="ogUploadBtn" type="button">🖼 Upload a photo</button></div>
+<input type="file" id="ogSelfieInput" accept="image/*" capture="user" hidden>
+<input type="file" id="ogUploadInput" accept="image/*" hidden>
+<button id="ogRevertBtn" class="og-avatarid-revert" type="button" hidden>Use the default OG face</button>
+<p id="ogAvatarIdStatus" class="og-avatarid-status" aria-live="polite"></p>
+<p class="og-avatarid-note">Your photo goes to the image lab so OG can draw your version of him — the photo itself isn't kept. Only the drawing is saved, on your account.</p>
+</div>
 </div>
 
 <div class="chat-wrapper">
@@ -2174,7 +2187,7 @@ var pillTop = $('ogTaskPillTop'), pillProf = $('ogTaskPillProfile'), pillHero = 
 var heroBubble = pillHero ? pillHero.parentElement : null;
 function syncHeroBubble() {
   if (!heroBubble || !pillHero) return;
-  heroBubble.setAttribute('data-state', pillHero.textContent === 'OG' ? 'rest' : 'busy');
+  heroBubble.setAttribute('data-state', pillHero.textContent === (window.ogDisplayName ? window.ogDisplayName() : 'OG') ? 'rest' : 'busy');
 }
 if (heroBubble && window.MutationObserver) {
   new MutationObserver(syncHeroBubble).observe(pillHero, { childList: true, characterData: true, subtree: true });
@@ -2294,12 +2307,13 @@ paint();
 <link rel="stylesheet" href="/static/og_markets.css?v=1">
 <link rel="stylesheet" href="/static/og_look.css?v=5">
 <link rel="stylesheet" href="/static/og_theme.css?v=1">
+<link rel="stylesheet" href="/static/og_avatarid.css?v=1">
 <script src="/static/og_connections.js?v=98"></script>
 <script src="/static/og_library.js?v=98"></script>
 <script src="/static/og_store.js?v=98"></script>
 <script src="/static/og_notification_settings.js?v=98"></script>
 <script src="/static/og_browser_input.js?v=112"></script>
-<script src="/static/og_shell.js?v=100"></script>
+<script src="/static/og_shell.js?v=101"></script>
 <script src="/static/og_tokens.js?v=100"></script>
 <script src="/static/og_dashboards.js?v=2"></script>
 <script src="/static/og_markets.js?v=1"></script>
@@ -2307,6 +2321,7 @@ paint();
 <script src="/static/og_theme.js?v=1"></script>
 <script src="/static/og_idle.js?v=2"></script>
 <script src="/static/og_mouth.js?v=2"></script>
+<script src="/static/og_avatarid.js?v=1"></script>
 <script>
 /* Round 321: pagehide leave beacons (browser + chat). */
 window.addEventListener('pagehide', function () {
