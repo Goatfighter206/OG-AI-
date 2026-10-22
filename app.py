@@ -3033,7 +3033,7 @@ async def generate_image(raw_request: Request):
     raw_prompt = str(body.get("prompt", "")).strip()
     if not raw_prompt:
         return _reply({"ok": False, "response":
-                       "Tell me what to draw, fam."}, 400)
+                       "Tell me what to draw, G."}, 400)
     prompt = _clean_image_prompt(raw_prompt)
 
     tier = await asyncio.to_thread(_request_tier, raw_request)
