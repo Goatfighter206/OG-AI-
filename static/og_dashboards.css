@@ -16,6 +16,26 @@
 }
 .og-dash[hidden] { display: none !important; }
 
+/* --- Ticket L2 (2026-10-22): the surface is its own page ----
+   Brent's drill: the Financial page opened as a dimmed
+   overlay on chat and its cards stacked/ghosted while
+   scrolling. The stack underneath was fully alive — chat,
+   hero, topbar, and the animating rain canvas — and this
+   scroller chained into it. Page mode (html.og-dash-page,
+   toggled by OGDS in og_dashboards.js while a full-screen
+   surface is open) removes the stack instead of stacking
+   better: every other top-level layer leaves the render
+   tree, the rain engine is stopped by the scaffold, and
+   the scroller keeps its scroll to itself. The surface is
+   also its own stacking context (isolation), so nothing
+   inside it can ever paint into the page behind. The age
+   gate, the helper job cards, and every script/style/link
+   are exempt — they are not the page. The profile sheet
+   never engages page mode (see og_dashboards.js). */
+.og-dash { isolation: isolate; }
+.og-dash-body { overscroll-behavior: contain; }
+html.og-dash-page body > *:not(.og-dash):not(#ageGate):not(#ogDesignerCard):not(#ogMotionCard):not(#ogPodcastCard):not(#ogBookCard):not(#ogVoiceCard):not(script):not(style):not(link) { visibility: hidden !important; }
+
 /* The canonical X (R87 law): 42x42 circle, top-right. */
 .og-dash-x {
   position: absolute;
