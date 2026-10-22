@@ -28,7 +28,23 @@
    signed out too, exactly as it was in Tools.
 
    Defensive by contract: feature-detected, try/caught,
-   never throws. */
+   never throws.
+
+   N2 REVISION (Brent, 2026-10-22 04:36 — "account/gps/
+   Chat/tools should also be in the settings folder",
+   Connections folded in on the same rule): the menu is
+   now ONLY the pinned top, OG's work, and this door.
+   Account, Chat, Tools and Connections moved natively
+   in the page markup (their buttons kept their ids, so
+   every handler fires unchanged); this module adds two
+   things on top of v1: it seats the GPS section
+   (og_r66 builds it after the Account card, wherever
+   that card lives) into its labeled group box, and it
+   closes this page FIRST — capture phase — when one of
+   the folded-in ACTION rows is tapped, so the action's
+   own surface (chat, browser, library, connections,
+   construction) replaces Settings instead of stacking
+   over it. The click itself is never intercepted. */
 (function () {
   'use strict';
 
@@ -78,8 +94,28 @@
     });
     card.hidden = !inNow;
     secs.hidden = !inNow;
+    var prefsSec = $('ogSettingsPrefsSec');
+    if (prefsSec) prefsSec.hidden = !inNow;
     var note = $('ogSettingsAnonNote');
     if (note) note.hidden = inNow;
+    seatGps();
+  }
+
+  /* The GPS section (og_r66): built after the Account
+     card with its own "GPS" head, visibility mirrored
+     by its own builder — this only seats it into its
+     labeled group box; hidden state is NOT touched. */
+  function seatGps() {
+    var box = $('ogSettingsGps');
+    var n = $('ogGpsCard');
+    if (!box || !n) return;
+    var prev = n.previousElementSibling;
+    if (prev && prev.tagName === 'H3'
+        && prev.classList.contains('og-menu-sec')
+        && prev.parentNode !== box) {
+      box.appendChild(prev);
+    }
+    if (n.parentNode !== box) box.appendChild(n);
   }
 
   function openSettings() {
@@ -99,7 +135,34 @@
     if (panel) panel.hidden = true;
   }
 
+  /* Folded-in ACTION rows: tapping one must switch
+     screens — Settings closes, then the row's own
+     handler opens its surface. Capture phase, close
+     only, the click is never stopped or rewritten. */
+  var ACTION_IDS = ['menuNewBtn', 'menuShareBtn',
+    'menuClearBtn', 'menuUploadBtn', 'menuStorageBtn',
+    'menuBrowserBtn', 'menuLibraryBtn',
+    'menuConnectionsBtn', 'menuLoginsBtn',
+    'menuSignOutBtn', 'menuDeleteBtn', 'og108RebootRow',
+    'og66ConstructionRow'];
+
+  function watchActions() {
+    document.addEventListener('click', function (e) {
+      var panel = $('ogSettings');
+      if (!panel || panel.hidden) return;
+      var n = e.target;
+      while (n && n !== panel) {
+        if (n.id && ACTION_IDS.indexOf(n.id) !== -1) {
+          closeSettings();
+          return;
+        }
+        n = n.parentNode;
+      }
+    }, true);
+  }
+
   function start() {
+    watchActions();
     var door = $('menuSettingsBtn');
     if (door) door.addEventListener('click', openSettings);
     var close = $('ogSettingsClose');
