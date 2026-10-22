@@ -2,11 +2,14 @@
    + the Manager Dashboard renderer (OG W dashboards wave,
    2026-10-16; Manager governed by the Round 267 SPEC).
 
-   ONE scaffold, four surfaces:
+   ONE scaffold, three surfaces + one real page:
      swipe LEFT  -> 'crypto'  (Crypto Hub, og_markets.js)
      avatar tap  -> 'profile' (Profile Sheet, this file)
-     swipe RIGHT -> 'fin'     (Financial Smart Agent,
-                               og_markets.js)
+     swipe RIGHT -> NAVIGATES to /fin — the Financial
+                    Smart Agent is a true separate page
+                    since Ticket L4 (og_finpage.py); it is
+                    NOT a surface any more and nothing in
+                    this scaffold renders it.
      Progress    -> 'manager' (Crew Dashboard, this file)
    The Manager's home is the Progress panel ITSELF:
    og_shell.js mounts this renderer into the panel via
@@ -133,7 +136,15 @@ function runCleanup(rec) {
    scrim look is the approved avatar-tap surface), so a
    surface whose element carries .og-dash--sheet never
    engages page mode. mount() is untouched — the Manager
-   lives inside the Progress panel, not the overlay. */
+   lives inside the Progress panel, not the overlay.
+   Ticket L4 note (2026-10-22): Brent's discriminator —
+   hard reload, then the drill — still ghosted, so the
+   nested scroller itself was convicted and the
+   Financial Smart Agent LEFT this scaffold for a true
+   separate document at /fin. Page mode now serves the
+   crypto surface alone; it is kept because the crypto
+   overlay still stacks on this same live page until
+   its own separate-page round. */
 function syncPageMode() {
   var on = false;
   if (openName) {
@@ -323,7 +334,15 @@ document.addEventListener('touchend', function (e) {
   }
   if (overlayOpen()) return;
   if (dx < 0) open('crypto');
-  else open('fin');
+  /* Ticket L4: swipe RIGHT is a real navigation now —
+     the Financial Smart Agent is its own document at
+     /fin (body scroll only, no surface, no scroller
+     inside a shell). The guards above still apply
+     exactly as they did for the surface: no navigation
+     while a menu / seat / gate / surface is up, none
+     from a form field, none from the browser window
+     (Ticket A4's capture keeps those touches). */
+  else window.location.assign('/fin');
 }, { passive: true });
 
 document.addEventListener('keydown', function (e) {
