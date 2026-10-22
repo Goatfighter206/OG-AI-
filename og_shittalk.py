@@ -482,7 +482,7 @@ ROASTS = [
     "I've heard smarter shit from a GPS that lost its signal.",
     "You got the confidence of a man ain't nobody ever told the damn truth to.",
     "That performance was dry as hell, the Sahara sent a sympathy card.",
-    "You couldn't find the damn point if it was taped to your forehead, fam.",
+    "You couldn't find the damn point if it was taped to your forehead, G.",
     "That comeback was so damn late it owes me rent.",
     "I've seen sharper shit in a toddler's toy box.",
     "That style's so old it gets a senior discount and a damn walker.",
