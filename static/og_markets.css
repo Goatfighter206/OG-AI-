@@ -31,19 +31,14 @@
 .ogm-row > .ogm-noflex { flex: 0 0 auto; }
 .ogm-label { display: block; color: #bdb49a; font-size: .78rem;
   margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
-.ogm-paper-banner { background: #ffc107; color: #111; font-weight: 800;
-  text-align: center; border-radius: 8px; padding: 7px; letter-spacing: .12em;
-  margin: 0 0 10px; }
+/* Scope cut (2026-10-22): the .ogm-paper-banner,
+   .ogm-watch-item and .ogm-addr rules were removed with
+   the paper simulator and watch-only sections they
+   styled — those sections no longer exist. */
 .ogm-metric { display: flex; justify-content: space-between; padding: 6px 0;
   border-bottom: 1px solid rgba(255,255,255,.08); font-size: .95rem; }
 .ogm-metric:last-child { border-bottom: none; }
 .ogm-metric b { color: #fff; }
-.ogm-watch-item { display: flex; gap: 8px; align-items: center;
-  justify-content: space-between; padding: 8px 0;
-  border-bottom: 1px solid rgba(255,255,255,.08); }
-.ogm-watch-item:last-child { border-bottom: none; }
-.ogm-addr { font-family: monospace; font-size: .78rem; word-break: break-all;
-  color: #e8dcc0; }
 .ogm-soon { opacity: .75; text-align: center; padding: 10px; }
 .ogm-soon .ogm-tag { display: inline-block; background: rgba(255,193,7,.15);
   color: #ffc107; border: 1px solid rgba(255,193,7,.6); border-radius: 999px;
@@ -52,6 +47,42 @@
 .ogm-asof { color: #8f876f; font-size: .78rem; margin-top: 8px; }
 .ogm-err { color: #ff7a6b; font-size: .9rem; }
 a.ogm-link { color: #ffc107; }
+
+/* Ticket M: the Crypto Hub's holdings lead + bid ranges
+   (.ogc-*) — holdings rows reuse .ogm-metric; these are
+   the pieces the metric row can't express. */
+.ogc-total { font-size: 1.05rem; }
+.ogc-h { color: #ffc107; font-size: .95rem; margin: 14px 0 4px; }
+.ogc-range { display: flex; gap: 8px; align-items: center;
+  justify-content: space-between; padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.08); }
+.ogc-range:last-of-type { border-bottom: none; }
+.ogc-range-btns { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* Ticket M day face: the two new hub cards take the
+   warm-paper day face like the bank card (G law). */
+html[data-og-rain-mode="day"] .ogc-hub {
+  background: #fffdf4; border-color: rgba(146,114,20,.45);
+  color: #241c07; }
+html[data-og-rain-mode="day"] .ogc-hub h3,
+html[data-og-rain-mode="day"] .ogc-hub .ogc-h { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-note,
+html[data-og-rain-mode="day"] .ogc-hub .ogm-asof { color: #6d5c22; }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-metric b { color: #241c07; }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-metric,
+html[data-og-rain-mode="day"] .ogc-hub .ogc-range {
+  border-bottom-color: rgba(36,28,7,.14); }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-honest {
+  color: #4a3d10; background: rgba(146,114,20,.08);
+  border-color: rgba(146,114,20,.5); }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-input,
+html[data-og-rain-mode="day"] .ogc-hub .ogm-select {
+  background: #fffdf4; color: #241c07;
+  border-color: rgba(146,114,20,.45); }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-btn-ghost {
+  color: #8a6d1f; border-color: rgba(146,114,20,.6); }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-up { color: #2e7d32; }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-down { color: #b3382a; }
 
 /* Ticket L: the bank picture inside the Financial Smart
    Agent (.ogf-*) — rows reuse .ogm-metric where they can;
