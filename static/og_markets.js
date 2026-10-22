@@ -437,8 +437,15 @@
     bodyEl.innerHTML =
       '<div class="ogm-wrap">' +
       '<h2 class="ogm-title">Financial Smart Agent</h2>' +
-      '<p class="ogm-sub">Real quotes and a market mood computed ' +
-      'from real index numbers. OG doesn\u2019t predict prices.</p>' +
+      '<p class="ogm-sub">Your bank picture first — real ' +
+      'balances, activity, and spending from your own ' +
+      'connected bank, read-only. Then real quotes and a ' +
+      'market mood computed from real index numbers. ' +
+      'OG doesn\u2019t predict prices.</p>' +
+
+      '<section class="ogm-card ogf-bank"><h3>Your Bank</h3>' +
+      '<div data-m="bank"><p class="ogm-note">Loading your ' +
+      'bank picture\u2026</p></div></section>' +
 
       '<section class="ogm-card"><h3>Stock Analysis</h3>' +
       '<div class="ogm-row">' +
@@ -474,6 +481,170 @@
       return '<div class="ogm-metric"><span>' + esc(label) +
         '</span><b' + (clsName ? ' class="' + clsName + '"' : '') +
         '>' + esc(value) + '</b></div>';
+    }
+
+    /* --- Ticket L: your bank picture (GET /finagent/bank) ---
+       Every state paints honestly: signed-out gets the
+       sign-in door, no-bank gets the Plaid connect screen,
+       connected gets ONLY the numbers the server read
+       from the caller's own bank. Nothing is computed or
+       filled in client-side. */
+    function signedMoneyFmt(v) {
+      var n = Number(v);
+      if (!isFinite(n)) return '—';
+      var s = money(Math.abs(n));
+      return (n < 0 ? '-' : '+') + s;
+    }
+
+    function paintBankConnect(box, d, withButton) {
+      var html = '<p class="ogm-honest">' +
+        esc(d.reason || '') + '</p>';
+      if (withButton) {
+        html += '<p style="margin-top:10px"><button ' +
+          'class="ogm-btn" data-m="bank-connect" ' +
+          'type="button">Connect bank (Plaid)</button></p>' +
+          '<p class="ogm-err" data-m="bank-err"></p>';
+      }
+      box.innerHTML = html;
+      var btn = box.querySelector('[data-m="bank-connect"]');
+      if (btn) btn.addEventListener('click', openPlaidLink);
+    }
+
+    function openPlaidLink() {
+      var err = q('bank-err');
+      if (typeof Plaid === 'undefined') {
+        if (err) err.textContent = 'Plaid\u2019s connect ' +
+          'window couldn\u2019t load here — you can also ' +
+          'connect from the menu, under Connections.';
+        return;
+      }
+      fetch('/plaid/link-token', { method: 'POST',
+        credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.link_token) {
+            if (err) err.textContent = 'Plaid didn\u2019t ' +
+              'answer just now — try again in a moment.';
+            return;
+          }
+          var handler = Plaid.create({
+            token: d.link_token,
+            onSuccess: function (publicToken) {
+              fetch('/plaid/exchange', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type':
+                  'application/json' },
+                body: JSON.stringify({
+                  public_token: publicToken })
+              }).then(function () { loadBank(); })
+                .catch(function () { loadBank(); });
+            },
+            onExit: function () { }
+          });
+          handler.open();
+        })
+        .catch(function () {
+          if (err) err.textContent = 'Plaid didn\u2019t ' +
+            'answer just now — try again in a moment.';
+        });
+    }
+
+    function paintBank(d) {
+      var box = q('bank');
+      if (!box) return;
+      if (!d || !d.state) {
+        box.innerHTML = '<p class="ogm-honest">Your bank ' +
+          'picture is unavailable right now.</p>';
+        return;
+      }
+      if (d.state === 'unavailable' || d.state === 'error') {
+        box.innerHTML = '<p class="ogm-honest">' +
+          esc(d.reason || '') + '</p>';
+        return;
+      }
+      if (d.state === 'connect' || d.state === 'reconnect') {
+        paintBankConnect(box, d, true);
+        return;
+      }
+      /* connected */
+      var html = '';
+      var who = d.institution || 'Your bank';
+      html += '<p class="ogm-note">' + esc(who) +
+        ' · read-only — OG can look, never move money.</p>';
+      html += '<h4 class="ogf-h">Accounts</h4>';
+      if ((d.accounts || []).length) {
+        html += d.accounts.map(function (a) {
+          var label = a.name + (a.mask
+            ? ' (\u2026' + a.mask + ')' : '');
+          var val = a.current == null ? '—'
+            : money(a.current);
+          var sub = a.available == null ? ''
+            : '<div class="ogf-sub">Available ' +
+              money(a.available) + '</div>';
+          return '<div class="ogm-metric"><span>' +
+            esc(label) + sub + '</span><b>' + esc(val) +
+            '</b></div>';
+        }).join('');
+      } else {
+        html += '<p class="ogm-note">Plaid reports no ' +
+          'accounts on this connection.</p>';
+      }
+      html += '<h4 class="ogf-h">Recent Activity</h4>';
+      if (d.transactions == null) {
+        html += '<p class="ogm-honest">' +
+          esc(d.transactions_note || '') + '</p>';
+      } else if (!d.transactions.length) {
+        html += '<p class="ogm-note">No transactions in ' +
+          'the last 30 days.</p>';
+      } else {
+        html += d.transactions.map(function (t) {
+          return '<div class="ogf-txn"><span>' +
+            '<span class="ogf-txn-date">' + esc(t.date) +
+            '</span> ' + esc(t.name) +
+            (t.pending ? ' <span class="ogf-pend">' +
+              'pending</span>' : '') +
+            '</span><b>' + esc(signedMoneyFmt(t.amount)) +
+            '</b></div>';
+        }).join('');
+      }
+      if (d.spending) {
+        var sp = d.spending;
+        html += '<h4 class="ogf-h">Spending by Category' +
+          ' · last ' + sp.window_days + ' days</h4>';
+        html += metric('Money out', money(sp.money_out)) +
+          metric('Money in', money(sp.money_in));
+        html += (sp.by_category || []).map(function (c) {
+          return metric(c.category, money(c.total));
+        }).join('');
+        html += '<p class="ogm-note">Counted from ' +
+          sp.counted + ' settled transactions. ' +
+          esc(sp.basis || '') + '</p>';
+      }
+      html += '<div class="ogm-asof">As of ' +
+        esc(d.as_of || '') + '</div>';
+      box.innerHTML = html;
+    }
+
+    function loadBank() {
+      var box = q('bank');
+      if (!box) return;
+      fetch('/finagent/bank', { credentials: 'same-origin' })
+        .then(function (r) {
+          if (r.status === 401) {
+            box.innerHTML = '<p class="ogm-honest">Sign ' +
+              'in to see your bank picture — your balances, ' +
+              'recent activity, and spending live behind ' +
+              'your account, and OG never shows them to ' +
+              'anyone else.</p>';
+            return null;
+          }
+          return r.ok ? r.json() : null;
+        })
+        .then(function (d) { if (d) paintBank(d); })
+        .catch(function () {
+          box.innerHTML = '<p class="ogm-honest">Your ' +
+            'bank picture is unavailable right now.</p>';
+        });
     }
 
     function analyze() {
@@ -548,8 +719,12 @@
           'mood is unavailable right now.</p>';
       });
     }
+    loadBank();
     loadSentiment();
-    startTimer('fin', bodyEl, loadSentiment);
+    startTimer('fin', bodyEl, function () {
+      loadBank();
+      loadSentiment();
+    });
   }
 
   /* Registration with the scaffold — og_dashboards.js loads
