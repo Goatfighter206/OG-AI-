@@ -33,6 +33,7 @@
 <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
 <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
 </defs></svg>
 <div class="og-menu-head">
 <span class="og-menu-ava"><img class="og-avatar-sm" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="OG AI"><video class="og-avatar-video-sm" muted loop playsinline preload="none" hidden></video></span>
@@ -49,6 +50,10 @@
 <div class="og-plan-bar"><span id="planBarFill"></span></div>
 <a class="og-menu-item og-plan-action" id="menuPlanBtn" href="/pro"><span class="og-mi">✦</span> <span id="menuPlanText">Upgrade — see plans</span></a>
 </section>
+<h3 class="og-menu-sec" id="menuWorkSec">OG's work</h3>
+<div class="og-menu-card og-work-card" id="menuWorkCard">
+<div id="menuWorkBody"><div class="og-work-empty">Loading OG's board…</div></div>
+</div>
 <h3 class="og-menu-sec" id="menuAccountSec" hidden>Account</h3>
 <nav class="og-menu-card" id="menuAccountCard" hidden>
 <div class="og-menu-item og-nochev"><span class="og-mi"><svg><use href="#i-check"/></svg></span> <span id="menuAccountEmail"></span></div>
@@ -66,13 +71,15 @@
 <button class="og-menu-item" id="menuStorageBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-folder"/></svg></span> My file locker</button>
 <button class="og-menu-item" id="menuBrowserBtn" type="button" hidden><span class="og-mi"><svg><use href="#i-globe"/></svg></span> OG's browser — live view</button>
 <button class="og-menu-item" id="menuLibraryBtn" type="button"><span class="og-mi"><svg><use href="#i-grid"/></svg></span> Library</button>
-<button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
-<p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
 </nav>
 <h3 class="og-menu-sec">Connections</h3>
 <nav class="og-menu-card">
 <button class="og-menu-item" id="menuConnectionsBtn" type="button"><span class="og-mi"><svg><use href="#i-link"/></svg></span> Connections</button>
 <button class="og-menu-item" id="menuLoginsBtn" type="button"><span class="og-mi"><svg><use href="#i-globe"/></svg></span> Saved logins</button>
+</nav>
+<h3 class="og-menu-sec" id="menuSettingsSec">Settings</h3>
+<nav class="og-menu-card" id="menuSettingsCard">
+<button class="og-menu-item" id="menuSettingsBtn" type="button"><span class="og-mi"><svg><use href="#i-gear"/></svg></span> Settings</button>
 </nav>
 </div>
 <div class="og-menu-foot">🔞 OG AI is an 18+ AI — adults only.<br><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
@@ -131,6 +138,20 @@
 <p id="browserAllowedEmpty" class="og-connections-copy">No always-allowed sites yet.</p>
 <p id="browserAllowedMessage" class="og-connections-note" aria-live="polite"></p>
 </div>
+</div>
+</section>
+<div id="ogSettingsScrim" class="og-settings-scrim" hidden></div>
+<section id="ogSettings" class="og-settings" hidden role="dialog" aria-modal="true" aria-label="Settings">
+<div class="og-settings-top"><button id="ogSettingsClose" class="og-settings-close" type="button" aria-label="Close settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button><h2>Settings</h2></div>
+<div class="og-settings-scroll">
+<p class="og-settings-note" id="ogSettingsAnonNote" hidden>Sign in for voice, security and the rest of OG's settings.</p>
+<nav class="og-menu-card" id="ogSettingsCard"></nav>
+<div id="ogSettingsSections"></div>
+<h3 class="og-settings-sec">Privacy</h3>
+<nav class="og-menu-card">
+<button class="og-menu-item og-nochev" id="menuLocBtn" type="button"><span class="og-mi"><svg><use href="#i-pin"/></svg></span> Location for 'near me': <span class="og-row-state" id="menuLocState">Off</span></button>
+<p class="og-loc-menunote">When it's on, OG can use where you're standing for that one answer — only when your browser allows it. Never saved, never tracked.</p>
+</nav>
 </div>
 </section>
 
@@ -2309,6 +2330,8 @@ paint();
 <link rel="stylesheet" href="/static/og_look.css?v=5">
 <link rel="stylesheet" href="/static/og_theme.css?v=1">
 <link rel="stylesheet" href="/static/og_avatarid.css?v=1">
+<link rel="stylesheet" href="/static/og_workboard.css?v=1">
+<link rel="stylesheet" href="/static/og_settings.css?v=1">
 <script src="/static/og_connections.js?v=98"></script>
 <script src="/static/og_library.js?v=98"></script>
 <script src="/static/og_store.js?v=98"></script>
@@ -2324,6 +2347,8 @@ paint();
 <script src="/static/og_mouth.js?v=2"></script>
 <script src="/static/og_avatarid.js?v=1"></script>
 <script src="/static/og_perform.js?v=1"></script>
+<script src="/static/og_workboard.js?v=1"></script>
+<script src="/static/og_settings.js?v=1"></script>
 <script>
 /* Round 321: pagehide leave beacons (browser + chat). */
 window.addEventListener('pagehide', function () {
