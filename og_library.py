@@ -863,6 +863,14 @@ def register_library_routes(app):
         _ogfin.register_finagent_routes(app)
     except Exception as e:
         logger.warning(f"Finagent routes skipped: {e}")
+    # Ticket L: the Financial Smart Agent's bank picture
+    # (GET /finagent/bank in og_findash.py) rides the
+    # same registration.
+    try:
+        import og_findash as _ogfindash
+        _ogfindash.register_findash_routes(app)
+    except Exception as e:
+        logger.warning(f"Findash routes skipped: {e}")
     # Round 81: the crew's one route (GET /crew/status — the
     # roster payload the chat answer also uses) rides the
     # same registration.
