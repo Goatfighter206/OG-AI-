@@ -3208,6 +3208,16 @@ _og_songs.bind_app({"load_usage": _load_usage_store,
     "load_history": _load_visitor_history_locked})
 _og_songs.register_song_routes(app)
 _og_avatar.register_avatar_routes(app)
+
+# Avatar identity (Ticket E6): the selfie avatar + rename
+# live in og_avatar_identity.py (bind + register only here).
+import og_avatar_identity as _og_avatarid
+_og_avatarid.bind_app({
+    "load_usage": _load_usage_store, "save_usage": _save_usage_store,
+    "usage_lock": _usage_lock,
+    "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
+    "get_api_key": lambda: os.getenv("OPENAI_API_KEY")})
+_og_avatarid.register_avatar_identity_routes(app)
 _og_legal.register_legal_routes(app)
 _og_accounts.register_account_routes(app)
 _og_accounts.register_attach_hook(_og_tiers.migrate_entitlement)
