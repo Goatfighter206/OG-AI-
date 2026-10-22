@@ -847,13 +847,21 @@ def register_library_routes(app):
     except Exception as e:
         logger.warning(f"Crewdash routes skipped: {e}")
     # Round 321 dashboards batch: the Crypto Hub
-    # (GET /cryptohub/data, /cryptohub/watchlist in
-    # og_cryptohub.py) rides the same registration.
+    # (GET /cryptohub/data in og_cryptohub.py) rides
+    # the same registration.
     try:
         import og_cryptohub as _ogchub
         _ogchub.register_cryptohub_routes(app)
     except Exception as e:
         logger.warning(f"Cryptohub routes skipped: {e}")
+    # Ticket M: the Crypto Hub's bid ranges (GET/POST
+    # /cryptohub/range in og_hubrange.py) ride the same
+    # registration.
+    try:
+        import og_hubrange as _oghubrange
+        _oghubrange.register_hubrange_routes(app)
+    except Exception as e:
+        logger.warning(f"Hubrange routes skipped: {e}")
     # Round 321 dashboards batch: the Financial Smart
     # Agent (GET /finagent/quote, /finagent/sentiment,
     # /finagent/portfolio in og_finagent.py) rides the
