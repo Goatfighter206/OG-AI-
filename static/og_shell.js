@@ -590,13 +590,27 @@ function pillPaint() {
   var t = pillNeeds != null ? pillNeeds : pillActivityText;
   if (t == null || t === pillShown) return;
   pillShown = t;
-  pillChannels.forEach(function (ch) { ch.rawSet(t); });
-  pillPlain.forEach(function (el) {
+  pillChannels.forEach(function (ch) {
+    ch.rawSet(ch.hero && t === 'Online & Ready' ? 'OG' : t);
+  });
+  pillPlain.forEach(function (p) {
     /* unchanneled fallback: no trap lives here, so this
        direct write cannot re-enter the coordinator */
-    try { el.textContent = t; } catch (e) { }
+    try { p.el.textContent = (p.hero && t === 'Online & Ready') ? 'OG' : t; } catch (e) { }
   });
 }
+/* Ticket E5 (owner, 2026-10-21 17:08): "it should just be
+   his name underneath him, and then when he doing
+   something it will pop up and tell you what he is
+   doing" — the HERO pill's rest face is the name itself:
+   the composed idle text ('Online & Ready') paints as
+   'OG' into the hero channel only, at this ONE writer,
+   so the hero pill element's text at rest reads 'OG'
+   and the page's bubble watcher keys its rest face on
+   it. Every other composed text — the truthful phases,
+   the needs states, R275's activity line — paints
+   verbatim into all three pills, exactly as before; the
+   top and profile pills keep 'Online & Ready' at rest. */
 function pillActivityWrite(t) {
   pillPageSeen = true;
   if (t === pillActivityText) { pillPaint(); return; }
@@ -612,17 +626,41 @@ function pillSetNeeds(t) {
   if (!el) return;
   var ch = pillRawChannel(el);
   if (ch) {
+    ch.hero = (id === 'ogTaskPillHero');
     pillChannels.push(ch);
-    if (pillActivityText == null && ch.seed) pillActivityText = ch.seed;
+    if (pillActivityText == null && ch.seed && !ch.hero) pillActivityText = ch.seed;
   } else {
-    pillPlain.push(el);
-    if (pillActivityText == null) {
+    pillPlain.push({ el: el, hero: (id === 'ogTaskPillHero') });
+    if (pillActivityText == null && id !== 'ogTaskPillHero') {
       try { if (el.textContent) pillActivityText = String(el.textContent); } catch (e) { }
     }
   }
 });
 if (pillActivityText == null) pillActivityText = 'Online & Ready';
 pillShown = pillActivityText;
+/* Ticket E5: normalize the hero channel NOW. Its store
+   seeds from the markup, but the page updater may have
+   painted the shared idle text into the element before
+   this coordinator installed the trap, and both writers
+   dedupe — without this, the hero would sit on the raw
+   'Online & Ready' (and the bubble on its status face)
+   until the first phase change repainted it. The name
+   face must be right from the first frame. */
+pillChannels.forEach(function (ch) {
+  if (ch.hero) {
+    ch.rawSet(pillActivityText === 'Online & Ready'
+      ? 'OG' : pillActivityText);
+  }
+});
+pillPlain.forEach(function (p) {
+  if (p.hero) {
+    try {
+      p.el.textContent =
+        (pillActivityText === 'Online & Ready')
+          ? 'OG' : pillActivityText;
+    } catch (e) { }
+  }
+});
 
 function wrapSend() {
   if (sendWrapped || typeof window.sendMessage !== 'function') return;
