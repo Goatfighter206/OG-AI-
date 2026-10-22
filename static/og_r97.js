@@ -7,16 +7,32 @@
    then approved the real wave meter 05:23 PDT: "Approve
    — add the real wave meter.")
 
-   WHAT THIS ASSET IS: a live waveform meter that moves
-   with OG's REAL audio while he speaks. A Web Audio
-   analyser is wired to the very media element that plays
-   the /tts MP3 (the page's ogAudio() element, handed to
-   start() by playBlob), and gold bars are drawn from the
-   analyser's live frequency data. It is shown ONLY while
-   that element is playing OG's voice — start() is called
-   by playBlob at playback start, stop() on ended / error
-   / play() rejection / stopSpeaking(). It is NOT a state
-   decoration: no audio through the analyser, no bars.
+   WHAT THIS ASSET IS: the live signal source on OG's
+   REAL audio while he speaks. A Web Audio analyser is
+   wired to the very media element that plays the /tts
+   MP3 (the page's ogAudio() element, handed to start()
+   by playBlob) — born as the visible wave meter (the
+   bars were its face; Ticket E5 removed the face, see
+   below) and kept as machinery: Ticket E4's mouth reads
+   this analyser's level. It is live ONLY while that
+   element is playing OG's voice — start() is called by
+   playBlob at playback start, stop() on ended / error /
+   play() rejection / stopSpeaking(). It is NOT a state
+   decoration: no audio through the analyser, no level.
+
+   Ticket E5 (Brent, 2026-10-21 17:10): "the vice bar
+   that pops up underneath what he is doing needs to go
+   away" — the VISIBLE meter (the #ogWaveMeter gold-bars
+   box this file used to build into the top avatar bar
+   and show while OG speaks) is REMOVED, root and
+   branch: no box, no canvas, no bar drawing. What stays
+   is the invisible half: the Web Audio analyser graph
+   on OG's real voice element, because Ticket E4's
+   mouth (og_mouth.js) reads its level — the signal
+   source is machinery, not presentation. start()/stop()
+   now only arm/disarm that graph; level()/active()
+   keep their exact contract (0 / false unless speech
+   is live through the graph).
 
    Wiring notes (the iOS-safe shape):
    - The AudioContext + MediaElementSource are created
@@ -38,40 +54,10 @@
 (function () {
   'use strict';
 
-  var BARS = 24;
-  var box = null;        // meter container div
-  var canvas = null;     // bar canvas inside box
-  var ctx2d = null;
   var actx = null;       // AudioContext (lazy, once)
   var analyser = null;   // AnalyserNode (lazy, once)
   var sourceEl = null;   // element the source was built from
-  var raf = 0;           // requestAnimationFrame id while drawing
   var running = false;
-
-  function ensureBox() {
-    if (box) return box;
-    try {
-      var style = document.createElement('style');
-      style.id = 'og-r97-css';
-      style.textContent =
-        '#ogWaveMeter{display:none;justify-content:center;padding:2px 0 0}' +
-        '#ogWaveMeter.on{display:flex}' +
-        '#ogWaveMeter canvas{display:block}';
-      document.head.appendChild(style);
-      box = document.createElement('div');
-      box.id = 'ogWaveMeter';
-      box.setAttribute('aria-hidden', 'true');
-      canvas = document.createElement('canvas');
-      canvas.width = 168;
-      canvas.height = 28;
-      box.appendChild(canvas);
-      ctx2d = canvas.getContext ? canvas.getContext('2d') : null;
-      var host = document.getElementById('ogTopAvatarBar');
-      if (host) host.appendChild(box);
-      else if (document.body) document.body.appendChild(box);
-    } catch (e) { box = null; }
-    return box;
-  }
 
   function ensureGraph(el) {
     if (!el) return false;
@@ -95,41 +81,16 @@
     } catch (e) { return false; }
   }
 
-  function draw() {
-    if (!running) return;
-    try {
-      if (analyser && ctx2d && canvas) {
-        var data = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data);
-        var w = canvas.width, h = canvas.height;
-        ctx2d.clearRect(0, 0, w, h);
-        ctx2d.fillStyle = '#ffc107';
-        var bw = w / BARS;
-        for (var i = 0; i < BARS; i++) {
-          var v = data[Math.floor(i * data.length / BARS)] / 255;
-          var bh = Math.max(2, v * h);
-          ctx2d.fillRect(i * bw + 1, (h - bh) / 2, bw - 2, bh);
-        }
-      }
-    } catch (e) { /* a bad frame never stops the meter or the voice */ }
-    raf = requestAnimationFrame(draw);
-  }
-
   function start(el) {
     try {
-      if (!ensureBox()) return;
       if (!ensureGraph(el)) return;
-      box.classList.add('on');
-      if (!running) { running = true; raf = requestAnimationFrame(draw); }
-    } catch (e) { /* the meter is decoration on real audio; never fatal */ }
+      running = true;
+    } catch (e) { /* the graph feeds the mouth only; never fatal */ }
   }
 
   function stop() {
     try {
       running = false;
-      if (raf) { cancelAnimationFrame(raf); raf = 0; }
-      if (box) box.classList.remove('on');
-      if (ctx2d && canvas) ctx2d.clearRect(0, 0, canvas.width, canvas.height);
     } catch (e) { /* never throws */ }
   }
 
