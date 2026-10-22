@@ -3225,6 +3225,12 @@ import og_perform as _og_perform
 _og_perform.bind_app({
     "get_api_key": lambda: os.getenv("OPENAI_API_KEY")})
 _og_perform.register_perform_routes(app)
+
+# Menu order (Ticket N2): the menu work board's grouped
+# read lives in og_workboard.py (register only here — it
+# composes og_progress's rows and owns no state).
+import og_workboard as _og_workboard
+_og_workboard.register_workboard_routes(app)
 _og_legal.register_legal_routes(app)
 _og_accounts.register_account_routes(app)
 _og_accounts.register_attach_hook(_og_tiers.migrate_entitlement)
