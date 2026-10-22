@@ -29,10 +29,11 @@
      weight shift — a random-walk resting offset: a new
                     target every 5-11 s, eased toward with a
                     fresh time constant (1.4-2.6 s) each time;
-     blink        — poster still only (a video's eyes are
-                    baked; see the ceiling note in the round
-                    report): a 110 ms brightness dip every
-                    2.6-7 s, 18% of them double.
+     blink        — REMOVED by Ticket H3 (2026-10-22):
+                    the 110 ms whole-poster brightness dip
+                    read on the phone as a flash on OG. This
+                    module writes transforms only; the
+                    avatar's brightness never changes.
 
    Amplitudes are capped small (alive, not distracting):
    |translate| <= ~4 px, |rotate| <= ~1.8 deg, scale within
@@ -106,8 +107,7 @@
       /* weight shift: eased random walk */
       sx: 0, sy: 0, sr: 0, tx: 0, ty: 0, tr: 0,
       tau: rr(1400, 2600), nextShift: rr(2500, 6000),
-      /* blink (still only) */
-      nextBlink: rr(1800, 4500), blinkUntil: 0, blinkAgain: 0
+      /* (blink state removed — Ticket H3, see frame()) */
     };
   }
   var targets = els.map(makeTarget);
@@ -185,30 +185,17 @@
         }
       }
 
-      /* blink: only when the poster still is what's showing
-         (the avatar JS hides the still while a clip plays) */
-      if (g.img && g.blinkUntil && t >= g.blinkUntil) {
-        g.img.style.filter = "";
-        g.blinkUntil = 0;
-        if (g.blinkAgain) {
-          g.nextBlink = t + 260; g.blinkAgain = 0;
-        } else {
-          g.nextBlink = t + rr(2600, 7000);
-        }
-      }
-      if (g.img && !g.blinkUntil && t >= g.nextBlink) {
-        var vidPlaying = g.vid && !g.vid.hidden &&
-          g.vid.readyState >= 2 && !g.vid.paused;
-        var stillShown = g.img.style.visibility !== "hidden" &&
-          g.img.offsetWidth > 0;
-        if (stillShown && !vidPlaying) {
-          g.img.style.filter = "brightness(.7)";
-          g.blinkUntil = t + 110;
-          g.blinkAgain = Math.random() < 0.18 ? 1 : 0;
-        } else {
-          g.nextBlink = t + 1200;
-        }
-      }
+      /* Ticket H3 (2026-10-22, Brent's drill): NO blink.
+         The simulated blink was a brightness 0.7 filter
+         over the WHOLE poster for 110 ms every 2.6-7 s —
+         at medallion size that is not an eyelid, it is a
+         flash on OG (measured on the owner's own drill
+         video: the avatar's mean luminance dips ~4% for
+         ~3 frames and snaps back). It is removed whole:
+         this module never writes a filter again, so the
+         avatar's brightness is steady in every state.
+         Breathing, drift, and weight shift (transform
+         only) are untouched. */
     }
   }
 
@@ -235,7 +222,6 @@
         document.documentElement.classList.remove("og-idle-on");
         targets.forEach(function (g) {
           g.el.style.transform = "";
-          if (g.img) g.img.style.filter = "";
         });
       }
     });
