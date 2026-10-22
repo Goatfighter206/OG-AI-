@@ -606,6 +606,7 @@ const staged = window.__ogPeekStaged ? window.__ogPeekStaged() : null;
 if ((!message && !staged) || isProcessing) return;
 if (!message) message = 'Look at this picture I just sent you.';
 addMessage('user', message);
+if (window.OGPERFORM && OGPERFORM.note) { try { OGPERFORM.note(message); } catch (e) {} }
 if (staged && window.__ogDecorateSent) window.__ogDecorateSent();
 input.value = '';
 isProcessing = true;
@@ -2322,6 +2323,7 @@ paint();
 <script src="/static/og_idle.js?v=2"></script>
 <script src="/static/og_mouth.js?v=2"></script>
 <script src="/static/og_avatarid.js?v=1"></script>
+<script src="/static/og_perform.js?v=1"></script>
 <script>
 /* Round 321: pagehide leave beacons (browser + chat). */
 window.addEventListener('pagehide', function () {
