@@ -114,6 +114,43 @@ function runCleanup(rec) {
   if (rec) rec.cleanup = null;
 }
 
+/* Ticket L2 (2026-10-22, Brent's phone drill): a
+   full-screen surface is a PAGE, not a layer stacked over
+   a live one. The landed scaffold left the whole app
+   running underneath the opaque overlay — chat visible,
+   hero alive, the gold rain canvas animating at full
+   rate under the surface — and the surface scroller
+   chained its scroll to that page (overscroll-behavior
+   auto). On the phone's compositor that stack is what
+   smeared: cards ghosted over each other mid-scroll and
+   the page read as a dimmed overlay on chat. So while a
+   full-screen surface is open, the stack is REMOVED, not
+   compensated: page mode (the html.og-dash-page rules in
+   og_dashboards.css) takes every other top-level layer
+   out of the render tree, and the rain engine stops
+   (OGRAIN.stop — it restarts on close). The profile
+   SHEET is exempt by design: a sheet is a sheet (its
+   scrim look is the approved avatar-tap surface), so a
+   surface whose element carries .og-dash--sheet never
+   engages page mode. mount() is untouched — the Manager
+   lives inside the Progress panel, not the overlay. */
+function syncPageMode() {
+  var on = false;
+  if (openName) {
+    var rec = surfaces[openName];
+    if (rec && rec.el &&
+        !rec.el.classList.contains('og-dash--sheet')) {
+      on = true;
+    }
+  }
+  document.documentElement.classList.toggle(
+    'og-dash-page', on);
+  if (window.OGRAIN) {
+    if (on && OGRAIN.stop) OGRAIN.stop();
+    if (!on && OGRAIN.start) OGRAIN.start();
+  }
+}
+
 function open(name) {
   var rec = surfaces[name];
   if (!rec || typeof rec.renderer !== 'function') {
@@ -135,6 +172,7 @@ function open(name) {
     } else if (typeof ret === 'function') {
       r.cleanup = ret;
     }
+    syncPageMode();
     return true;
   });
 }
@@ -146,6 +184,7 @@ function close() {
   if (rec && rec.el) rec.el.hidden = true;
   openName = null;
   OGDS.current = null;
+  syncPageMode();
 }
 
 /* mount(name, el): render a surface into a HOST element
