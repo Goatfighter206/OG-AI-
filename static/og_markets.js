@@ -12,7 +12,12 @@
    - The trade panel never trades: its one action closes the
      surface and prefills the chat composer, so the existing
      chat trade-sheet + approval flow owns the trade.
-   - The simulator is PAPER only, client-side, in localStorage.
+   - Scope cut (Brent, 2026-10-22): the hub is the
+     user’s own money only — Your Coins, Bid Ranges,
+     the trade hand-off, Games. There is NO live-prices
+     board, NO paper-trading simulator, and NO
+     watch-only address list on this surface; they
+     were removed outright, not hidden.
    - Refresh runs only while a surface is open and stops when
      the surface body goes away / stays hidden. */
 (function () {
@@ -98,69 +103,26 @@
 
   /* ================= CRYPTO HUB ================= */
 
-  var paperKey = 'og_paper_sim_v1';
-  function paperLoad() {
-    try {
-      var raw = localStorage.getItem(paperKey);
-      if (raw) {
-        var p = JSON.parse(raw);
-        if (p && typeof p.cash === 'number' && p.holdings) return p;
-      }
-    } catch (e) { /* fall through to a fresh book */ }
-    return { cash: 10000, holdings: {} };
-  }
-  function paperSave(p) {
-    try { localStorage.setItem(paperKey, JSON.stringify(p)); }
-    catch (e) { /* storage off — the sim still works this visit */ }
-  }
-
   function renderCrypto(bodyEl) {
     stopTimer('crypto');
     bodyEl.innerHTML =
       '<div class="ogm-wrap">' +
       '<h2 class="ogm-title">Crypto Hub</h2>' +
-      '<p class="ogm-sub">Live prices, your connected Coinbase ' +
-      'portfolio, paper trading, and watch-only addresses. ' +
+      '<p class="ogm-sub">Your coins and what they\u2019re ' +
+      'worth, and bid ranges you arm yourself. ' +
       'Real abilities only.</p>' +
 
-      '<section class="ogm-card"><h3>Live Prices</h3>' +
-      '<div data-m="prices"><p class="ogm-note">Loading live ' +
-      'prices…</p></div><div class="ogm-asof" data-m="asof"></div>' +
-      '</section>' +
+      '<section class="ogm-card ogc-hub"><h3>Your Coins</h3>' +
+      '<div data-m="holdings"><p class="ogm-note">Checking ' +
+      'your Coinbase connection…</p></div>' +
+      '<div class="ogm-asof" data-m="asof"></div></section>' +
 
-      '<section class="ogm-card"><h3>Your Portfolio</h3>' +
-      '<div data-m="portfolio"><p class="ogm-note">Checking ' +
-      'your Coinbase connection…</p></div></section>' +
+      '<section class="ogm-card ogc-hub"><h3>Bid Ranges</h3>' +
+      '<div data-m="ranges"><p class="ogm-note">Loading your ' +
+      'bid ranges…</p></div></section>' +
 
       '<section class="ogm-card"><h3>Trade</h3>' +
       '<div data-m="trade"></div></section>' +
-
-      '<section class="ogm-card"><div class="ogm-paper-banner">' +
-      'PAPER TRADING SIMULATOR — PAPER ONLY</div>' +
-      '<p class="ogm-note">Virtual $10,000 PAPER cash. Nothing ' +
-      'here is real money, nothing is connected to Coinbase, and ' +
-      'no order ever leaves this page. Your paper book lives in ' +
-      'this browser only.</p><div data-m="paper"></div></section>' +
-
-      '<section class="ogm-card"><h3>Watch-Only Addresses</h3>' +
-      '<p class="ogm-note">Public addresses you save just to ' +
-      'watch. OG holds no keys for them and cannot move ' +
-      'anything at them — balances are read from public ' +
-      'explorers.</p><div data-m="watch"></div>' +
-      '<div class="ogm-row" style="margin-top:10px">' +
-      '<div><label class="ogm-label">Label</label>' +
-      '<input class="ogm-input" data-m="w-label" maxlength="60" ' +
-      'placeholder="e.g. Cold storage"></div>' +
-      '<div><label class="ogm-label">Chain</label>' +
-      '<select class="ogm-select" data-m="w-chain">' +
-      '<option value="btc">BTC</option>' +
-      '<option value="eth">ETH</option></select></div></div>' +
-      '<div class="ogm-row" style="margin-top:8px">' +
-      '<div><label class="ogm-label">Public address</label>' +
-      '<input class="ogm-input" data-m="w-addr" ' +
-      'placeholder="Paste a public address"></div>' +
-      '<button class="ogm-btn ogm-noflex" data-m="w-add">Add</button>' +
-      '</div><p class="ogm-err" data-m="w-err"></p></section>' +
 
       '<section class="ogm-card"><h3>Games</h3>' +
       '<div class="ogm-soon"><span class="ogm-tag">COMING SOON</span>' +
@@ -177,49 +139,27 @@
 
     function q(sel) { return bodyEl.querySelector('[data-m="' + sel + '"]'); }
 
+    /* Ticket M: the hub leads with YOUR COINS — compact,
+       holdings-only. The full core price list stays in the
+       payload (hub.prices) as feed data for the trade
+       hand-off's coin list and the bid-range form; since
+       the 2026-10-22 scope cut it is not rendered as a
+       board anywhere — there is no board. */
     function renderPrices(data) {
       hub.prices = data.prices || [];
-      var box = q('prices');
-      if (!data.prices_available || !hub.prices.length) {
-        box.innerHTML = '<p class="ogm-honest">Live prices are ' +
-          'unavailable right now — the price feeds gave nothing ' +
-          'back, so OG shows no numbers rather than stale or ' +
-          'made-up ones.</p>';
-      } else {
-        var rows = hub.prices.map(function (p) {
-          return '<tr><td><b>' + esc(p.symbol) + '</b> ' +
-            esc(p.name) + '</td><td>' + money(p.usd, p.usd < 1 ? 4 : 2) +
-            '</td><td class="' + cls(p.change_24h) + '">' +
-            pct(p.change_24h) + '</td><td>' +
-            (p.high == null ? '—' : money(p.high)) + '</td><td>' +
-            (p.low == null ? '—' : money(p.low)) + '</td><td>' +
-            esc(p.source) + '</td></tr>';
-        }).join('');
-        box.innerHTML = '<table class="ogm-table"><thead><tr>' +
-          '<th>Coin</th><th>Price</th><th>24h</th><th>High</th>' +
-          '<th>Low</th><th>Source</th></tr></thead><tbody>' +
-          rows + '</tbody></table>';
-      }
+      renderHoldings(data);
       q('asof').textContent = data.as_of
         ? ('As of ' + data.as_of) : '';
       renderTrade(data.portfolio || {});
-      renderPaper();
     }
 
-    function renderPortfolio(data) {
+    function renderHoldings(data) {
       var pf = data.portfolio || {};
-      var box = q('portfolio');
-      if (pf.state === 'connected') {
-        var rows = (pf.accounts || []).map(function (a) {
-          return '<div class="ogm-metric"><span>' +
-            esc(a.name) + ' (' + esc(a.currency) + ')</span><b>' +
-            esc(a.balance) + ' ' + esc(a.currency) + '</b></div>';
-        }).join('');
-        box.innerHTML = (rows ||
-          '<p class="ogm-note">Coinbase reports no accounts.</p>') +
-          '<p class="ogm-note">' + esc(pf.note || '') + '</p>';
-      } else {
-        var html = '<p class="ogm-honest">' + esc(pf.note || '') + '</p>';
+      var box = q('holdings');
+      if (!box) return;
+      if (pf.state !== 'connected') {
+        var html = '<p class="ogm-honest">' +
+          esc(pf.note || '') + '</p>';
         if (pf.state === 'disconnected') {
           html += '<p style="margin-top:10px"><a class="ogm-link" ' +
             'href="/auth/coinbase">Connect Coinbase</a> — the ' +
@@ -227,7 +167,211 @@
             'sign-in.</p>';
         }
         box.innerHTML = html;
+        return;
       }
+      var hv = pf.holdings || {};
+      var rows = hv.rows || [];
+      if (!rows.length) {
+        box.innerHTML = '<p class="ogm-note">Coinbase reports ' +
+          'no balances above zero — when you hold a coin, it ' +
+          'shows here with its live price.</p>' +
+          '<p class="ogm-note">' + esc(pf.note || '') + '</p>';
+        return;
+      }
+      var html = '';
+      if (hv.total_usd != null) {
+        html += '<div class="ogm-metric ogc-total"><span>' +
+          'Total balance</span><b>' + money(hv.total_usd) +
+          '</b></div>';
+        if (!hv.values_complete) {
+          html += '<p class="ogm-note">Total counts only the ' +
+            'coins with a live price right now — a coin whose ' +
+            'feed is down keeps its balance row but adds ' +
+            'nothing to the total.</p>';
+        }
+      }
+      html += rows.map(function (h) {
+        var priceTxt = h.price == null ? 'price unavailable'
+          : money(h.price, h.price < 1 ? 4 : 2) +
+            (h.change_24h == null ? ''
+              : ' · ' + pct(h.change_24h));
+        var valTxt = h.value_usd == null ? '—'
+          : money(h.value_usd);
+        return '<div class="ogm-metric"><span><b>' +
+          esc(h.symbol) + '</b> · ' + priceTxt + '<br>' +
+          '<span class="ogm-note">' + esc(h.balance) + ' ' +
+          esc(h.symbol) + '</span></span><b>' + valTxt +
+          '</b></div>';
+      }).join('');
+      html += '<p class="ogm-note">' + esc(pf.note || '') +
+        '</p>';
+      box.innerHTML = html;
+    }
+
+    /* Ticket M: bid ranges — arm / disarm / remove your
+       own per-coin ranges, watch their live band state,
+       and read trigger reports. The panel paints the
+       server's execution note verbatim: while execution
+       is not live, a trigger is a REPORT, never a trade,
+       and this panel never pretends otherwise. */
+    var ZONE_LABEL = {
+      watching: 'Watching', buy_zone: 'In buy zone',
+      sell_zone: 'In sell zone', no_price: 'No live price'
+    };
+
+    function rangeBoundsTxt(r) {
+      var parts = [];
+      if (r.buy_below != null) {
+        parts.push('Buy \u2264 ' + money(r.buy_below));
+      }
+      if (r.sell_above != null) {
+        parts.push('Sell \u2265 ' + money(r.sell_above));
+      }
+      return parts.join(' · ');
+    }
+
+    function renderRanges(d) {
+      var box = q('ranges');
+      if (!box) return;
+      var ex = d.execution || {};
+      var html = '<p class="ogm-honest">' +
+        esc(ex.reason || '') + '</p>';
+      var ranges = d.ranges || [];
+      if (ranges.length) {
+        html += ranges.map(function (r) {
+          var priceTxt = r.price == null
+            ? 'no live price' : money(r.price,
+              r.price < 1 ? 4 : 2);
+          var state = r.armed
+            ? (ZONE_LABEL[r.zone] || r.zone) : 'Disarmed';
+          return '<div class="ogc-range"><div>' +
+            '<b>' + esc(r.symbol) + '</b> · ' + priceTxt +
+            '<div class="ogm-note">' +
+            esc(rangeBoundsTxt(r)) + ' — ' + esc(state) +
+            '</div></div><div class="ogc-range-btns">' +
+            (r.armed
+              ? '<button class="ogm-btn-ghost" data-rdisarm="' +
+                esc(r.symbol) + '">Disarm</button>'
+              : '<button class="ogm-btn-ghost" data-rarm="' +
+                esc(r.symbol) + '">Arm</button>') +
+            '<button class="ogm-btn-ghost" data-rremove="' +
+            esc(r.symbol) + '">Remove</button></div></div>';
+        }).join('');
+      } else {
+        html += '<p class="ogm-note">No bid ranges yet. Arm ' +
+          'one below: pick a coin, set a buy-at-or-below ' +
+          'and/or a sell-at-or-above price, and OG watches ' +
+          'the band for you.</p>';
+      }
+      var events = d.events || [];
+      if (events.length) {
+        html += '<h4 class="ogc-h">Trigger Reports</h4>' +
+          events.map(function (e) {
+            return '<div class="ogm-metric"><span>' +
+              esc(e.symbol) + ' entered its ' + esc(e.side) +
+              ' zone at ' + money(e.price) +
+              '</span><b>' +
+              (e.executed ? 'EXECUTED' : 'REPORTED ONLY') +
+              '</b></div>';
+          }).join('');
+      }
+      var syms = {};
+      hub.prices.forEach(function (p) { syms[p.symbol] = 1; });
+      ranges.forEach(function (r) { syms[r.symbol] = 1; });
+      var pf = hub.portfolio || {};
+      ((pf.holdings || {}).rows || []).forEach(function (h) {
+        syms[h.symbol] = 1;
+      });
+      var opts = Object.keys(syms).sort().map(function (s) {
+        return '<option value="' + esc(s) + '">' + esc(s) +
+          '</option>';
+      }).join('');
+      html += '<div class="ogm-row" style="margin-top:10px">' +
+        '<div><label class="ogm-label">Coin</label>' +
+        (opts
+          ? '<select class="ogm-select" data-m="r-sym">' + opts +
+            '</select>'
+          : '<input class="ogm-input" data-m="r-sym" ' +
+            'maxlength="10" placeholder="e.g. BTC">') +
+        '</div>' +
+        '<div><label class="ogm-label">Buy at or below ' +
+        '($)</label><input class="ogm-input" data-m="r-buy" ' +
+        'type="number" min="0" step="any" placeholder="—"></div>' +
+        '<div><label class="ogm-label">Sell at or above ' +
+        '($)</label><input class="ogm-input" data-m="r-sell" ' +
+        'type="number" min="0" step="any" placeholder="—"></div>' +
+        '<button class="ogm-btn ogm-noflex" data-m="r-go">Arm ' +
+        'range</button></div>' +
+        '<p class="ogm-err" data-m="r-err"></p>';
+      box.innerHTML = html;
+      function wire(attr, fn) {
+        box.querySelectorAll('[' + attr + ']').forEach(
+          function (btn) {
+            btn.addEventListener('click', function () {
+              fn(btn.getAttribute(attr));
+            });
+          });
+      }
+      wire('data-rdisarm', function (sym) {
+        rangePost({ action: 'disarm', symbol: sym });
+      });
+      wire('data-rremove', function (sym) {
+        rangePost({ action: 'remove', symbol: sym });
+      });
+      wire('data-rarm', function (sym) {
+        var rec = null;
+        ranges.forEach(function (r) {
+          if (r.symbol === sym) rec = r;
+        });
+        if (!rec) return;
+        rangePost({ action: 'arm', symbol: sym,
+          buy_below: rec.buy_below, sell_above: rec.sell_above });
+      });
+      var go = box.querySelector('[data-m="r-go"]');
+      if (go) go.addEventListener('click', function () {
+        var symEl = box.querySelector('[data-m="r-sym"]');
+        var buyEl = box.querySelector('[data-m="r-buy"]');
+        var sellEl = box.querySelector('[data-m="r-sell"]');
+        var body = { action: 'arm',
+          symbol: (symEl.value || '').trim().toUpperCase() };
+        if (buyEl.value !== '') {
+          body.buy_below = Number(buyEl.value);
+        }
+        if (sellEl.value !== '') {
+          body.sell_above = Number(sellEl.value);
+        }
+        rangePost(body);
+      });
+    }
+
+    function rangePost(body) {
+      var err = q('r-err');
+      postJSON('/cryptohub/range', body).then(renderRanges)
+        .catch(function (e) {
+          if (err) err.textContent = e.message;
+        });
+    }
+
+    function loadRanges() {
+      var box = q('ranges');
+      if (!box) return;
+      fetch('/cryptohub/range', { credentials: 'same-origin' })
+        .then(function (r) {
+          if (r.status === 401) {
+            box.innerHTML = '<p class="ogm-honest">Sign in ' +
+              'to arm bid ranges — a range is a standing ' +
+              'instruction on your own account, so it lives ' +
+              'behind your sign-in, and OG never shows it ' +
+              'to anyone else.</p>';
+            return null;
+          }
+          return r.ok ? r.json() : null;
+        })
+        .then(function (d) { if (d) renderRanges(d); })
+        .catch(function () {
+          box.innerHTML = '<p class="ogm-honest">Bid ranges ' +
+            'are unavailable right now.</p>';
+        });
     }
 
     function renderTrade(pf) {
@@ -275,162 +419,21 @@
         });
     }
 
-    function renderPaper() {
-      var box = q('paper');
-      if (!box) return;
-      var book = paperLoad();
-      var priceOf = {};
-      hub.prices.forEach(function (p) { priceOf[p.symbol] = p.usd; });
-      var held = Object.keys(book.holdings).filter(function (s) {
-        return book.holdings[s] > 0;
-      });
-      var heldHtml = held.map(function (s) {
-        var qty = book.holdings[s];
-        var val = priceOf[s] == null ? null : qty * priceOf[s];
-        return '<div class="ogm-metric"><span>' + esc(s) +
-          ' — ' + qty.toFixed(8).replace(/0+$/, '').replace(/\.$/, '') +
-          '</span><b>' + (val == null ? 'price unavailable'
-            : money(val)) + '</b></div>';
-      }).join('');
-      var opts = hub.prices.map(function (p) {
-        return '<option value="' + esc(p.symbol) + '">' +
-          esc(p.symbol) + ' — ' + money(p.usd) + '</option>';
-      }).join('');
-      box.innerHTML =
-        '<div class="ogm-metric"><span>PAPER cash</span><b>' +
-        money(book.cash) + ' PAPER</b></div>' + heldHtml +
-        '<div class="ogm-row" style="margin-top:10px">' +
-        '<div><label class="ogm-label">Coin (live price)</label>' +
-        '<select class="ogm-select" data-m="p-sym">' + opts +
-        '</select></div>' +
-        '<div><label class="ogm-label">PAPER USD amount</label>' +
-        '<input class="ogm-input" data-m="p-amt" type="number" ' +
-        'min="1" step="any" placeholder="100"></div>' +
-        '<button class="ogm-btn ogm-noflex" data-m="p-buy">Buy ' +
-        '(paper)</button>' +
-        '<button class="ogm-btn-ghost ogm-noflex" data-m="p-sell">' +
-        'Sell (paper)</button>' +
-        '<button class="ogm-btn-ghost ogm-noflex" data-m="p-reset">' +
-        'Reset paper book</button></div>' +
-        '<p class="ogm-err" data-m="p-err"></p>';
-      function tradePaper(isBuy) {
-        var sym = box.querySelector('[data-m="p-sym"]').value;
-        var amt = Number(box.querySelector('[data-m="p-amt"]').value);
-        var err = box.querySelector('[data-m="p-err"]');
-        var price = priceOf[sym];
-        if (!sym || price == null) {
-          err.textContent = 'No live price for that coin right now.';
-          return;
-        }
-        if (!isFinite(amt) || amt <= 0) {
-          err.textContent = 'Enter a PAPER amount first.';
-          return;
-        }
-        var b = paperLoad();
-        if (isBuy) {
-          if (amt > b.cash) {
-            err.textContent = 'Not enough PAPER cash.';
-            return;
-          }
-          b.cash -= amt;
-          b.holdings[sym] = (b.holdings[sym] || 0) + amt / price;
-        } else {
-          var qty = amt / price;
-          if ((b.holdings[sym] || 0) < qty) {
-            err.textContent = 'Not enough PAPER ' + sym + '.';
-            return;
-          }
-          b.holdings[sym] -= qty;
-          b.cash += amt;
-        }
-        paperSave(b);
-        renderPaper();
-      }
-      box.querySelector('[data-m="p-buy"]').addEventListener(
-        'click', function () { tradePaper(true); });
-      box.querySelector('[data-m="p-sell"]').addEventListener(
-        'click', function () { tradePaper(false); });
-      box.querySelector('[data-m="p-reset"]').addEventListener(
-        'click', function () {
-          try { localStorage.removeItem(paperKey); } catch (e) {}
-          renderPaper();
-        });
-    }
-
-    function renderWatch(data) {
-      var box = q('watch');
-      var items = (data && data.items) || [];
-      if (!items.length) {
-        box.innerHTML = '<p class="ogm-note">No addresses saved ' +
-          'yet.</p>';
-        return;
-      }
-      box.innerHTML = items.map(function (it) {
-        var bal = it.balance_available && it.balance
-          ? esc(it.balance.balance) + ' ' + esc(it.balance.unit) +
-            (it.balance.usd != null
-              ? ' (' + money(it.balance.usd) + ')' : '') +
-            (it.balance.unconfirmed != null
-              ? ' · unconfirmed ' + esc(it.balance.unconfirmed) +
-                ' ' + esc(it.balance.unit) : '') +
-            ' · via ' + esc(it.balance.source)
-          : 'balance unavailable right now';
-        return '<div class="ogm-watch-item"><div>' +
-          '<b>' + esc(it.label || it.chain.toUpperCase()) + '</b> ' +
-          '<span class="ogm-note">' + esc(it.chain.toUpperCase()) +
-          '</span><div class="ogm-addr">' + esc(it.address) +
-          '</div><div class="ogm-note">' + bal + '</div></div>' +
-          '<button class="ogm-btn-ghost" data-remove="' +
-          esc(it.id) + '">Remove</button></div>';
-      }).join('');
-      box.querySelectorAll('[data-remove]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          postJSON('/cryptohub/watchlist', {
-            action: 'remove', id: btn.getAttribute('data-remove')
-          }).then(renderWatch).catch(function (e) {
-            q('w-err').textContent = e.message;
-          });
-        });
-      });
-    }
-
-    function loadWatch() {
-      getJSON('/cryptohub/watchlist').then(renderWatch)
-        .catch(function () {
-          q('watch').innerHTML = '<p class="ogm-honest">Watch-only ' +
-            'addresses are unavailable right now.</p>';
-        });
-    }
-
-    q('w-add').addEventListener('click', function () {
-      var err = q('w-err');
-      err.textContent = '';
-      postJSON('/cryptohub/watchlist', {
-        action: 'add',
-        chain: q('w-chain').value,
-        address: q('w-addr').value.trim(),
-        label: q('w-label').value.trim()
-      }).then(function (d) {
-        q('w-addr').value = '';
-        q('w-label').value = '';
-        renderWatch(d);
-      }).catch(function (e) { err.textContent = e.message; });
-    });
-
     function load() {
       getJSON('/cryptohub/data').then(function (data) {
+        hub.portfolio = data.portfolio || {};
         renderPrices(data);
-        renderPortfolio(data);
+        loadRanges();
       }).catch(function () {
-        q('prices').innerHTML = '<p class="ogm-honest">Live ' +
-          'prices are unavailable right now.</p>';
-        q('portfolio').innerHTML = '<p class="ogm-honest">' +
-          'Portfolio state is unavailable right now.</p>';
+        q('holdings').innerHTML = '<p class="ogm-honest">' +
+          'Your coins are unavailable right now — the ' +
+          'hub gave nothing back, so OG shows no numbers ' +
+          'rather than stale or made-up ones.</p>';
         renderTrade({});
+        loadRanges();
       });
     }
     load();
-    loadWatch();
     startTimer('crypto', bodyEl, load);
   }
 
