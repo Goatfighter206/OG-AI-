@@ -136,7 +136,7 @@ class EnhancedAIAgent:
             "Nah bruh, that ain't gonna work. Hit me with something that makes sense.",
             "The fuck? You really thought that was gonna work? Come on now.",
             "My guy, that's all types of fucked up. Let me fix your shit.",
-            "Bruh... that's trash. But I got you, no worries fam."
+            "Bruh... that's trash. But I got you, no worries, G."
         ],
         'smart_ass': [
             "No shit, Sherlock. But let me break it down for you anyway...",
@@ -317,7 +317,7 @@ EXAMPLES OF YOUR SPEECH:
 - "Yo that code is trash, no cap. Let me show you how a real G does it..."
 - "Damn right I got you. This shit bout to be fire, on God!"
 - "Bruh, that's hella complicated but I got the sauce. Let's break it down..."
-- "No bullshit, this is how you do it properly. Take notes fam..."
+- "No bullshit, this is how you do it properly. Take notes, G..."
 """
 
         base_prompt += """
@@ -737,7 +737,7 @@ TWO LAWS FOR EVERY ANSWER:
         # If there's context from web search, use it
         if context:
             responses = [
-                f"Aight bet, I found some shit for you:\n\n{context}\n\nThat should help you out, fam. Anything else?",
+                f"Aight bet, I found some shit for you:\n\n{context}\n\nThat should help you out, G. Anything else?",
                 f"Yo check this out, I pulled this from the web:\n\n{context}\n\nPretty damn fire right? Let me know if you need more.",
                 f"Aye I got you, here's what I found:\n\n{context}\n\nThat answer your question or you need me to dig deeper into this shit?"
             ]
@@ -776,13 +776,13 @@ TWO LAWS FOR EVERY ANSWER:
             swear_responses = [
                 f"Yo my bad, some bullshit happened: {error}\n\nBut don't trip, I can still help. What else you got?",
                 f"Damn, hit a snag: {error}\n\nNah but seriously I got you, ask me something else.",
-                f"Aw shit, ran into this: {error}\n\nBut I'm still here for you fam. What you need?"
+                f"Aw shit, ran into this: {error}\n\nBut I'm still here for you, G. What you need?"
             ]
             return random.choice(swear_responses) if self.swearing_enabled else f"Yo my bad, ran into an issue: {error}\n\nBut don't trip, I can still help. What else you got?"
 
         # Default smart-ass response
         sass_responses = [
-            f"'{message}' - aight I hear you. But lowkey you gotta give me more to work with fam. Ask me to search something, write some code, or explain something. I'm smart but I ain't a damn mind reader... yet. 🤷‍♂️",
+            f"'{message}' - aight I hear you. But lowkey you gotta give me more to work with, G. Ask me to search something, write some code, or explain something. I'm smart but I ain't a damn mind reader... yet. 🤷‍♂️",
             f"Bruh what you really asking me? '{message}' is kinda vague. Be specific - you want me to write code? Search the web? Debug some shit? Help me help you.",
             f"'{message}' - okay cool but what you actually need tho? I can code, search, explain stuff, run programs... just tell me what's up.",
         ]
@@ -1011,7 +1011,7 @@ Time: O(n) — one pass, done.
 **QUICK EXAMPLE**
 `is_palindrome("A man a plan a canal Panama")` → `True`. Classic."""
 
-        return """Aight, algorithms are my bread and butter — but "algorithm" for WHAT, fam? I need the problem you're trying to solve. Meanwhile, here's the format I serve them in, with the most useful starter of all — finding the biggest number:
+        return """Aight, algorithms are my bread and butter — but "algorithm" for WHAT, G? I need the problem you're trying to solve. Meanwhile, here's the format I serve them in, with the most useful starter of all — finding the biggest number:
 
 **THE IDEA**
 King-of-the-hill: hold the biggest you've seen, challenge it with every next number.
@@ -1125,7 +1125,7 @@ async function fetchData(url) {
 console.log(myFunction(5, 10));  // 15
 ```
 
-What specific JS function you need fam?"""
+What specific JS function you need, G?"""
 
         # General code request — Python is the default, don't ask
         return f"""Yo I got you! I code in Python by default, so unless you name another language, it's Python. 🐍
