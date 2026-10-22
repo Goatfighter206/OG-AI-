@@ -1,0 +1,21 @@
+/* Ticket E6 — avatar identity: the profile sheet's pen
+   button + the make-it-yours panel. Scoped to the profile
+   sheet (a self-contained dark surface in both themes —
+   the G scope rule), in its own gold-on-dark language. */
+.og-pen-btn{position:absolute;top:calc(14px + env(safe-area-inset-top) + 6vh + 98px);left:calc(50% + 46px);width:42px;height:42px;border-radius:50%;background:#1b1b1b;border:1.5px solid rgba(255,193,7,.75);color:#ffc107;display:grid;place-items:center;cursor:pointer;padding:0;z-index:2;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.og-pen-btn svg{width:20px;height:20px}
+.og-pen-btn:hover{background:#262626}
+.og-avatarid-panel{width:min(348px,92vw);margin-top:24px;background:#141414;border:1px solid rgba(255,193,7,.35);border-radius:18px;padding:18px 18px 14px;text-align:left;box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.og-avatarid-panel[hidden]{display:none!important}
+.og-avatarid-title{margin:0 0 12px;font-size:1.08rem;font-weight:700;color:#f5f5f5}
+.og-avatarid-label{margin:12px 0 6px;font-size:.74rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#9a9a9a}
+.og-avatarid-label:first-of-type{margin-top:0}
+.og-avatarid-row{display:flex;gap:8px}
+.og-avatarid-row input{flex:1 1 auto;min-width:0;background:#0d0d0d;border:1px solid #333;border-radius:10px;color:#f2f2f2;font:inherit;font-size:1rem;padding:10px 12px}
+.og-avatarid-row input:focus{outline:none;border-color:rgba(255,193,7,.8)}
+.og-avatarid-row button{flex:0 0 auto;background:transparent;border:1px solid rgba(255,193,7,.65);border-radius:10px;color:#ffd54f;font:inherit;font-weight:600;padding:10px 13px;cursor:pointer}
+.og-avatarid-row button:hover{background:rgba(255,193,7,.12)}
+.og-avatarid-revert{margin-top:14px;width:100%;background:transparent;border:1px solid #333;border-radius:10px;color:#bcbcbc;font:inherit;padding:10px 12px;cursor:pointer}
+.og-avatarid-revert:hover{border-color:rgba(255,193,7,.6);color:#ffd54f}
+.og-avatarid-status{margin:12px 0 0;min-height:1.25em;font-size:.92rem;color:#ffd54f;line-height:1.4}
+.og-avatarid-note{margin:8px 0 0;font-size:.78rem;color:#8a8a8a;line-height:1.45}
