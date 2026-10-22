@@ -25,11 +25,22 @@
 
    Geometry (poster fractions, read off og_avatar's
    poster.webp): the mouth line centres at (0.49, 0.612) of
-   the artwork, remapped through the E4 head-and-shoulders
-   reframe the look layer applies to the still (scale .75
-   about the centre, lifted 5%): MX = .5 + (.49 - .5) * .75,
-   MY = .5 + (.612 - .5) * .75 - .05 = .534. The drawn cavity
-   widens/deepens with openness and its
+   the artwork. Each face remaps that point through its own
+   presentation:
+   - top bar / profile (E4): the look layer's head-and-
+     shoulders reframe (scale .75 about the centre, lifted
+     5%): MX = .5 + (.49 - .5) * .75 = .492, MY = .534.
+   - hero (Ticket E5): no circle, no reframe — the tall
+     86 x 122 wrap frames the artwork by object-fit: cover
+     (full height visible; the sides crop symmetrically:
+     visible artwork x in [0.148, 0.852]): MX =
+     (.49 - .148) / .704 = .486, MY = .612. The size
+     coefficients scale with the face itself (cheeks
+     ~46 px across here vs ~19 px in the 68 px medallion,
+     a factor ~1.9 on the coefficients after the canvas
+     growth), so the drawn mouth keeps the same
+     proportion of the face it had in E4.
+   The drawn cavity widens/deepens with openness and its
    centre drops a touch as the jaw opens. One canvas per
    showcase wrapper (hero / top bar / profile — the same
    three faces og_idle drives), painted over the still,
@@ -42,7 +53,22 @@
   'use strict';
   if (window.OGMOUTH) return;
 
-  var MX = 0.492, MY = 0.534;
+  /* Per-face geometry: [selector, mouth centre x/y as
+     canvas fractions, radius coefficients, jaw-drop
+     coefficient, canvas corner radius]. The hero entry
+     is Ticket E5's (see header); the other two keep the
+     E4 medallion numbers byte-for-byte. */
+  var FACES = [
+    { sel: '#emptyState .og-ava-wrap', mx: 0.486, my: 0.612,
+      rx0: 0.040, rx1: 0.051, ry0: 0.004, ry1: 0.036,
+      drop: 0.015, rad: '0' },
+    { sel: '.og-top-ava', mx: 0.492, my: 0.534,
+      rx0: 0.021, rx1: 0.027, ry0: 0.003, ry1: 0.027,
+      drop: 0.011, rad: '50%' },
+    { sel: '.og-profile-ava', mx: 0.492, my: 0.534,
+      rx0: 0.021, rx1: 0.027, ry0: 0.003, ry1: 0.027,
+      drop: 0.011, rad: '50%' }
+  ];
   var state = { active: false, level: 0, open: 0, frames: 0 };
   window.OGMOUTH = {
     version: 1,
@@ -56,18 +82,16 @@
 
   var faces = [];
   function build() {
-    var sels = ['#emptyState .og-ava-wrap', '.og-top-ava',
-                '.og-profile-ava'];
-    sels.forEach(function (sel) {
-      var wrap = document.querySelector(sel);
+    FACES.forEach(function (g) {
+      var wrap = document.querySelector(g.sel);
       if (!wrap || !wrap.querySelector('img.og-avatar')) return;
       var c = document.createElement('canvas');
       c.className = 'og-mouth-canvas';
       c.setAttribute('aria-hidden', 'true');
       c.style.cssText = 'position:absolute;inset:0;width:100%;' +
-        'height:100%;border-radius:50%;pointer-events:none;';
+        'height:100%;border-radius:' + g.rad + ';pointer-events:none;';
       wrap.appendChild(c);
-      faces.push({ wrap: wrap, canvas: c,
+      faces.push({ wrap: wrap, canvas: c, g: g,
                    ctx: c.getContext ? c.getContext('2d') : null });
     });
   }
@@ -111,9 +135,10 @@
     ctx.clearRect(0, 0, W, H);
     var o = state.open;
     if (o <= 0.03) return;
-    var cx = MX * W, cy = (MY + 0.011 * o) * H;
-    var rx = W * (0.021 + 0.027 * o);
-    var ry = H * (0.003 + 0.027 * o);
+    var g = f.g;
+    var cx = g.mx * W, cy = (g.my + g.drop * o) * H;
+    var rx = W * (g.rx0 + g.rx1 * o);
+    var ry = H * (g.ry0 + g.ry1 * o);
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(24,9,3,0.94)';
