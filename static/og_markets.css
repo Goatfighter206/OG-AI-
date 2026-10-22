@@ -52,3 +52,41 @@
 .ogm-asof { color: #8f876f; font-size: .78rem; margin-top: 8px; }
 .ogm-err { color: #ff7a6b; font-size: .9rem; }
 a.ogm-link { color: #ffc107; }
+
+/* Ticket L: the bank picture inside the Financial Smart
+   Agent (.ogf-*) — rows reuse .ogm-metric where they can;
+   these are the pieces the metric row can't express. */
+.ogf-h { color: #ffc107; font-size: .95rem; margin: 14px 0 4px; }
+.ogf-bank .ogf-h:first-of-type { margin-top: 8px; }
+.ogf-sub { color: #bdb49a; font-size: .8rem; }
+.ogf-txn { display: flex; justify-content: space-between; gap: 10px;
+  padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.08);
+  font-size: .92rem; }
+.ogf-txn:last-child { border-bottom: none; }
+.ogf-txn b { color: #fff; white-space: nowrap; }
+.ogf-txn-date { color: #bdb49a; }
+.ogf-pend { color: #ffc107; border: 1px solid rgba(255,193,7,.55);
+  border-radius: 6px; padding: 0 5px; font-size: .72rem;
+  text-transform: uppercase; letter-spacing: .05em; }
+
+/* Ticket L day face: the bank card takes the warm-paper
+   day face like the rest of OG's day surfaces (G law). */
+html[data-og-rain-mode="day"] .ogf-bank {
+  background: #fffdf4; border-color: rgba(146,114,20,.45);
+  color: #241c07; }
+html[data-og-rain-mode="day"] .ogf-bank h3,
+html[data-og-rain-mode="day"] .ogf-bank .ogf-h { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogf-bank .ogm-note,
+html[data-og-rain-mode="day"] .ogf-bank .ogf-sub,
+html[data-og-rain-mode="day"] .ogf-bank .ogf-txn-date,
+html[data-og-rain-mode="day"] .ogf-bank .ogm-asof { color: #6d5c22; }
+html[data-og-rain-mode="day"] .ogf-bank .ogm-metric b,
+html[data-og-rain-mode="day"] .ogf-bank .ogf-txn b { color: #241c07; }
+html[data-og-rain-mode="day"] .ogf-bank .ogm-metric,
+html[data-og-rain-mode="day"] .ogf-bank .ogf-txn {
+  border-bottom-color: rgba(36,28,7,.14); }
+html[data-og-rain-mode="day"] .ogf-bank .ogm-honest {
+  color: #4a3d10; background: rgba(146,114,20,.08);
+  border-color: rgba(146,114,20,.5); }
+html[data-og-rain-mode="day"] .ogf-bank .ogf-pend {
+  color: #8a6d1f; border-color: rgba(146,114,20,.55); }
