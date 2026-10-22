@@ -362,7 +362,7 @@ def register_avatar_identity_routes(app):
         if not name:
             return JSONResponse(
                 content={"ok": False, "response":
-                         "A name can't be blank, fam."},
+                         "A name can't be blank, G."},
                 status_code=400)
         if len(name) > NAME_MAX:
             return JSONResponse(
@@ -374,7 +374,7 @@ def register_avatar_identity_routes(app):
             return JSONResponse(
                 content={"ok": False, "response":
                          "That name's got weird characters in "
-                         "it — plain letters, fam."},
+                         "it — plain letters, G."},
                 status_code=400)
 
         def _work():
