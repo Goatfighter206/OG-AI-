@@ -74,7 +74,7 @@ BAD_TYPE_LINE = (
 )
 NO_TEXT_LINE = (
     "Yo, that PDF's got no readable text in it — looks like scanned "
-    "pictures of pages. I can't read that one yet, fam."
+    "pictures of pages. I can't read that one yet, G."
 )
 GARBLED_LINE = (
     "Yo, that file came through garbled — I couldn't read a word of it. "
@@ -576,7 +576,7 @@ def register_file_routes(app):
         if not meta:
             return JSONResponse(content={
                 "ok": True,
-                "response": "Ain't nothin' attached right now, fam."})
+                "response": "Ain't nothin' attached right now, G."})
         clear_upload(uid)
         line = f"Done — '{meta['name']}' is outta here. 📎✌️"
         _note_history(uid, "[📎 Removed the attached file]", line)
