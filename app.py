@@ -1873,6 +1873,50 @@ class _HealthShortcutMiddleware:
 
 app.add_middleware(_HealthShortcutMiddleware)
 
+
+class _CacheDefenseMiddleware:
+    """Ticket L4 (diagnosis og-l2-diagnosis-2026-10-22,
+    section 6A): the app set NO cache policy at all, so
+    an iOS tab suspended across a deploy resumed the OLD
+    page instance indefinitely — Brent re-drilled a fix
+    and saw the pre-fix build, pixel for pixel. The
+    defense: /static/* responses carry Cache-Control:
+    no-cache, so a resumed or restored client must
+    revalidate every static before running it (ETag /
+    Last-Modified support already exists, so an
+    unchanged file revalidates as a cheap 304, and the
+    ?v=N stamp discipline still forces a first-seen URL
+    after a real change). The HTML routes answer for
+    themselves (/ and /fin carry the same header on
+    their FileResponses). Nothing else is touched: no
+    other path's headers change."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and \
+                (scope.get("path") or "").startswith(
+                    "/static/"):
+            async def send_defended(message):
+                if message.get("type") == \
+                        "http.response.start":
+                    headers = [
+                        (k, v) for k, v in
+                        message.get("headers", [])
+                        if k.lower() != b"cache-control"]
+                    headers.append(
+                        (b"cache-control", b"no-cache"))
+                    message = dict(message)
+                    message["headers"] = headers
+                await send(message)
+            await self.app(scope, receive, send_defended)
+            return
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_CacheDefenseMiddleware)
+
 # Mount static files directory
 if not os.path.exists("static"):
     os.makedirs("static")
@@ -2392,7 +2436,13 @@ async def root():
     """
     Serve the epic frontend HTML interface.
     """
-    return FileResponse("index_epic.html")
+    # Ticket L4 cache defense: the HTML itself must
+    # revalidate on every load, or a suspended tab can
+    # hold a stale build against every ?v=N stamp
+    # behind it (diagnosis og-l2-diagnosis-2026-10-22).
+    return FileResponse(
+        "index_epic.html",
+        headers={"Cache-Control": "no-cache"})
 
 @app.get("/classic", response_class=FileResponse)
 async def classic_ui():
