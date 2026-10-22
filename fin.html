@@ -8,7 +8,7 @@
 <script>/* Ticket L4 cache defense (diagnosis 6A): a page restored from the back-forward / page cache is a frozen old build — reload it once so what the user sees is always the live build. After the reload the fresh load's pageshow is not persisted, so this never loops. */
 window.addEventListener('pageshow', function (e) { if (e.persisted) { location.reload(); } });
 </script>
-<link rel="stylesheet" href="/static/og_markets.css?v=2">
+<link rel="stylesheet" href="/static/og_markets.css?v=3">
 <link rel="stylesheet" href="/static/og_finpage.css?v=1">
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 </head>
