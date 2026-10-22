@@ -18,6 +18,22 @@ and trims them to what a menu row needs. No row is
 invented, no state is copied into a store here, and an
 empty board is an honest empty board.
 
+TICKET S (Brent, 2026-10-22: "All these fixes should not
+be in there — I don't want users seeing all that. That
+only what he working for the user"): the board shows ONLY
+what OG is working on FOR the signed-in user. OG's
+INTERNAL construction work — the self-fix queue's
+proposals (section "fixes") and the nightly auto-update
+block — never enters this payload: the split happens
+HERE, at the source, not in the client (the rows are
+absent from the response, not hidden by the glass). The
+filter is an ALLOWLIST of the user-work sections, so any
+future internal section fails closed instead of leaking
+by default. og_progress itself is untouched: the same
+unfiltered read still feeds the owner-side surfaces
+(the Progress seat / Manager crew dashboard), where the
+internal line legitimately lives.
+
 Signed out: 200 with signed_in False and empty groups
 (the /activity/status precedent — the menu must render
 truthfully for a signed-out visitor too, and there is no
@@ -34,6 +50,21 @@ logger = logging.getLogger(__name__)
 _CAPS = {"working": 8, "waiting": 8, "queue": 12,
          "finished": 5}
 _FINISHED_STATES = ("done", "failed")
+
+# Ticket S: the ONLY sections that may ship to a user
+# client — work OG is doing FOR the signed-in user, each
+# read from that user's own store key: their generator
+# jobs ("making"), their browser session ("browser"),
+# their parked approvals ("queries"), their watches and
+# price tracks ("watching"), the crew jobs they
+# dispatched ("crew"), their projects ("projects").
+# Everything else the shared composer returns — today
+# the self-fix queue ("fixes"); tomorrow anything new —
+# is internal and is dropped here, at the source.
+_USER_SECTIONS = frozenset({
+    "making", "browser", "queries", "watching", "crew",
+    "projects",
+})
 
 
 def _route_uid(request) -> str:
@@ -76,16 +107,20 @@ def board_for(uid: str, request) -> Dict:
                 "counts": {k: 0 for k in empty},
                 "owner_note": None}
     rows: List[Dict] = []
-    auto_update: Optional[Dict] = None
     try:
         import og_progress
         data = og_progress.collect_progress(uid, request)
+        # Ticket S split at the source: only the caller's
+        # own user-work sections continue; internal rows
+        # (the self-fix queue today) are dropped before
+        # grouping, and the composer's auto_update block —
+        # OG's nightly self-upkeep — is never read into
+        # this payload at all (owner_note stays None; the
+        # block still ships on the owner-side surfaces
+        # that read og_progress directly).
         rows = [r for r in (data.get("rows") or [])
-                if isinstance(r, dict)]
-        au = data.get("auto_update")
-        if isinstance(au, dict) and au.get("title"):
-            auto_update = {"title": str(au["title"]),
-                           "sub": str(au.get("sub") or "")}
+                if isinstance(r, dict)
+                and r.get("section") in _USER_SECTIONS]
     except Exception as e:
         logger.warning(f"Workboard compose failed: {e}")
         rows = []
@@ -108,7 +143,7 @@ def board_for(uid: str, request) -> Dict:
     counts = {k: len(v) for k, v in groups.items()}
     capped = {k: v[:_CAPS[k]] for k, v in groups.items()}
     return {"signed_in": True, "groups": capped,
-            "counts": counts, "owner_note": auto_update}
+            "counts": counts, "owner_note": None}
 
 
 def register_workboard_routes(app):
