@@ -1,0 +1,200 @@
+/* og_theme.css — Ticket G (cand-g2, re-based from cand-g1
+ * onto the post-E5 tree): the LIGHT face of OG.
+ *
+ * Loaded AFTER og_look.css and applied ONLY while the
+ * rain module's mode attribute says day:
+ *     html[data-og-rain-mode="day"]
+ * Night is not restyled here at all — the shipped dark
+ * face stays exactly as it is, rule for rule.
+ *
+ * The look (Brent picked the direction 2026-10-19: "light
+ * gold paper"): warm paper background, ink text, the same
+ * gold as accent. Ticket H2 holds in daylight too — the
+ * chat bubbles stay FULLY SOLID (OG bubble white, visitor
+ * bubble solid gold), never a tint, never see-through,
+ * and the rain never dims: in day the bronze-gold glyphs
+ * simply draw over the paper (the canvas paints no
+ * background of its own, day or night).
+ *
+ * RE-AIM (cand-g2): cand-g1's sheet was written against
+ * the pre-E medallion page. Every rule below targets the
+ * CURRENT presentation: the E5 standing bust figure
+ * (#emptyState .og-ava-wrap, a transparent feathered
+ * frame — nothing to recolor), the name pill as it exists
+ * now (.og-name-bubble + .og-top-name + .og-task-pill in
+ * the hero and the top bar), the shell, the chat, and the
+ * menus. The dead medallion selectors from cand-g1
+ * (.og-avatar-name-bubble / .og-avatar-name /
+ * .og-task-pill-top) are gone — those classes are not in
+ * the current markup. The profile sheet keeps its own
+ * night styling in both modes (a page of its own; the
+ * bubble rules below are scoped to the hero and the top
+ * bar so it stays coherent). */
+
+/* --- the page itself ------------------------------------ */
+html[data-og-rain-mode="day"] body {
+  background: #f7f2e4;
+  color: #211a06;
+}
+
+/* --- hero (empty state) --------------------------------- */
+html[data-og-rain-mode="day"] .og-empty-name { color: #211a06; }
+html[data-og-rain-mode="day"] .og-empty-tag { color: #6d5c22; }
+html[data-og-rain-mode="day"] .og-row {
+  background: #fffdf6;
+  border-color: rgba(146,110,20,.45);
+  color: #2b2105;
+  box-shadow: 0 1px 4px rgba(120,90,10,.10);
+}
+html[data-og-rain-mode="day"] .og-row-sub { color: #7a6a35; }
+
+/* --- the name pill (hero + top bar) ---------------------- */
+/* Night pill is #1b1b1b with a gold rim and a gold pill
+ * inside; in day it flips to warm paper-white with the
+ * same gold rim, ink name, and a light-gold status pill
+ * with deep-gold letters (contrast-held, see the gate). */
+html[data-og-rain-mode="day"] #emptyState .og-name-bubble,
+html[data-og-rain-mode="day"] #ogTopAvatarBar .og-name-bubble {
+  background: rgba(255,253,247,.96);
+  border-color: rgba(146,110,20,.55);
+  box-shadow: 0 4px 18px rgba(120,90,10,.18);
+}
+html[data-og-rain-mode="day"] #emptyState .og-top-name,
+html[data-og-rain-mode="day"] #ogTopAvatarBar .og-top-name {
+  color: #211a06;
+}
+html[data-og-rain-mode="day"] #emptyState .og-task-pill,
+html[data-og-rain-mode="day"] #ogTopAvatarBar .og-task-pill {
+  background: rgba(255,193,7,.22);
+  border-color: rgba(146,110,20,.55);
+  color: #7d621a;
+}
+
+/* --- top bar --------------------------------------------- */
+html[data-og-rain-mode="day"] .og-circle-btn {
+  background: rgba(255,253,247,.92);
+  border-color: rgba(146,110,20,.5);
+  color: #8a6d1c;
+  box-shadow: 0 2px 10px rgba(120,90,10,.12);
+}
+html[data-og-rain-mode="day"] .og-top-avatar-bar {
+  background: radial-gradient(ellipse at 50% 0%,
+    rgba(247,242,228,.92), rgba(247,242,228,0) 70%);
+}
+
+/* --- composer dock + seat bar ---------------------------- */
+html[data-og-rain-mode="day"] #ogShellDock .input-wrapper {
+  background: #fffdf6;
+  border-color: rgba(146,110,20,.5);
+  box-shadow: 0 4px 18px rgba(120,90,10,.14);
+}
+html[data-og-rain-mode="day"] #messageInput { color: #211a06; }
+html[data-og-rain-mode="day"] #messageInput::placeholder { color: #9a8a58; }
+html[data-og-rain-mode="day"] .og-plus-btn {
+  background: rgba(255,193,7,.18);
+  border-color: rgba(146,110,20,.5);
+  color: #8a6d1c;
+}
+html[data-og-rain-mode="day"] #voiceBtn { color: #8a6d1c; }
+html[data-og-rain-mode="day"] .og-seat-bar {
+  background: rgba(255,253,247,.94);
+  border-color: rgba(146,110,20,.4);
+  box-shadow: 0 6px 20px rgba(120,90,10,.14);
+}
+html[data-og-rain-mode="day"] .og-seat { color: #6d5c22; }
+html[data-og-rain-mode="day"] .og-seat-dot {
+  background: #fffdf6;
+  border-color: rgba(146,110,20,.6);
+  color: #7d621a;
+}
+html[data-og-rain-mode="day"] .og-token-line { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-token-line b { color: #926d0e; }
+
+/* --- chat bubbles: SOLID, per Ticket H2 ------------------ */
+/* Re-aimed (cand-g2): OG's messages ride .message.ai in
+ * the current markup (cand-g1's .message.assistant hook
+ * is gone), and the text color must be set on
+ * .message-text itself — styles.css gives it its own
+ * near-white rule, which a color on .message-content
+ * cannot reach. */
+html[data-og-rain-mode="day"] .message.ai .message-content {
+  background: #ffffff;
+  color: #241c05;
+  border-color: rgba(146,110,20,.35);
+}
+html[data-og-rain-mode="day"] .message.user .message-content {
+  background: #eec95c;
+  color: #241c05;
+  border-color: rgba(146,110,20,.5);
+}
+html[data-og-rain-mode="day"] .message.ai .message-text,
+html[data-og-rain-mode="day"] .message.user .message-text {
+  color: #241c05;
+}
+
+/* --- browser card in the thread -------------------------- */
+html[data-og-rain-mode="day"] #browserPanel {
+  background: #fffdf6;
+  box-shadow: 0 10px 30px rgba(120,90,10,.18);
+}
+/* (cand-g1's .og-browser-head / .og-browser-state rules
+ * are re-aimed: the card head is .og-card-head now.) */
+html[data-og-rain-mode="day"] .og-card-head-title { color: #211a06; }
+html[data-og-rain-mode="day"] .og-card-head-status { color: #7d621a; }
+
+/* --- menu + plan card ------------------------------------- */
+html[data-og-rain-mode="day"] .og-menu,
+html[data-og-rain-mode="day"] .og-plan-card {
+  background: #fffdf6;
+  color: #2b2105;
+  border-color: rgba(146,110,20,.45);
+  box-shadow: 0 18px 50px rgba(120,90,10,.25);
+}
+html[data-og-rain-mode="day"] .og-menu-title { color: #211a06; }
+html[data-og-rain-mode="day"] .og-menu-status { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-menu-item {
+  background: #fdf6de;
+  border-color: rgba(146,110,20,.35);
+  color: #2b2105;
+}
+/* The items ride in .og-menu-card shells (#171717 at
+ * night): theme the shell too, or the card's dark ground
+ * shows around the items and under in-card notes. */
+html[data-og-rain-mode="day"] .og-menu-card {
+  background: #fffdf6;
+  border-color: rgba(146,110,20,.35);
+  box-shadow: 0 4px 14px rgba(120,90,10,.10);
+}
+html[data-og-rain-mode="day"] .og-menu-card .og-menu-item + .og-menu-item {
+  border-top-color: rgba(146,110,20,.25);
+}
+html[data-og-rain-mode="day"] .og-loc-menunote { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-menu-item-sub { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-menu .og-row-state { color: #7d621a; }
+html[data-og-rain-mode="day"] .og-menu-foot { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-menu-foot b { color: #926d0e; }
+html[data-og-rain-mode="day"] .og-plan-bar { background: rgba(146,110,20,.22); }
+html[data-og-rain-mode="day"] .og-plan-price { color: #926d0e; }
+html[data-og-rain-mode="day"] .og-plan-val { color: #926d0e; }
+
+/* --- seat screens, profile sheet, dashboards: NOT themed --- */
+/* Scope, carried from cand-g1: self-contained sheets keep
+ * their own styling in both modes. In the current tree
+ * that is the seat-screen panel (#ogSeatScreen, a bounded
+ * dark sheet with its own background), the profile sheet,
+ * and the three dashboards. Their content is styled as a
+ * unit; flipping only their background would strand their
+ * light-on-dark internals. (cand-g1's seat-screen header
+ * rules and its .og-feed-note-text / .og-approval-* rules
+ * target classes the current tree no longer ships — the
+ * approval cards are .og-approve-* now and render as
+ * self-contained cards — so those rules are dropped, not
+ * re-aimed.) */
+
+/* --- reconnect chip ---------------------------------------- */
+html[data-og-rain-mode="day"] #ogReconnectChip {
+  background: rgba(255,253,247,.96);
+  border-color: rgba(146,110,20,.55);
+  color: #57470f;
+  box-shadow: 0 4px 16px rgba(120,90,10,.18);
+}
