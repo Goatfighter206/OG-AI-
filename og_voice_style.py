@@ -103,6 +103,21 @@ women in the library, and the copy says so instead
 of faking one. The impression apparatus (base voices
 + instructions) is retired; the classics are
 byte-untouched and still resolve to tts-1.
+
+R4 addendum (Ticket R, 2026-10-23, later still):
+Brent heard the landed pack and re-picked the
+gangster shelf by ear. The five gangster men are
+new (Antonio off the census bench, The Duke,
+Branok, Damien, Final Boss) under the SAME five
+ids. The noir women's shelf keeps Jean at
+gangster-marin and gains six: Serafina, AImee,
+Aida and Alicia take the four retired ids, and
+Elisabeth Carson + Aaliyah join on two new ids
+(gangster-alloy, gangster-fable) — seven noir
+women, so the gangster family is 5M + 7F, the
+pack 42 styles and the folder 48. Stored picks
+remap by id, as before. Audition record:
+cand-voicepack-el/auditions2/REPORT.md.
 """
 
 import asyncio
@@ -191,6 +206,19 @@ STYLES = [
 # Dante, who bills at a custom character rate — see
 # the census.
 #
+# R4 (2026-10-23, Brent's ear rulings on the landed
+# pack — "Just use them all" on the round-2
+# auditions): the gangster men are RE-PICKED —
+# Antonio comes off the bench, joined by The Duke,
+# Branok, Damien and Final Boss, under the same five
+# ids; the five first-shipped men are retired. The
+# noir shelf keeps ONLY Jean of the original five;
+# Serafina, AImee, Aida and Alicia take the retired
+# four ids, and Elisabeth Carson + Aaliyah join on
+# new ids (gangster-alloy, gangster-fable) — seven
+# noir women in all, so this family breaks the 5 + 5
+# split on purpose: 5M + 7F, pack 42, folder 48.
+#
 # THE SIX CLASSICS DO NOT MOVE: no el_voice_id, no
 # provider tag — their upstream request stays
 # byte-identical to the Round 37/98 one (tts-1, no
@@ -213,7 +241,9 @@ _PACK_SHELVES = {
 # (id family, shelf, base, gender, library name,
 #  el_voice_id, folder note) — the census picks,
 #  cand-voicepack-el/REPORT.md §6, in folder order:
-#  each family women first (F1..F5), then men (M1..M5).
+#  each family women first (F1..F5), then men (M1..M5)
+#  — except gangster after R4: women F1..F7 (Jean kept,
+#  four re-picked, two added), then the re-picked men.
 _PACK_EL = (
     ("mexican", "mexican", "marin", "female", "Erika",
      "r3SDVYUIvcC4EweQtSj0",
@@ -340,43 +370,50 @@ _PACK_EL = (
      "eVItLK1UvXctxuaRV2Oq",
      "Jean — an alluring, playful femme fatale. A noir "
      "character voice from the ElevenLabs library."),
-    ("gangster", "noir", "coral", "female", "Juliet",
-     "Zcmn5ok6KSaf2Tikziif",
-     "Juliet — a dark villain: cold, a menacing boss. A "
-     "noir character voice from the ElevenLabs library."),
-    ("gangster", "noir", "nova", "female", "Rosie",
-     "V1sMnmZsNBJuEOA7aVqB",
-     "Rosie — smoky and warm, a dame from a bygone era. "
-     "A noir character voice from the ElevenLabs library."),
-    ("gangster", "noir", "sage", "female", "Aria",
-     "TC0Zp7WVFzhA8zpTlRqV",
-     "Aria — a sultry villain in dark velvet. A noir "
+    ("gangster", "noir", "coral", "female", "Serafina",
+     "4tRn1lSkEn13EVTuqb0g",
+     "Serafina — a sensual temptress, mature. A noir "
      "character voice from the ElevenLabs library."),
-    ("gangster", "noir", "shimmer", "female", "Clara",
-     "YC9NjC58jpXEqLpIxUeA",
-     "Clara — a wicked villain: velvety, with a sinister "
-     "edge. A noir character voice from the ElevenLabs "
-     "library."),
-    ("gangster", "gangster", "onyx", "male", "Jerry B.",
-     "QzTKubutNn9TjrB7Xb2Q",
-     "Jerry B. — a New York Italian mobster. A real "
+    ("gangster", "noir", "nova", "female", "AImee",
+     "MBGgaJPW6debJHBqQsSJ",
+     "AImee — sensual and calm. A noir character "
+     "voice from the ElevenLabs library."),
+    ("gangster", "noir", "sage", "female", "Aida",
+     "CiwzbDpaN3pQXjTgx3ML",
+     "Aida — sultry, deep and silky. A noir character "
+     "voice from the ElevenLabs library."),
+    ("gangster", "noir", "shimmer", "female", "Alicia",
+     "DZ7MjaeWSDB7ixyC0ETX",
+     "Alicia — a sensual whisper, ASMR-soft. A noir "
+     "character voice from the ElevenLabs library."),
+    ("gangster", "noir", "alloy", "female",
+     "Elisabeth Carson", "Ffkx87A1wJSCEqxFOZjz",
+     "Elisabeth Carson — feminine and warm. A noir "
+     "character voice from the ElevenLabs library."),
+    ("gangster", "noir", "fable", "female", "Aaliyah",
+     "T3b0vsQ5dQwMZ5ckOwBk",
+     "Aaliyah — urban and confident. A noir character "
+     "voice from the ElevenLabs library."),
+    ("gangster", "gangster", "onyx", "male", "Antonio",
+     "s2wvuS7SwITYg8dqsJdn",
+     "Antonio — a grumpy grandpa: Italian-American "
+     "and gruff. A real ElevenLabs library voice."),
+    ("gangster", "gangster", "echo", "male", "The Duke",
+     "QyX5mnB5hVBPeNS1oyvU",
+     "The Duke — a gritty mob boss. A real ElevenLabs "
+     "library voice."),
+    ("gangster", "gangster", "cedar", "male", "Branok",
+     "Vs5CmVCVJwW4odQS2pVf",
+     "Branok — evil and villainous, raspy. A real "
      "ElevenLabs library voice."),
-    ("gangster", "gangster", "echo", "male", "Crazy Eddie",
-     "OTMqA7lryJHXgAnPIQYt",
-     "Crazy Eddie — a raspy gangster, a street crook. A "
+    ("gangster", "gangster", "ash", "male", "Damien",
+     "pHD4qotPFeOAuU1YsFjv",
+     "Damien — a high-pitched, confident villain. A "
      "real ElevenLabs library voice."),
-    ("gangster", "gangster", "cedar", "male", "Gotham Boss",
-     "M9UAxraM2w5tCjpOaIB0",
-     "Gotham Boss — gritty, calm and powerful: kingpins "
-     "and mob enforcers. A real ElevenLabs library voice."),
-    ("gangster", "gangster", "ash", "male", "Frankie Slim",
-     "eWmswbut7I70CIuRsFwP",
-     "Frankie Slim — slick and mischievous. A real "
-     "ElevenLabs library voice."),
-    ("gangster", "gangster", "ballad", "male", "VocaVillain",
-     "JfPMeQaBXIO5i9J9MTwR",
-     "VocaVillain — a hoarse villain persona. A real "
-     "ElevenLabs library voice."),
+    ("gangster", "gangster", "ballad", "male",
+     "Final Boss", "d3qrd1ge6zWDvUxIeXiH",
+     "Final Boss — an all-powerful villain, deep. A "
+     "real ElevenLabs library voice."),
 )
 
 
