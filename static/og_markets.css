@@ -60,28 +60,30 @@ a.ogm-link { color: #ffc107; }
 .ogc-range-btns { display: flex; gap: 6px; flex: 0 0 auto; }
 
 /* Ticket M day face: the two new hub cards take the
-   warm-paper day face like the bank card (G law). */
+   day face like the bank card (G law). Ticket G2
+   (2026-10-22): the day face is LIGHT GRAY now —
+   silver card, charcoal text, deep-bronze heads. */
 html[data-og-rain-mode="day"] .ogc-hub {
-  background: #fffdf4; border-color: rgba(146,114,20,.45);
-  color: #241c07; }
+  background: #bcbcc0; border-color: rgba(70,56,6,.4);
+  color: #1e1e21; }
 html[data-og-rain-mode="day"] .ogc-hub h3,
-html[data-og-rain-mode="day"] .ogc-hub .ogc-h { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogc-hub .ogc-h { color: #463806; }
 html[data-og-rain-mode="day"] .ogc-hub .ogm-note,
-html[data-og-rain-mode="day"] .ogc-hub .ogm-asof { color: #6d5c22; }
-html[data-og-rain-mode="day"] .ogc-hub .ogm-metric b { color: #241c07; }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-asof { color: #3d3b32; }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-metric b { color: #17171a; }
 html[data-og-rain-mode="day"] .ogc-hub .ogm-metric,
 html[data-og-rain-mode="day"] .ogc-hub .ogc-range {
-  border-bottom-color: rgba(36,28,7,.14); }
+  border-bottom-color: rgba(30,30,34,.14); }
 html[data-og-rain-mode="day"] .ogc-hub .ogm-honest {
-  color: #4a3d10; background: rgba(146,114,20,.08);
-  border-color: rgba(146,114,20,.5); }
+  color: #2e2a08; background: rgba(120,95,20,.12);
+  border-color: rgba(120,95,20,.55); }
 html[data-og-rain-mode="day"] .ogc-hub .ogm-input,
 html[data-og-rain-mode="day"] .ogc-hub .ogm-select {
-  background: #fffdf4; color: #241c07;
-  border-color: rgba(146,114,20,.45); }
+  background: #cfcfd3; color: #1e1e21;
+  border-color: rgba(70,56,6,.45); }
 html[data-og-rain-mode="day"] .ogc-hub .ogm-btn-ghost {
-  color: #8a6d1f; border-color: rgba(146,114,20,.6); }
-html[data-og-rain-mode="day"] .ogc-hub .ogm-up { color: #2e7d32; }
+  color: #463806; border-color: rgba(70,56,6,.6); }
+html[data-og-rain-mode="day"] .ogc-hub .ogm-up { color: #1e6b2a; }
 html[data-og-rain-mode="day"] .ogc-hub .ogm-down { color: #b3382a; }
 
 /* Ticket L: the bank picture inside the Financial Smart
@@ -100,24 +102,26 @@ html[data-og-rain-mode="day"] .ogc-hub .ogm-down { color: #b3382a; }
   border-radius: 6px; padding: 0 5px; font-size: .72rem;
   text-transform: uppercase; letter-spacing: .05em; }
 
-/* Ticket L day face: the bank card takes the warm-paper
-   day face like the rest of OG's day surfaces (G law). */
+/* Ticket L day face: the bank card takes the day face
+   like the rest of OG's day surfaces (G law). Ticket
+   G2 (2026-10-22): LIGHT GRAY now — silver card,
+   charcoal text, deep-bronze heads. */
 html[data-og-rain-mode="day"] .ogf-bank {
-  background: #fffdf4; border-color: rgba(146,114,20,.45);
-  color: #241c07; }
+  background: #bcbcc0; border-color: rgba(70,56,6,.4);
+  color: #1e1e21; }
 html[data-og-rain-mode="day"] .ogf-bank h3,
-html[data-og-rain-mode="day"] .ogf-bank .ogf-h { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogf-bank .ogf-h { color: #463806; }
 html[data-og-rain-mode="day"] .ogf-bank .ogm-note,
 html[data-og-rain-mode="day"] .ogf-bank .ogf-sub,
 html[data-og-rain-mode="day"] .ogf-bank .ogf-txn-date,
-html[data-og-rain-mode="day"] .ogf-bank .ogm-asof { color: #6d5c22; }
+html[data-og-rain-mode="day"] .ogf-bank .ogm-asof { color: #3d3b32; }
 html[data-og-rain-mode="day"] .ogf-bank .ogm-metric b,
-html[data-og-rain-mode="day"] .ogf-bank .ogf-txn b { color: #241c07; }
+html[data-og-rain-mode="day"] .ogf-bank .ogf-txn b { color: #17171a; }
 html[data-og-rain-mode="day"] .ogf-bank .ogm-metric,
 html[data-og-rain-mode="day"] .ogf-bank .ogf-txn {
-  border-bottom-color: rgba(36,28,7,.14); }
+  border-bottom-color: rgba(30,30,34,.14); }
 html[data-og-rain-mode="day"] .ogf-bank .ogm-honest {
-  color: #4a3d10; background: rgba(146,114,20,.08);
-  border-color: rgba(146,114,20,.5); }
+  color: #2e2a08; background: rgba(120,95,20,.12);
+  border-color: rgba(120,95,20,.55); }
 html[data-og-rain-mode="day"] .ogf-bank .ogf-pend {
-  color: #8a6d1f; border-color: rgba(146,114,20,.55); }
+  color: #463806; border-color: rgba(70,56,6,.55); }
