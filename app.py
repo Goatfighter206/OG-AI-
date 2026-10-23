@@ -193,8 +193,12 @@ def _estimate_call_tokens(agent_instance, reply_text: str) -> int:
 # OPENAI_API_KEY is set; else 503 and the page uses device voice.
 TTS_MAX_CHARS = 600
 # Round 37: per-avatar voices for the Unity app stage avatars.
-# /tts accepts an optional "voice" field; only these OpenAI
-# voices pass through — missing/invalid keeps the default.
+# /tts accepts an optional "voice" field naming a voice or a
+# voice STYLE — og_voice_style owns the style table (Ticket R's
+# accented pack included) and resolves an id to the upstream
+# model + base voice + instructions; missing/invalid keeps the
+# default. TTS_VOICES stays the classic base set other modules
+# pin against (podcast / video narration).
 TTS_VOICES = {"onyx", "fable", "echo", "nova", "shimmer", "alloy"}
 TTS_DEFAULT_VOICE = "onyx"
 
@@ -362,6 +366,7 @@ import og_video as _og_video
 # OG songs (Round 30, dark until OG_SONG_ENABLED + studio key).
 import og_songs as _og_songs
 import og_artifacts as _og_artifacts
+import og_voice_style as _og_voice_style
 import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
@@ -3018,8 +3023,13 @@ async def text_to_speech(raw_request: Request):
     if not text:
         raise HTTPException(status_code=400, detail="No text to speak")
     _voice = body.get("voice")
-    voice = (_voice if isinstance(_voice, str) and _voice in TTS_VOICES
-             else TTS_DEFAULT_VOICE)
+    # Ticket R: the id resolves through og_voice_style —
+    # a classic voice to itself on tts-1 (the Round 37/98
+    # request, unchanged), a meaner-pack style to its base
+    # voice + accent instructions on gpt-4o-mini-tts, and
+    # anything unknown to the standing default.
+    _speech = _og_voice_style.speech_for(_voice)
+    voice = _speech["voice"]
     uid = raw_request.cookies.get("ogai_uid") or "anon"
     _tts_tier = await asyncio.to_thread(
         _tier_of, raw_request.cookies,
@@ -3036,13 +3046,17 @@ async def text_to_speech(raw_request: Request):
             _consume_tts_call, uid,
             _og_tiers.weekly_cap(_tts_tier, "tts")):
         raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
+    _tts_body = {"model": _speech["model"], "voice": voice,
+                 "input": text}
+    if _speech["instructions"]:
+        _tts_body["instructions"] = _speech["instructions"]
     import httpx
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(
                 "https://api.openai.com/v1/audio/speech",
                 headers={"Authorization": f"Bearer {api_key}"},
-                json={"model": "tts-1", "voice": voice, "input": text},
+                json=_tts_body,
             )
     except Exception as e:
         logger.warning(f"TTS request failed: {e}")
