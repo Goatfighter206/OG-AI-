@@ -45,44 +45,44 @@ body { margin: 0; background: #0b0b0b; color: #f5f0e1;
   font-size: .8rem; }
 
 /* Day face (Ticket G parity: the attribute is set by
-   the same bootstrap the main page runs) — warm paper,
-   bronze, ink, mirroring the .ogf-bank day rules in
-   og_markets.css. */
-html[data-og-rain-mode="day"] { background: #f7f2e4; }
-html[data-og-rain-mode="day"] body { background: #f7f2e4;
-  color: #241c07; }
+   the same bootstrap the main page runs) — Ticket G2
+   (2026-10-22): LIGHT GRAY, charcoal, deep bronze,
+   mirroring the .ogf-bank day rules in og_markets.css. */
+html[data-og-rain-mode="day"] { background: #a8a8ad; }
+html[data-og-rain-mode="day"] body { background: #a8a8ad;
+  color: #1e1e21; }
 html[data-og-rain-mode="day"] .ogfp-back,
-html[data-og-rain-mode="day"] .ogfp-title { color: #8a6d1f; }
-html[data-og-rain-mode="day"] .ogfp-sub { color: #6d5c22; }
-html[data-og-rain-mode="day"] .ogfp-foot { color: #8a7a44; }
+html[data-og-rain-mode="day"] .ogfp-title { color: #463806; }
+html[data-og-rain-mode="day"] .ogfp-sub { color: #3d3b32; }
+html[data-og-rain-mode="day"] .ogfp-foot { color: #4a473a; }
 html[data-og-rain-mode="day"] .ogf-budget,
 html[data-og-rain-mode="day"] .ogf-guard {
-  background: #fffdf4; border-color: rgba(138,109,31,.45); }
+  background: #bcbcc0; border-color: rgba(70,56,6,.4); }
 html[data-og-rain-mode="day"] .ogf-budget h3,
 html[data-og-rain-mode="day"] .ogf-guard h3,
 html[data-og-rain-mode="day"] .ogf-budget .ogf-h,
-html[data-og-rain-mode="day"] .ogf-guard .ogf-h { color: #8a6d1f; }
+html[data-og-rain-mode="day"] .ogf-guard .ogf-h { color: #463806; }
 html[data-og-rain-mode="day"] .ogf-budget .ogm-note,
 html[data-og-rain-mode="day"] .ogf-guard .ogm-note,
 html[data-og-rain-mode="day"] .ogf-budget .ogm-asof,
-html[data-og-rain-mode="day"] .ogf-guard .ogm-asof { color: #6d5c22; }
+html[data-og-rain-mode="day"] .ogf-guard .ogm-asof { color: #3d3b32; }
 html[data-og-rain-mode="day"] .ogf-budget .ogm-metric b,
 html[data-og-rain-mode="day"] .ogf-guard .ogm-metric b,
-html[data-og-rain-mode="day"] .ogf-guard .ogf-txn b { color: #241c07; }
+html[data-og-rain-mode="day"] .ogf-guard .ogf-txn b { color: #17171a; }
 html[data-og-rain-mode="day"] .ogf-budget .ogm-metric,
 html[data-og-rain-mode="day"] .ogf-guard .ogm-metric,
 html[data-og-rain-mode="day"] .ogf-guard .ogf-txn {
-  border-bottom-color: rgba(36,28,7,.14); }
+  border-bottom-color: rgba(30,30,34,.14); }
 html[data-og-rain-mode="day"] .ogf-budget .ogm-honest,
 html[data-og-rain-mode="day"] .ogf-guard .ogm-honest {
-  color: #4a3c10; background: rgba(138,109,31,.08);
-  border-color: rgba(138,109,31,.5); }
-html[data-og-rain-mode="day"] .ogfp-table th { color: #8a6d1f; }
+  color: #2e2a08; background: rgba(120,95,20,.12);
+  border-color: rgba(120,95,20,.55); }
+html[data-og-rain-mode="day"] .ogfp-table th { color: #463806; }
 html[data-og-rain-mode="day"] .ogfp-table th,
 html[data-og-rain-mode="day"] .ogfp-table td {
-  border-bottom-color: rgba(36,28,7,.14); }
+  border-bottom-color: rgba(30,30,34,.14); }
 html[data-og-rain-mode="day"] .ogfp-group td {
-  color: #8a6d1f; background: rgba(138,109,31,.09); }
-html[data-og-rain-mode="day"] .ogfp-total td { color: #241c07; }
-html[data-og-rain-mode="day"] .ogfp-big { color: #241c07; }
-html[data-og-rain-mode="day"] .ogfp-big-label { color: #8a6d1f; }
+  color: #463806; background: rgba(70,56,6,.10); }
+html[data-og-rain-mode="day"] .ogfp-total td { color: #17171a; }
+html[data-og-rain-mode="day"] .ogfp-big { color: #17171a; }
+html[data-og-rain-mode="day"] .ogfp-big-label { color: #463806; }
