@@ -3025,11 +3025,29 @@ async def text_to_speech(raw_request: Request):
     _voice = body.get("voice")
     # Ticket R: the id resolves through og_voice_style —
     # a classic voice to itself on tts-1 (the Round 37/98
-    # request, unchanged), a meaner-pack style to its base
-    # voice + accent instructions on gpt-4o-mini-tts, and
+    # request, unchanged), a meaner-pack style to its
+    # REAL ElevenLabs library voice (the real-voice
+    # rebuild — the gpt-4o-mini-tts impression build was
+    # retired the day Brent's ear failed it), and
     # anything unknown to the standing default.
     _speech = _og_voice_style.speech_for(_voice)
     voice = _speech["voice"]
+    # Ticket R real-voice rebuild: a pack pick resolves
+    # to the ElevenLabs lane. Gate FIRST, before any
+    # metering: with the pack's own flag off
+    # (OG_VOICE_PACK_EL_ENABLED) or the ElevenLabs key
+    # absent, the call fails honestly — it never falls
+    # back to the retired OpenAI impression, and it is
+    # never charged.
+    _el_voice = _speech.get("provider") == "elevenlabs"
+    if _el_voice:
+        import og_voice_lab as _og_voice_lab
+        if not await asyncio.to_thread(
+                _og_voice_lab.pack_enabled):
+            raise HTTPException(
+                status_code=503,
+                detail="That meaner-pack voice isn't "
+                       "switched on yet")
     uid = raw_request.cookies.get("ogai_uid") or "anon"
     _tts_tier = await asyncio.to_thread(
         _tier_of, raw_request.cookies,
@@ -3046,6 +3064,27 @@ async def text_to_speech(raw_request: Request):
             _consume_tts_call, uid,
             _og_tiers.weekly_cap(_tts_tier, "tts")):
         raise HTTPException(status_code=429, detail=_og_tiers.weekly_tts_detail(_tts_tier))
+    if _el_voice:
+        # The pack speaks ONLY through the ElevenLabs
+        # library seam — under the same weekly/token
+        # metering above (charged once; the token path
+        # debits on success only, exactly like the
+        # classic lane). The client is blocking urllib,
+        # so the call runs off the event loop (the Main
+        # Thread rule). An ElevenLabs failure is an
+        # honest 502 — never a silent swap back to the
+        # retired OpenAI impression.
+        try:
+            _audio = await asyncio.to_thread(
+                _og_voice_lab._run_library_tts, voice, text)
+        except Exception as e:
+            logger.warning(f"TTS EL request failed: {e}")
+            raise HTTPException(status_code=502,
+                                detail="Voice service error")
+        if _tts_token_funded:
+            await asyncio.to_thread(
+                _og_tokenpacks.debit, uid, _tts_rate, "tts")
+        return Response(content=_audio, media_type="audio/mpeg")
     _tts_body = {"model": _speech["model"], "voice": voice,
                  "input": text}
     if _speech["instructions"]:
