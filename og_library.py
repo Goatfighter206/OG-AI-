@@ -255,6 +255,35 @@ def _project_items(uid: str) -> list:
     return out
 
 
+def _artifact_items(uid: str) -> list:
+    """Ticket P: OG-built artifacts (og_artifacts) — the
+    page, document and table kinds the factory makes on
+    request. Each lands as its own item kind with an Open
+    action into the artifact's own standalone document
+    (GET /artifacts/<id>, owner-checked there). A failed
+    build keeps no Open action; a building one is listed
+    so the shelf shows the work in flight."""
+    import og_artifacts
+    out = []
+    for rec in og_artifacts.list_artifacts_for_owner(uid):
+        ready = rec.get("status") == "ready"
+        out.append({
+            "kind": rec.get("kind", "page"),
+            "id": rec.get("id", ""),
+            "title": rec.get("title") or "Artifact",
+            "created_at": float(rec.get("created", 0) or 0),
+            "status": rec.get("status", ""),
+            "action": "Open" if ready else "",
+            "action_url": (f"/artifacts/{rec.get('id', '')}"
+                           if ready else ""),
+            "meta": {"detail": rec.get("detail", ""),
+                     "size": int(rec.get("size", 0) or 0),
+                     "revision": int(rec.get("revision", 1)
+                                     or 1)},
+        })
+    return out
+
+
 def _locker(uid: str, request: Request):
     """(items, storage_line) from og_storage in ONE pass, so
     the file list and the usage line can never disagree. The
@@ -285,6 +314,15 @@ def _locker(uid: str, request: Request):
     tier = og_tiers.tier_of(request.cookies, uid)
     quota = og_storage.quota_bytes(tier)
     used = og_storage.usage_bytes(uid)
+    # Ticket P: artifact bytes count against the same
+    # quota as locker files — the line reports the
+    # combined figure, which is also the figure the
+    # artifact claim check binds (og_artifacts).
+    try:
+        import og_artifacts
+        used += og_artifacts.usage_bytes(uid)
+    except Exception as e:
+        logger.warning(f"Library artifact usage failed: {e}")
     line = {"enabled": True, "tier": tier, "used": used,
             "quota": quota,
             "used_human": og_storage.fmt_size(used),
@@ -299,7 +337,8 @@ def collect_library(uid: str, request: Request):
     items: list = []
     counts = {"videos": 0, "songs": 0, "images": 0,
               "files": 0, "projects": 0, "podcasts": 0,
-              "books": 0, "motions": 0, "models3d": 0, "sfx": 0}
+              "books": 0, "motions": 0, "models3d": 0, "sfx": 0,
+              "pages": 0, "documents": 0, "tables": 0}
     for key, fn in (("videos", _video_items),
                     ("songs", _song_items),
                     ("podcasts", _podcast_items),
@@ -315,6 +354,21 @@ def collect_library(uid: str, request: Request):
             got = []
         counts[key] = len(got)
         items.extend(got)
+    # Ticket P: the artifact kinds count under their own
+    # keys ("pages" / "documents" / "tables"), the item
+    # kinds stay "page" / "document" / "table".
+    try:
+        artifact_items = _artifact_items(uid)
+    except Exception as e:
+        logger.warning(f"Library artifact section failed: {e}")
+        artifact_items = []
+    counts["pages"] = sum(1 for i in artifact_items
+                          if i["kind"] == "page")
+    counts["documents"] = sum(1 for i in artifact_items
+                              if i["kind"] == "document")
+    counts["tables"] = sum(1 for i in artifact_items
+                           if i["kind"] == "table")
+    items.extend(artifact_items)
     storage_line = None
     try:
         locker_items, storage_line = _locker(uid, request)
@@ -382,7 +436,9 @@ FEED_KIND_LABELS = {"video": "Video", "song": "Song",
                     "image": "Image", "file": "File",
                     "project": "Project", "podcast": "Podcast",
                     "book": "Book", "motion": "Motion",
-                    "sfx": "Sound FX", "model3d": "3D Model"}
+                    "sfx": "Sound FX", "model3d": "3D Model",
+                    "page": "Page", "document": "Document",
+                    "table": "Table"}
 
 
 def feed_score(src: str, kind: str, ts: float, read: bool,
@@ -762,7 +818,9 @@ def register_library_routes(app):
                                "images": 0, "files": 0,
                                "projects": 0, "podcasts": 0,
                                "books": 0, "motions": 0,
-                               "models3d": 0, "sfx": 0}}
+                               "models3d": 0, "sfx": 0,
+                               "pages": 0, "documents": 0,
+                               "tables": 0}}
         items, storage_line, counts = collect_library(
             uid, request)
         return {"items": items, "storage": storage_line,
