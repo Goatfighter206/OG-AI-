@@ -1208,9 +1208,10 @@ _PAGE_CSS = """
 body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,
 Helvetica,Arial,sans-serif;background:#0c0c0e;color:#f2eede;
 padding:20px 16px 48px}
-html[data-og-rain-mode="day"] body{background:#fdfbf4;
-color:#221f16}
+html[data-og-rain-mode="day"] body{background:#a8a8ad;
+color:#1f1f23}
 a{color:#d8a92c}
+html[data-og-rain-mode="day"] a{color:#5c4808}
 .oga-head{max-width:720px;margin:0 auto 8px}
 .oga-back{text-decoration:none;font-size:14px}
 .oga-title{font-size:26px;margin:10px 0 2px;line-height:1.2}
@@ -1218,13 +1219,13 @@ a{color:#d8a92c}
 .oga-main{max-width:720px;margin:0 auto}
 .oga-card{background:#151517;border:1px solid #2a2a2e;
 border-radius:14px;padding:16px;margin:0 0 14px}
-html[data-og-rain-mode="day"] .oga-card{background:#fffdf4;
-border-color:#ddd6bd}
+html[data-og-rain-mode="day"] .oga-card{background:#bcbcc0;
+border-color:#9d9da3}
 .oga-card h3{margin:0 0 10px;font-size:16px;color:#d8a92c}
-html[data-og-rain-mode="day"] .oga-card h3{color:#8a6d1f}
+html[data-og-rain-mode="day"] .oga-card h3{color:#5c4808}
 .oga-row{display:flex;justify-content:space-between;gap:12px;
 padding:6px 0;border-bottom:1px solid #26262a;font-size:15px}
-html[data-og-rain-mode="day"] .oga-row{border-color:#e7e0c8}
+html[data-og-rain-mode="day"] .oga-row{border-color:#a6a6ab}
 .oga-row:last-child{border-bottom:none}
 .oga-row .v{font-variant-numeric:tabular-nums;white-space:nowrap}
 .oga-total{display:flex;justify-content:space-between;
@@ -1238,13 +1239,13 @@ font-size:14px}
 border-bottom:1px solid #26262a;vertical-align:top}
 html[data-og-rain-mode="day"] .oga-table th,
 html[data-og-rain-mode="day"] .oga-table td{
-border-color:#e7e0c8}
+border-color:#a6a6ab}
 .oga-table th{color:#d8a92c;font-size:13px;
 text-transform:uppercase;letter-spacing:.04em}
-html[data-og-rain-mode="day"] .oga-table th{color:#8a6d1f}
+html[data-og-rain-mode="day"] .oga-table th{color:#5c4808}
 .oga-whatif{margin-top:12px;border-top:1px dashed #3a3a40;
 padding-top:12px}
-html[data-og-rain-mode="day"] .oga-whatif{border-color:#cfc5a0}
+html[data-og-rain-mode="day"] .oga-whatif{border-color:#a09fa6}
 .oga-whatif label{font-size:14px;display:block;margin-bottom:8px}
 .oga-whatif input[type=range]{width:100%}
 .oga-foot{max-width:720px;margin:18px auto 0;font-size:12px;
