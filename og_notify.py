@@ -201,6 +201,9 @@ BODY_CAP = 600
 KINDS = ("watch_match", "price_alert", "video_done",
          "song_done", "podcast_done", "book_done", "motion_done",
          "model_done", "sfx_done", "voice_done",
+         # Ticket P: an OG-built artifact (page/document/
+         # table) is ready or was updated in place.
+         "artifact_done",
          "storage_warning", "notice",
          "approval_needed", "signin_needed", "system_check",
          "fix_needed",
