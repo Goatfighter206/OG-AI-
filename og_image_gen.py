@@ -131,3 +131,165 @@ async def openai_generate_image(api_key: str, prompt: str,
             return url, model
         last_error = RuntimeError(f"{model} returned no image data")
     raise RuntimeError(f"image generation failed: {last_error}")
+
+
+# --- Ticket P2: generated images save themselves ---------------------------
+# A picture OG generates in chat used to live only in the chat
+# bubble (and a text note in the thread): it reached the Library
+# only if the user saved it to the locker by hand. Now the
+# /image endpoint hands every successful generation here, and
+# the bytes go into the visitor's locker via
+# og_storage.save_bytes — kind "image" (sniffed from the magic
+# bytes), counted against the tier quota — so the Library's
+# existing locker section surfaces it as an Images item, owner
+# -checked on every open/download like everything else OG makes.
+#
+# Truthfulness rules (the house patterns, same as Ticket P):
+#   * the quota check binds the COMBINED figure the Library
+#     line shows — locker bytes + artifact bytes — never a
+#     smaller private number;
+#   * a save that did not happen is never claimed: every
+#     non-save outcome carries a plain line the endpoint
+#     appends to the caption, and the picture still ships in
+#     chat regardless (no silent loss, no fake save);
+#   * the saver NEVER raises — a locker glitch must not cost
+#     the visitor the picture they already paid a generation
+#     for; failures land in the log and in the outcome dict.
+#
+# Kill switch: OG_IMAGE_AUTOSAVE_ENABLED (the og_artifacts
+# house pattern) — enabled unless the env value is an explicit
+# off; while off, the endpoint behaves exactly as pre-P2.
+
+_SAVE_NOTE_SAVED = (
+    "🗄️ Saved to your locker too — it's in your Library "
+    "under Images.")
+_SAVE_NOTE_FULL = (
+    "⚠️ Couldn't save that one to your locker — it's full "
+    "({used} of {quota} used). The picture's right here in "
+    "chat; say \"my storage\" and I'll help clear space.")
+_SAVE_NOTE_FREE = (
+    "Heads up: the free plan ain't got a locker, so this "
+    "one lives in chat only — storage starts at Standard.")
+_SAVE_NOTE_DARK = (
+    "Heads up: file storage isn't switched on yet, so this "
+    "one lives in chat only for now.")
+_SAVE_NOTE_MISSED = (
+    "Couldn't park a copy of that one in your locker — the "
+    "picture's right here in chat, and the download link "
+    "under it grabs the file.")
+
+_MIME_EXT = {"image/png": ".png", "image/jpeg": ".jpg",
+             "image/webp": ".webp"}
+
+
+def autosave_enabled() -> bool:
+    """OG_IMAGE_AUTOSAVE_ENABLED is the kill switch: enabled
+    unless the env value is an explicit off."""
+    return os.environ.get(
+        "OG_IMAGE_AUTOSAVE_ENABLED", "true").strip().lower() \
+        not in ("0", "false", "no", "off")
+
+
+def _save_name(prompt: str, mime: str) -> str:
+    """The locker display name: a slug of the picture prompt
+    (what the Library title shows) + the format extension."""
+    words = re.findall(r"[a-z0-9]+", str(prompt or "").lower())
+    slug = "-".join(words[:6])[:48].strip("-") or "og-image"
+    return slug + _MIME_EXT.get(mime, ".png")
+
+
+def _bytes_from_src(image_src: str):
+    """(bytes, mime) from a generated image src, or
+    (None, "") when no bytes can be had. The normal case is
+    a data URI (both models' base64 path, already converted
+    by openai_generate_image). The hosted-URL fallback gets
+    ONE download attempt — the generator already tried once,
+    so a failure here means the copy truly can't be parked."""
+    src = str(image_src or "")
+    if src.startswith("data:"):
+        head, _, payload = src.partition(",")
+        mime = head[5:].split(";")[0].strip() or "image/png"
+        try:
+            import base64
+            return base64.b64decode(payload), mime
+        except Exception as e:
+            logger.warning(f"Autosave decode failed: {e}")
+            return None, ""
+    if src.startswith(("http://", "https://")):
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                src, headers={"User-Agent": "OG-AI/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = r.read()
+                mime = (r.headers.get_content_type()
+                        or "image/png")
+            if data:
+                return data, mime
+        except Exception as e:
+            logger.warning(f"Autosave URL fetch failed: {e}")
+    return None, ""
+
+
+def autosave_generated_image(uid: str, tier: str,
+                             image_src: str, prompt: str) -> dict:
+    """Park a generated image in the visitor's locker.
+
+    Returns {"status", "note", "record"}: status is one of
+    saved / full / free / dark / missed / off; note is the
+    plain line the endpoint appends to the caption (the
+    _SAVE_NOTE_* line for the outcome; "" only while the
+    kill switch is off); record is the og_storage record
+    when saved, else None. NEVER raises.
+    """
+    outcome = {"status": "missed", "note": _SAVE_NOTE_MISSED,
+               "record": None}
+    try:
+        if not autosave_enabled():
+            return {"status": "off", "note": "", "record": None}
+        if not uid:
+            return outcome
+        import og_storage
+        if not og_storage.storage_enabled():
+            outcome.update(status="dark", note=_SAVE_NOTE_DARK)
+            return outcome
+        quota = og_storage.quota_bytes(tier)
+        if quota <= 0:
+            outcome.update(status="free", note=_SAVE_NOTE_FREE)
+            return outcome
+        data, mime = _bytes_from_src(image_src)
+        if not data:
+            return outcome
+        used = og_storage.usage_bytes(uid)
+        try:
+            import og_artifacts
+            used += og_artifacts.usage_bytes(uid)
+        except Exception:
+            pass
+        if used + len(data) > quota:
+            outcome.update(
+                status="full",
+                note=_SAVE_NOTE_FULL.format(
+                    used=og_storage.fmt_size(used),
+                    quota=og_storage.fmt_size(quota)))
+            return outcome
+        try:
+            rec = og_storage.save_bytes(
+                uid, tier, _save_name(prompt, mime), data, mime)
+        except og_storage.QuotaExceeded:
+            outcome.update(
+                status="full",
+                note=_SAVE_NOTE_FULL.format(
+                    used=og_storage.fmt_size(
+                        og_storage.usage_bytes(uid)),
+                    quota=og_storage.fmt_size(quota)))
+            return outcome
+        outcome.update(status="saved", note=_SAVE_NOTE_SAVED,
+                       record=rec)
+        logger.info(
+            f"Generated image auto-saved to locker "
+            f"(id={rec.get('id')}, bytes={len(data)})")
+        return outcome
+    except Exception as e:
+        logger.warning(f"Image autosave failed: {e}")
+        return outcome
