@@ -63,6 +63,21 @@ resolve the caller through og_accounts.session_uid_or
 State rides og_notify's key-value store under
 "ideas:<uid>" (the house pattern for small per-user
 state): {"ideas": [...], "dismissed": {key: ts}}.
+
+PANELS LEG (Brent's rules, 2026-10-16): Ideas runs on
+the user's algorithm — the same signals the Feed runs
+on (og_algorithm.signals_for). Three candidates join
+the original four, ahead of the generator_try fallback:
+artifact_update (their newest OG-built page/document/
+table can be revised in place), watch_matches /
+watch_active / price_watch (their OG Watch
+list/activity — the signal Brent named in the rule),
+and more_like (their most-made generator at 3+ makes).
+The boundary is unchanged and structural: every
+candidate derives from the caller's own records via
+og_algorithm, which has no leg that can see fixqueue
+proposals or OG's system needs — Ideas holds USER
+stuff only (Brent, 2026-10-18).
 """
 
 import logging
@@ -210,7 +225,129 @@ def _candidates(uid: str, request: Request) -> List[Dict]:
     #    Feed is a different, older mechanism and is not
     #    part of Ideas.)
 
-    # 4. A generator the caller has never used (one idea).
+    # Panels algorithm leg (Brent's rules, 2026-10-16):
+    # Ideas runs on the SAME user algorithm as the Feed
+    # (og_algorithm.signals_for) — the caller's own
+    # artifacts, their OG Watch list/activity, and their
+    # most-made generator. USER stuff only (Brent's
+    # 2026-10-18 law): the signals dict cannot contain
+    # OG's own proposals or system needs by construction.
+    sig: Dict = {}
+    try:
+        import og_algorithm
+        sig = og_algorithm.signals_for(uid, request)
+    except Exception as e:
+        logger.warning(f"Ideas algorithm signals failed: {e}")
+        sig = {}
+
+    # 4. Their newest OG-built artifact can grow in place.
+    try:
+        art = sig.get("artifact") or {}
+        if art.get("id"):
+            label = {"page": "page", "document": "document",
+                     "table": "table"}.get(
+                         art.get("kind"), "page")
+            ttl = art.get("title") or f"your {label}"
+            rev = int(art.get("revision") or 1)
+            out.append({
+                "id": f"artifact:{art['id']}",
+                "kind": "artifact_update",
+                "title": f"Update “{ttl}”",
+                "body": (f"OG built this {label} for you"
+                         + (f" — revision {rev} so far"
+                            if rev > 1 else "")
+                         + ". Say what changed and he "
+                           "updates the same one in place "
+                           "— no copy, no clutter."),
+                "ask": f"Update my {label} {ttl}",
+            })
+    except Exception as e:
+        logger.warning(f"Ideas artifact signal failed: {e}")
+
+    # 5. Their watch list/activity (one idea: matches
+    # first, then a working watch, then a price watch).
+    try:
+        wm = sig.get("watch_match") or {}
+        wa = sig.get("watch_active") or {}
+        pw = sig.get("price_watch") or {}
+        if wm.get("item"):
+            n = int(wm.get("matches") or 0)
+            out.append({
+                "id": f"watch_matches:{wm.get('id', '')}",
+                "kind": "watch_matches",
+                "title": (f"Your watch found listings "
+                          f"for “{wm['item']}”"),
+                "body": (f"{n} listing"
+                         f"{'s' if n != 1 else ''} matched "
+                         "your watch — the newest ones are "
+                         "in your Feed."),
+                "ask": (f"Show me the matches for my "
+                        f"watch on {wm['item']}"),
+            })
+        elif wa.get("item"):
+            n = int(wa.get("checks") or 0)
+            out.append({
+                "id": f"watch_active:{wa.get('id', '')}",
+                "kind": "watch_active",
+                "title": (f"Still hunting for "
+                          f"“{wa['item']}”"),
+                "body": (f"Your watch has run {n} check"
+                         f"{'s' if n != 1 else ''} and is "
+                         "still on it — a match will land "
+                         "in your Feed."),
+                "ask": (f"How is my watch on "
+                        f"{wa['item']} doing?"),
+            })
+        elif pw.get("symbol"):
+            out.append({
+                "id": f"price_watch:{pw['symbol']}",
+                "kind": "price_watch",
+                "title": f"Watching {pw['symbol']} for you",
+                "body": (pw.get("terms")
+                         or "OG is watching this price "
+                            "for you."),
+                "ask": (f"What's {pw['symbol']} trading "
+                        "at right now?"),
+            })
+    except Exception as e:
+        logger.warning(f"Ideas watch-activity signal "
+                       f"failed: {e}")
+
+    # 6. More of the generator they use most (3+ makes).
+    try:
+        fav = sig.get("favorite") or {}
+        if fav.get("kind"):
+            plurals = {"song": "songs", "video": "videos",
+                       "podcast": "podcasts",
+                       "book": "books", "motion": "clips",
+                       "model3d": "models", "sfx": "sounds"}
+            singulars = {"song": "song",
+                         "video": "story video",
+                         "podcast": "podcast episode",
+                         "book": "book",
+                         "motion": "motion clip",
+                         "model3d": "3D model",
+                         "sfx": "sound effect"}
+            kind = fav["kind"]
+            ttl = fav.get("title") or "your latest"
+            out.append({
+                "id": f"more:{kind}",
+                "kind": "more_like",
+                "title": (f"More {plurals.get(kind, kind)} "
+                          f"like “{ttl}”"),
+                "body": (f"You've made "
+                         f"{int(fav.get('count') or 0)} "
+                         f"{plurals.get(kind, kind)} — the "
+                         f"newest is “{ttl}”. OG can make "
+                         "another in the same vein."),
+                "ask": (f"Make me another "
+                        f"{singulars.get(kind, kind)} "
+                        f"like {ttl}"),
+            })
+    except Exception as e:
+        logger.warning(f"Ideas favorite signal failed: {e}")
+
+    # 7. A generator the caller has never used (one idea).
     try:
         for kind, title, body, ask in _TRY_IDEAS:
             if int(counts.get(_COUNT_KEYS[kind], 0) or 0) == 0:
