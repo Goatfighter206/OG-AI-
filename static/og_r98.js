@@ -51,8 +51,21 @@
  * group (the classics) paint exactly as Round 98
  * left them. The speaking seam is unchanged: the
  * pick id goes to /tts as the body's voice, and the
- * server resolves it to the real base voice +
- * accent instructions — the labels are the sound.
+ * server resolves it.
+ *
+ * Ticket R real-voice rebuild (2026-10-23, later the
+ * same day): the pack's first build resolved each id
+ * to an OpenAI base voice + accent instructions, and
+ * Brent's ear failed it — the accents weren't real.
+ * The pack now resolves server-side to REAL
+ * ElevenLabs library voices under the SAME forty
+ * ids, so a stored pick just starts sounding right.
+ * The switch is server-side (the pack-only flag);
+ * while it is off, the /voice payload marks pack
+ * rows "available": false and this folder paints
+ * that honestly — dimmed, tagged "Not switched on",
+ * and neither a tap nor a Test fires a request that
+ * cannot speak. The classics never carry the mark.
  *
  * Ticket R2 (Brent, 2026-10-23): "There should be a
  * test button to hear the voice right next to the
@@ -93,6 +106,7 @@
     + 'background:transparent;border:none;border-top:1px solid #232323;'
     + 'padding:12px 0;font-family:inherit;color:#ececec}'
     + '.og98-row:hover{background:rgba(255,193,7,.06)}'
+    + '.og98-row.off{opacity:.55}'
     + '.og98-main{flex:1;text-align:left;cursor:pointer;min-width:0}'
     + '.og98-test{flex:none;background:transparent;'
     + 'border:1px solid rgba(255,193,7,.65);color:#ffc107;'
@@ -261,6 +275,15 @@
     // request a chat reply with that pick makes. It
     // never touches the selection.
     function testVoice(s, btn) {
+      // Real-voice rebuild: a pack row the server
+      // marked unavailable cannot speak — say so on
+      // the status line instead of firing a /tts call
+      // that can only fail.
+      if (s.available === false) {
+        status.textContent = 'That voice isn\'t '
+          + 'switched on yet.';
+        return;
+      }
       stopTest();
       testBtnEl = btn;
       btn.disabled = true;
@@ -315,6 +338,17 @@
         }
         if (s.group) prevGroup = s.group;
         var row = el('div', 'og98-row', '');
+        // Real-voice rebuild: the server marks a pack
+        // row "available": false while the pack's
+        // ElevenLabs lane is not switched on. Paint
+        // that honestly — dimmed, tagged — and let a
+        // tap explain instead of storing a pick that
+        // cannot speak. (A stored pick that is
+        // unavailable still shows ✓ Current AND the
+        // tag: it is the user's pick, it just can't
+        // speak right now.)
+        var off = s.available === false;
+        if (off) row.className = 'og98-row off';
         // The row's main area is the select target —
         // tapping it picks, exactly as the whole row
         // did before R2.
@@ -325,9 +359,18 @@
         } else if (s.is_default) {
           nameLine.appendChild(el('span', 'og98-tag def', 'Default'));
         }
+        if (off) {
+          nameLine.appendChild(el('span', 'og98-tag def',
+            'Not switched on'));
+        }
         main.appendChild(nameLine);
         main.appendChild(el('p', 'og98-note', s.note));
         main.addEventListener('click', function () {
+          if (off) {
+            status.textContent = 'That voice isn\'t '
+              + 'switched on yet.';
+            return;
+          }
           pick(s.voice);
         });
         row.appendChild(main);
