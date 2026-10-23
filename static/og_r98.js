@@ -41,6 +41,35 @@
  * Rounds 62/63/65/66/84/85/90/97 — the page is at its
  * push ceiling. Defensive by contract: feature-
  * detected, try/caught, never throws.
+ *
+ * Ticket R (2026-10-23): the folder also carries the
+ * MEANER PACK — forty accented styles under the six
+ * classics. Pack rows arrive with a "group" field
+ * (one per accent family); the folder paints a gold
+ * header when the group changes, so the families
+ * read as families on the phone. Rows without a
+ * group (the classics) paint exactly as Round 98
+ * left them. The speaking seam is unchanged: the
+ * pick id goes to /tts as the body's voice, and the
+ * server resolves it to the real base voice +
+ * accent instructions — the labels are the sound.
+ *
+ * Ticket R2 (Brent, 2026-10-23): "There should be a
+ * test button to hear the voice right next to the
+ * voices." Every row — classics and pack alike —
+ * carries a ▶ Test button beside it. A test speaks
+ * ONE standard line (SAMPLE_LINE, the same words
+ * for every voice, so voices compare fairly) through
+ * the REAL /tts seam for THAT row's voice id
+ * (ttsWithPick — the identical request a chat reply
+ * with that pick makes), so the preview is the
+ * actual sound the user will get, never a canned
+ * recording that can drift from the live voice. A
+ * test never selects: it does not call pick(), and
+ * its click is stopped before the row's own select
+ * handler can see it. A test is a real /tts call, so
+ * it meters exactly like a spoken reply — same door,
+ * same cap, no side channel.
  */
 (function () {
   'use strict';
@@ -48,6 +77,10 @@
   var AVATAR = 'og';               // the web stage is OG
   var DEFAULT_VOICE = 'onyx';      // Round 37: OG's own voice
   var payload = null;              // last /voice answer (server truth)
+  // Ticket R2: the one sample line every voice's Test
+  // button speaks — identical words for all 46 voices,
+  // so the comparison is voice-only.
+  var SAMPLE_LINE = 'Yo, this is OG — say the word and I\'m on it, G.';
 
   var css = ''
     + '.og98-body{padding:4px 2px 14px;color:#ececec}'
@@ -55,16 +88,25 @@
     + 'line-height:1.5}'
     + '.og98-status{color:#ffc107;font-size:.88em;padding:2px 0 6px;'
     + 'margin:0;min-height:1.2em}'
-    + '.og98-row{display:block;width:100%;text-align:left;'
+    + '.og98-row{display:flex;align-items:flex-start;gap:10px;'
+    + 'width:100%;text-align:left;'
     + 'background:transparent;border:none;border-top:1px solid #232323;'
-    + 'padding:12px 0;cursor:pointer;font-family:inherit;color:#ececec}'
+    + 'padding:12px 0;font-family:inherit;color:#ececec}'
     + '.og98-row:hover{background:rgba(255,193,7,.06)}'
+    + '.og98-main{flex:1;text-align:left;cursor:pointer;min-width:0}'
+    + '.og98-test{flex:none;background:transparent;'
+    + 'border:1px solid rgba(255,193,7,.65);color:#ffc107;'
+    + 'border-radius:999px;padding:6px 12px;font-family:inherit;'
+    + 'font-weight:700;font-size:.85em;cursor:pointer;margin-top:2px}'
+    + '.og98-test:disabled{opacity:.5;cursor:default}'
     + '.og98-name{font-size:1.02em;font-weight:700}'
     + '.og98-tag{display:inline-block;margin-left:8px;padding:2px 9px;'
     + 'border-radius:999px;font-size:.78em;font-weight:700;'
     + 'vertical-align:2px}'
     + '.og98-tag.cur{border:1px solid rgba(255,193,7,.65);color:#ffc107}'
-    + '.og98-tag.def{border:1px solid #3a3a3a;color:#999}';
+    + '.og98-tag.def{border:1px solid #3a3a3a;color:#999}'
+    + '.og98-group{color:#ffc107;font-weight:700;font-size:.98em;'
+    + 'padding:18px 0 2px;border-top:1px solid #232323;margin-top:4px}';
   try {
     var st = document.createElement('style');
     st.textContent = css;
@@ -203,9 +245,62 @@
     listBox.appendChild(el('p', 'og98-note', 'Loading…'));
 
     var alive = true;
-    view.track(function () { alive = false; });
+    view.track(function () { alive = false; stopTest(); });
+
+    // Ticket R2: preview playback state — one test at
+    // a time; starting a new one (or repainting, or
+    // leaving the folder) stops the old one cold.
+    var testAudio = null;
+    var testBtnEl = null;
+    function stopTest() {
+      if (testAudio) { try { testAudio.pause(); } catch (e) {} testAudio = null; }
+      if (testBtnEl) { testBtnEl.disabled = false; testBtnEl = null; }
+    }
+    // The preview: the standard line through the real
+    // /tts seam for the row's own voice id — the same
+    // request a chat reply with that pick makes. It
+    // never touches the selection.
+    function testVoice(s, btn) {
+      stopTest();
+      testBtnEl = btn;
+      btn.disabled = true;
+      status.textContent = 'Playing ' + s.name + '…';
+      // Every async step re-checks it is still the live
+      // test: a pick (which repaints and stops tests) or
+      // a newer test supersedes this one, and a stale
+      // callback must never clobber the folder's status
+      // line or start playing over the new state.
+      ttsWithPick(SAMPLE_LINE, s.voice).then(function (blob) {
+        if (testBtnEl !== btn) return;
+        var url = URL.createObjectURL(blob);
+        var audio = new Audio(url);
+        testAudio = audio;
+        audio.onended = function () {
+          if (testBtnEl !== btn) return;
+          stopTest();
+          status.textContent = '';
+          try { URL.revokeObjectURL(url); } catch (e) {}
+        };
+        audio.onerror = function () {
+          if (testBtnEl !== btn) return;
+          stopTest();
+          status.textContent = 'Couldn\'t play that test — try again.';
+        };
+        var p = audio.play();
+        if (p && p.catch) p.catch(function () {
+          if (testBtnEl !== btn) return;
+          stopTest();
+          status.textContent = 'Couldn\'t play that test — try again.';
+        });
+      }).catch(function () {
+        if (testBtnEl !== btn) return;
+        stopTest();
+        status.textContent = 'Couldn\'t play that test — OG couldn\'t be reached.';
+      });
+    }
 
     function paintStyles(d) {
+      stopTest();
       listBox.innerHTML = '';
       if (!d || !d.styles) {
         listBox.appendChild(el('p', 'og98-note',
@@ -213,20 +308,40 @@
           + 'open it again.'));
         return;
       }
+      var prevGroup = null;
       d.styles.forEach(function (s) {
-        var row = el('button', 'og98-row', '');
-        row.type = 'button';
+        if (s.group && s.group !== prevGroup) {
+          listBox.appendChild(el('div', 'og98-group', s.group));
+        }
+        if (s.group) prevGroup = s.group;
+        var row = el('div', 'og98-row', '');
+        // The row's main area is the select target —
+        // tapping it picks, exactly as the whole row
+        // did before R2.
+        var main = el('div', 'og98-main', '');
         var nameLine = el('div', 'og98-name', s.name);
         if (s.current) {
           nameLine.appendChild(el('span', 'og98-tag cur', '✓ Current'));
         } else if (s.is_default) {
           nameLine.appendChild(el('span', 'og98-tag def', 'Default'));
         }
-        row.appendChild(nameLine);
-        row.appendChild(el('p', 'og98-note', s.note));
-        row.addEventListener('click', function () {
+        main.appendChild(nameLine);
+        main.appendChild(el('p', 'og98-note', s.note));
+        main.addEventListener('click', function () {
           pick(s.voice);
         });
+        row.appendChild(main);
+        // Ticket R2: the Test button sits right next
+        // to the voice. Its click is stopped dead so
+        // it can never fall through to selecting.
+        var testBtn = el('button', 'og98-test', '▶ Test');
+        testBtn.type = 'button';
+        testBtn.setAttribute('aria-label', 'Hear ' + s.name);
+        testBtn.addEventListener('click', function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          testVoice(s, testBtn);
+        });
+        row.appendChild(testBtn);
         listBox.appendChild(row);
       });
     }
