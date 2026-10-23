@@ -68,6 +68,19 @@ reads exactly right for every existing account.
 Round 99's law: with a database configured, a store
 error raises og_db.StoreError and the caller fails
 honestly (the app-wide 503) — never a shadow answer.
+
+Ticket R addendum (2026-10-23): the MEANER PACK —
+forty accented styles in four families (Mexican,
+Russian, Southern, gangster; five women's + five
+men's voices each) — joins the table below the six
+classics. The audit for it is written at the pack
+table itself; the short version: tts-1 still has no
+instructions channel, so the pack does NOT ride it.
+A pack style resolves (speech_for) to a base voice
+plus delivery instructions on gpt-4o-mini-tts —
+the model whose instructions channel OpenAI's own
+text-to-speech guide lists accent control for. The
+six classics resolve exactly as Round 98 left them.
 """
 
 import asyncio
@@ -119,8 +132,137 @@ STYLES = [
      "note": "A softer, clearer woman's voice."},
 ]
 
-VOICE_IDS = [s["voice"] for s in STYLES]
-_BY_ID = {s["voice"]: s for s in STYLES}
+# ===========================================================================
+# Ticket R: the meaner pack — forty accented styles.
+#
+# THE AUDIT (2026-10-23, this round, checked against
+# production source AND OpenAI's own documentation):
+#
+# 1. /tts today posts {"model": "tts-1", "voice": ...,
+#    "input": ...} to OpenAI's speech endpoint (app.py).
+#    OpenAI's Create-speech reference states the
+#    "instructions" parameter "does not work with tts-1
+#    or tts-1-hd" — tts-1 takes a voice id and nothing
+#    else. On that model an "accent" would be a label
+#    over an unchanged sound: a fake. NO pack entry
+#    rides tts-1.
+# 2. The same provider, same key, same endpoint offers
+#    "gpt-4o-mini-tts", whose instructions channel
+#    OpenAI's text-to-speech guide lists FIRST for
+#    accent control ("gpt-4o-mini-tts lets you use
+#    prompts to control these aspects of speech:
+#    Accent, Emotional range, Intonation, ..."). A
+#    pack style is therefore a real, auditable pair:
+#    one of that model's own base voices + the
+#    family's accent/delivery instructions. Picking a
+#    style changes BOTH fields of the upstream
+#    request; the gate captures the upstream body and
+#    proves it for all forty.
+# 3. The six classics do NOT move models: their
+#    upstream request stays byte-identical to the
+#    Round 37/98 one (tts-1, no instructions key), so
+#    every existing pick sounds exactly as it did.
+#
+# THE SPLIT (Brent's refinement): each family's ten =
+# five women's voices + five men's. The base sets are
+# the model's own voices whose presentation matches
+# the label — the convention the classics' notes
+# already use (nova/shimmer are the folder's women's
+# voices, echo a man's). Women's bases: marin, coral,
+# nova, sage, shimmer — all five the model offers.
+# Men's bases rotate five of the model's seven (ash,
+# ballad, cedar, echo, fable, onyx, verse) per family,
+# so all forty (base, instructions) pairs are distinct
+# and no two folder entries can sound identical by
+# construction. "Meaner" is delivery only — the
+# instructions ask for a hard, aggressive edge; the
+# words are never touched (persona law).
+# ===========================================================================
+
+CLASSIC_MODEL = "tts-1"
+PACK_MODEL = "gpt-4o-mini-tts"
+
+_PACK_FEMALE_BASES = ("marin", "coral", "nova", "sage", "shimmer")
+_PACK_MALE_BASES = {
+    "mexican": ("onyx", "echo", "ash", "ballad", "verse"),
+    "russian": ("onyx", "cedar", "fable", "ash", "verse"),
+    "southern": ("echo", "ballad", "cedar", "onyx", "fable"),
+    "gangster": ("onyx", "echo", "cedar", "ash", "ballad"),
+}
+_PACK_FAMILIES = (
+    {"key": "mexican", "label": "Mexican",
+     "instructions": (
+         "Accent: strong Mexican accent — Mexican "
+         "Spanish-inflected English, rolled r's, Spanish "
+         "vowel sounds. Voice affect: tough and "
+         "intimidating. Tone: mean, aggressive, "
+         "confrontational — a hard-edged cartel-enforcer "
+         "growl, clipped and cold, talking down to "
+         "someone. Pace: deliberate, with heavy pauses. "
+         "Pronunciation: keep every word clear and "
+         "understandable through the accent.")},
+    {"key": "russian", "label": "Russian",
+     "instructions": (
+         "Accent: strong Russian accent — hard "
+         "consonants, rolled r's, flattened Russian "
+         "vowels. Voice affect: cold and menacing. "
+         "Tone: mean, heavy, intimidating — an enforcer "
+         "who never has to raise their voice to be "
+         "scary. Pace: slow, deliberate, each word "
+         "weighed. Pronunciation: keep every word clear "
+         "and understandable through the accent.")},
+    {"key": "southern", "label": "Southern",
+     "instructions": (
+         "Accent: strong Southern American drawl — "
+         "stretched vowels, dropped g's, rural Southern "
+         "rhythm. Voice affect: rough and ornery. Tone: "
+         "mean, snarling, backwoods-tough — a hard "
+         "Southern local who is done being polite. Pace: "
+         "drawled and unhurried, with a nasty edge under "
+         "it. Pronunciation: keep every word clear and "
+         "understandable through the drawl.")},
+    {"key": "gangster", "label": "Gangster",
+     "instructions": (
+         "Accent: old-school American gangster — 1930s "
+         "mobster rhythm with a tough New York street "
+         "edge. Voice affect: swaggering and dangerous. "
+         "Tone: mean, cocky, threatening — a mob "
+         "enforcer talking down to a mark. Pace: punchy "
+         "and clipped, leaning hard on the threats. "
+         "Pronunciation: keep every word clear and "
+         "understandable.")},
+)
+
+
+def _pack_styles():
+    out = []
+    for family in _PACK_FAMILIES:
+        key, label = family["key"], family["label"]
+        for gender, bases in (
+                ("female", _PACK_FEMALE_BASES),
+                ("male", _PACK_MALE_BASES[key])):
+            for base in bases:
+                out.append({
+                    "voice": f"{key}-{base}",
+                    "name": f"{label} {base.capitalize()}",
+                    "note": (
+                        f"A {'woman' if gender == 'female' else 'man'}'s "
+                        f"voice with a strong {label} accent — "
+                        "mean, hard-edged delivery."),
+                    "base": base,
+                    "instructions": family["instructions"],
+                    "accent": label,
+                    "gender": gender,
+                    "group": f"Meaner pack — {label} accent",
+                })
+    return out
+
+
+PACK = _pack_styles()
+ALL_STYLES = STYLES + PACK
+
+VOICE_IDS = [s["voice"] for s in ALL_STYLES]
+_BY_ID = {s["voice"]: s for s in ALL_STYLES}
 
 # The Round 37 avatar -> voice map: the DEFAULT each
 # face falls back to with no pick stored. One table,
@@ -282,6 +424,22 @@ def _set_voice_payload(uid: str, voice, avatar) -> dict:
     return voice_payload(uid, avatar)
 
 
+def _style_row(s, effective, default):
+    """One folder row. Classic rows carry exactly the
+    Round 98 fields; pack rows add their group, accent
+    and gender so a client can label them honestly
+    (the folder paints a header per group)."""
+    row = {"voice": s["voice"], "name": s["name"],
+           "note": s["note"],
+           "current": s["voice"] == effective,
+           "is_default": s["voice"] == default}
+    if "accent" in s:
+        row["group"] = s["group"]
+        row["accent"] = s["accent"]
+        row["gender"] = s["gender"]
+    return row
+
+
 def voice_payload(uid: str, avatar=None) -> dict:
     """The folder's payload: the effective voice, the
     asking face's avatar + its default, and every
@@ -297,14 +455,30 @@ def voice_payload(uid: str, avatar=None) -> dict:
         "picked": pick,
         "avatar": av,
         "default_voice": default,
-        "styles": [
-            {"voice": s["voice"], "name": s["name"],
-             "note": s["note"],
-             "current": s["voice"] == effective,
-             "is_default": s["voice"] == default}
-            for s in STYLES
-        ],
+        "styles": [_style_row(s, effective, default)
+                   for s in ALL_STYLES],
     }
+
+
+def speech_for(voice_id) -> dict:
+    """What /tts sends upstream for one voice id: the
+    model, the base voice, and the delivery
+    instructions (pack styles only — None for the
+    classics, whose upstream body stays exactly the
+    Round 37/98 one). An id that names no style at
+    all resolves to the OG default on the classic
+    model — the fallback /tts has always applied to
+    a missing or invalid voice field."""
+    s = _BY_ID.get(voice_id) if isinstance(voice_id, str) else None
+    if s is None:
+        return {"model": CLASSIC_MODEL,
+                "voice": AVATAR_VOICES[DEFAULT_AVATAR],
+                "instructions": None}
+    if "base" in s:
+        return {"model": PACK_MODEL, "voice": s["base"],
+                "instructions": s["instructions"]}
+    return {"model": CLASSIC_MODEL, "voice": s["voice"],
+            "instructions": None}
 
 
 def purge_uid(uid: str):
