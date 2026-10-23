@@ -74,6 +74,14 @@ THE GAME, honestly built:
 
 app.py carries only the import, the tool install,
 and the register lines.
+
+MM-PICS (games wave, 2026-10-23): pictures ride
+og_mystery_pics — one crime scene + one portrait per
+suspect at game start, one photo per clue at the
+moment it is served, all on the existing image
+machinery and tier caps. Prompts are built there
+from public state only; this module passes it the
+record and never a truth field as a prompt input.
 """
 
 import html
@@ -89,6 +97,8 @@ from typing import Dict, List, Optional
 
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
+
+import og_mystery_pics as _pics
 
 logger = logging.getLogger(__name__)
 
@@ -558,6 +568,10 @@ def create_game(uid: str, long_game: bool, now: float) -> Optional[Dict]:
         "guess": {},
         "score": None,
         "notice_sent": False,
+        "pics": [],
+        "pics_off": False,
+        "pics_notice_sent": False,
+        "pics_pending_notice": "",
         "title": "untitled mystery",
         "last_prompt": _T1[0][1],
     }
@@ -861,7 +875,14 @@ def _setup_turn(rec: Dict, text: str) -> List[Dict]:
         return _directive(f"{lead}\nFirst: {nq}")
     _deal_truth(rec)
     rec["phase"] = "play"
-    return _opening(rec)
+    made = _pics.opening_pictures(rec)
+    out = _opening(rec)
+    if made:
+        out[0]["body"] += (
+            "\n[Pictures made for this game: the crime "
+            "scene and a portrait for each suspect — "
+            "saved to the Library under Images.]")
+    return out
 
 
 # --- Play machine (Template 3) -------------------------------------------------------
@@ -897,6 +918,7 @@ def _serve_next_clue(rec: Dict) -> Optional[str]:
         return None
     clue = left[0]
     clue["served"] = True
+    _pics.clue_picture(rec, clue)
     return clue["text"] + _second_death_event(rec)
 
 
@@ -1035,6 +1057,7 @@ def _watcher_turn(rec: Dict, low: str) -> List[Dict]:
     else:
         clue = rec["clues"][item["clue_index"]]
         clue["served"] = True
+        _pics.clue_picture(rec, clue)
         body = "New evidence: " + clue["text"] + _second_death_event(rec)
     q = ("Say \"next\" for the next piece — or accuse "
          "whenever you're ready.")
@@ -1246,9 +1269,16 @@ def mystery_results(job: Dict, uid: str) -> List[Dict]:
                 "for one and we'll deal it.")
         lines = []
         for g in games:
-            lines.append(
-                f"- {g.get('title', 'untitled')} — "
-                f"{g.get('status')}")
+            line = (f"- {g.get('title', 'untitled')} — "
+                    f"{g.get('status')}")
+            if g.get("pics"):
+                labels = "; ".join(
+                    str(p.get("label", "picture"))
+                    for p in g["pics"])
+                line += (f"\n  Pictures ({len(g['pics'])}): "
+                         f"{labels} — in your Library "
+                         "under Images.")
+            lines.append(line)
         return _directive(
             "Your murder mysteries:\n" + "\n".join(lines))
     if op == "turn":
@@ -1270,6 +1300,12 @@ def mystery_results(job: Dict, uid: str) -> List[Dict]:
             out = _accuse_turn(rec, job.get("text", ""))
         else:
             out = _directive("That game is finished.")
+        # MM-PICS: the ONE plain text-only notice, on
+        # the turn where pictures first failed / capped.
+        if rec.get("pics_pending_notice") and out:
+            out[0]["body"] += "\n" + rec["pics_pending_notice"]
+            rec["pics_pending_notice"] = ""
+            rec["pics_notice_sent"] = True
         rec["last_touched"] = now
         mine[rec["id"]] = rec
         _save_records(uid, mine)
@@ -1353,6 +1389,15 @@ def _render_games_page(uid: str) -> str:
             f"<b>{html.escape(str(g.get('title', 'untitled')))}</b><br>"
             f"Status: {html.escape(str(g.get('status', '')))} · "
             f"phase: {html.escape(str(g.get('phase', '')))}<br>")
+        if g.get("pics"):
+            pics_txt = "; ".join(
+                html.escape(str(p.get("label", "picture")))
+                + (f" (Library #{html.escape(str(p['library_id']))})"
+                   if p.get("library_id") else "")
+                for p in g["pics"])
+            rows += (f"Pictures ({len(g['pics'])}): {pics_txt} "
+                     "&mdash; saved to your Library under "
+                     "Images.<br>")
         if g.get("status") == "live":
             rows += (
                 f"<form method='post' action='/games/{g.get('id')}/abandon'>"

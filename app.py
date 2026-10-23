@@ -367,6 +367,7 @@ import og_video as _og_video
 import og_songs as _og_songs
 import og_artifacts as _og_artifacts
 import og_mystery as _og_mystery
+import og_mystery_pics as _og_mystery_pics
 import og_voice_style as _og_voice_style
 import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
@@ -3244,6 +3245,21 @@ _og_files.bind_app({
     "save_history": _save_visitor_history_locked})
 _og_files.register_file_routes(app)
 _og_mystery.register_mystery_routes(app)
+# MM-PICS: bind the SAME cap/meter functions the /image
+# endpoint uses — weekly image pool, token-pack fallback,
+# success-only consume — so mystery pictures and chat
+# pictures share one pool and one ledger (no parallel cap).
+_og_mystery_pics.bind_app({
+    "get_tier": lambda uid: _current_tier.get("tier", "free"),
+    "images_left": lambda uid, tier: max(
+        0, (_og_tiers.weekly_cap(tier, "images") or 0)
+        - _week_used(f"image:{uid}")),
+    "can_afford_tokens": lambda uid: _og_tokenpacks.can_afford(
+        uid, _og_tokenpacks.RATES["image"]),
+    "consume_image": _consume_image,
+    "debit_tokens": lambda uid: _og_tokenpacks.debit(
+        uid, _og_tokenpacks.RATES["image"], "image"),
+    "get_api_key": lambda: os.getenv("OPENAI_API_KEY")})
 
 _og_tiers.bind({"pro_token": PRO_TOKEN, "pro_link": PRO_UPGRADE_URL,
                 "webhook_enabled": WEBHOOK_ENABLED,
