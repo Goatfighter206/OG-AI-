@@ -81,6 +81,28 @@ plus delivery instructions on gpt-4o-mini-tts —
 the model whose instructions channel OpenAI's own
 text-to-speech guide lists accent control for. The
 six classics resolve exactly as Round 98 left them.
+
+Real-voice rebuild addendum (Ticket R, 2026-10-23,
+later the same day): Brent's ear FAILED the
+impression pack ("the voices don't have real accents
+or real voices"), so the pack was rebuilt on REAL
+voices. Each pack entry now names one real
+ElevenLabs library voice (its el_voice_id, from the
+census in cand-voicepack-el/REPORT.md §6 — the picks
+Brent heard as samples and approved), and speech_for
+resolves a pack id to that voice on the ElevenLabs
+lane ({"provider": "elevenlabs", ...}); /tts speaks
+it through og_voice_lab's library seam behind the
+pack-only flag OG_VOICE_PACK_EL_ENABLED. The forty
+ids are UNCHANGED, so an existing pick remaps to the
+real voice and just starts sounding right. The
+gangster family's women's shelf is five noir /
+femme-fatale character voices, labeled Noir in the
+folder — there is no honest full mob shelf for
+women in the library, and the copy says so instead
+of faking one. The impression apparatus (base voices
++ instructions) is retired; the classics are
+byte-untouched and still resolve to tts-1.
 """
 
 import asyncio
@@ -133,128 +155,245 @@ STYLES = [
 ]
 
 # ===========================================================================
-# Ticket R: the meaner pack — forty accented styles.
+# Ticket R: the meaner pack — forty REAL voices.
 #
-# THE AUDIT (2026-10-23, this round, checked against
-# production source AND OpenAI's own documentation):
+# THE AUDIT (2026-10-23, Ticket R): the pack first
+# shipped as base voice + delivery instructions on
+# OpenAI's gpt-4o-mini-tts. Brent's ear failed it the
+# same morning: "the voices don't have real accents
+# or real voices." He was right — an instruction can
+# ask for an accent; it cannot BE one.
 #
-# 1. /tts today posts {"model": "tts-1", "voice": ...,
-#    "input": ...} to OpenAI's speech endpoint (app.py).
-#    OpenAI's Create-speech reference states the
-#    "instructions" parameter "does not work with tts-1
-#    or tts-1-hd" — tts-1 takes a voice id and nothing
-#    else. On that model an "accent" would be a label
-#    over an unchanged sound: a fake. NO pack entry
-#    rides tts-1.
-# 2. The same provider, same key, same endpoint offers
-#    "gpt-4o-mini-tts", whose instructions channel
-#    OpenAI's text-to-speech guide lists FIRST for
-#    accent control ("gpt-4o-mini-tts lets you use
-#    prompts to control these aspects of speech:
-#    Accent, Emotional range, Intonation, ..."). A
-#    pack style is therefore a real, auditable pair:
-#    one of that model's own base voices + the
-#    family's accent/delivery instructions. Picking a
-#    style changes BOTH fields of the upstream
-#    request; the gate captures the upstream body and
-#    proves it for all forty.
-# 3. The six classics do NOT move models: their
-#    upstream request stays byte-identical to the
-#    Round 37/98 one (tts-1, no instructions key), so
-#    every existing pick sounds exactly as it did.
+# THE REBUILD (2026-10-23, cand-voicepack-el): every
+# pack entry below names ONE real ElevenLabs library
+# voice — the picks from the census in
+# cand-voicepack-el/REPORT.md §6, rendered as samples
+# Brent heard and approved ("Sounds good"). A pack
+# style IS that voice: speech_for resolves the id to
+# {"provider": "elevenlabs", "voice": <el_voice_id>}
+# and /tts speaks it through og_voice_lab's library
+# seam, gated by the pack-only flag
+# OG_VOICE_PACK_EL_ENABLED (+ the provider key). With
+# the flag off or the key absent the pack fails
+# honestly — it NEVER falls back to the retired
+# impression. The forty ids are the same ids the
+# impression build shipped, so stored picks remap to
+# the real voices untouched.
 #
 # THE SPLIT (Brent's refinement): each family's ten =
-# five women's voices + five men's. The base sets are
-# the model's own voices whose presentation matches
-# the label — the convention the classics' notes
-# already use (nova/shimmer are the folder's women's
-# voices, echo a man's). Women's bases: marin, coral,
-# nova, sage, shimmer — all five the model offers.
-# Men's bases rotate five of the model's seven (ash,
-# ballad, cedar, echo, fable, onyx, verse) per family,
-# so all forty (base, instructions) pairs are distinct
-# and no two folder entries can sound identical by
-# construction. "Meaner" is delivery only — the
-# instructions ask for a hard, aggressive edge; the
-# words are never touched (persona law).
+# five women's voices + five men's. The gangster
+# family's women's shelf is honestly NOIR: the
+# library holds no full shelf of women mob personas,
+# so those five are noir / femme-fatale character
+# voices and the folder labels them Noir — the
+# gangster men are the real mob shelf. On the bench
+# (not shipped): Antonio, the gangster alternate, and
+# Dante, who bills at a custom character rate — see
+# the census.
+#
+# THE SIX CLASSICS DO NOT MOVE: no el_voice_id, no
+# provider tag — their upstream request stays
+# byte-identical to the Round 37/98 one (tts-1, no
+# instructions key), so every existing classic pick
+# sounds exactly as it did. "Meaner" is the voices
+# themselves now — real people recorded with real
+# accents; the words are never touched (persona law).
 # ===========================================================================
 
 CLASSIC_MODEL = "tts-1"
-PACK_MODEL = "gpt-4o-mini-tts"
 
-_PACK_FEMALE_BASES = ("marin", "coral", "nova", "sage", "shimmer")
-_PACK_MALE_BASES = {
-    "mexican": ("onyx", "echo", "ash", "ballad", "verse"),
-    "russian": ("onyx", "cedar", "fable", "ash", "verse"),
-    "southern": ("echo", "ballad", "cedar", "onyx", "fable"),
-    "gangster": ("onyx", "echo", "cedar", "ash", "ballad"),
+_PACK_SHELVES = {
+    "mexican": ("Mexican", "Meaner pack — Mexican accent"),
+    "russian": ("Russian", "Meaner pack — Russian accent"),
+    "southern": ("Southern", "Meaner pack — Southern accent"),
+    "gangster": ("Gangster", "Meaner pack — Gangster accent"),
+    "noir": ("Noir", "Meaner pack — Gangster noir"),
 }
-_PACK_FAMILIES = (
-    {"key": "mexican", "label": "Mexican",
-     "instructions": (
-         "Accent: strong Mexican accent — Mexican "
-         "Spanish-inflected English, rolled r's, Spanish "
-         "vowel sounds. Voice affect: tough and "
-         "intimidating. Tone: mean, aggressive, "
-         "confrontational — a hard-edged cartel-enforcer "
-         "growl, clipped and cold, talking down to "
-         "someone. Pace: deliberate, with heavy pauses. "
-         "Pronunciation: keep every word clear and "
-         "understandable through the accent.")},
-    {"key": "russian", "label": "Russian",
-     "instructions": (
-         "Accent: strong Russian accent — hard "
-         "consonants, rolled r's, flattened Russian "
-         "vowels. Voice affect: cold and menacing. "
-         "Tone: mean, heavy, intimidating — an enforcer "
-         "who never has to raise their voice to be "
-         "scary. Pace: slow, deliberate, each word "
-         "weighed. Pronunciation: keep every word clear "
-         "and understandable through the accent.")},
-    {"key": "southern", "label": "Southern",
-     "instructions": (
-         "Accent: strong Southern American drawl — "
-         "stretched vowels, dropped g's, rural Southern "
-         "rhythm. Voice affect: rough and ornery. Tone: "
-         "mean, snarling, backwoods-tough — a hard "
-         "Southern local who is done being polite. Pace: "
-         "drawled and unhurried, with a nasty edge under "
-         "it. Pronunciation: keep every word clear and "
-         "understandable through the drawl.")},
-    {"key": "gangster", "label": "Gangster",
-     "instructions": (
-         "Accent: old-school American gangster — 1930s "
-         "mobster rhythm with a tough New York street "
-         "edge. Voice affect: swaggering and dangerous. "
-         "Tone: mean, cocky, threatening — a mob "
-         "enforcer talking down to a mark. Pace: punchy "
-         "and clipped, leaning hard on the threats. "
-         "Pronunciation: keep every word clear and "
-         "understandable.")},
+
+# (id family, shelf, base, gender, library name,
+#  el_voice_id, folder note) — the census picks,
+#  cand-voicepack-el/REPORT.md §6, in folder order:
+#  each family women first (F1..F5), then men (M1..M5).
+_PACK_EL = (
+    ("mexican", "mexican", "marin", "female", "Erika",
+     "r3SDVYUIvcC4EweQtSj0",
+     "Erika — a woman from Sinaloa: raspy and genuine, "
+     "a little hoarse. A real ElevenLabs library voice."),
+    ("mexican", "mexican", "coral", "female", "Adri",
+     "z1ngDYs2H24Xsd8ts3az",
+     "Adri — husky, natural and credible. A real "
+     "ElevenLabs library voice."),
+    ("mexican", "mexican", "nova", "female", "Paloma",
+     "j3pzCmrdzkT5DUtyT61a",
+     "Paloma — resonant and earthy, mature, with velvet "
+     "depth and authority. A real ElevenLabs library voice."),
+    ("mexican", "mexican", "sage", "female", "Magda",
+     "qpw1Pr9hKQ9lsPLpeNcM",
+     "Magda — calm and grounded, crisp and clear, a soft "
+     "Mexican accent. A real ElevenLabs library voice."),
+    ("mexican", "mexican", "shimmer", "female", "Emily",
+     "SLiC4fN7sbVbYUgtVxNM",
+     "Emily — soft, welcoming and upbeat; warm and "
+     "youthful. A real ElevenLabs library voice."),
+    ("mexican", "mexican", "onyx", "male", "Carlos Corella",
+     "LnGOA2SxH2fX1e1iNzEp",
+     "Carlos Corella — authoritative and deep. A real "
+     "ElevenLabs library voice."),
+    ("mexican", "mexican", "echo", "male", "Luis Guillermo",
+     "gwk2CKlAQ1B4a2RPxJoF",
+     "Luis Guillermo — warm and engaging, deep, with a "
+     "natural cadence. A real ElevenLabs library voice."),
+    ("mexican", "mexican", "ash", "male", "Tony",
+     "lRf3yb6jZby4fn3q3Q7M",
+     "Tony — witty and upbeat, a native Mexican speaker. "
+     "A real ElevenLabs library voice."),
+    ("mexican", "mexican", "ballad", "male",
+     "Enrique Mondragón", "iDEmt5MnqUotdwCIVplo",
+     "Enrique Mondragón — elegant and dynamic, a calm "
+     "Mexican accent. A real ElevenLabs library voice."),
+    ("mexican", "mexican", "verse", "male", "Adriel",
+     "TNuNcwk4LzbPpi1XEANc",
+     "Adriel — a deep storyteller: warm and "
+     "authoritative. A real ElevenLabs library voice."),
+    ("russian", "russian", "marin", "female", "Dasha",
+     "8HSRAwEWAAa6wv9cdi5S",
+     "Dasha — warm, serious and smooth. A real "
+     "ElevenLabs library voice."),
+    ("russian", "russian", "coral", "female", "Oksana",
+     "Re06WujjJplgPJjn7M6s",
+     "Oksana — Russian-accented English, plain and "
+     "direct. A real ElevenLabs library voice."),
+    ("russian", "russian", "nova", "female", "Betty",
+     "8OkSxYl0qQH1Kg3Qzxu2",
+     "Betty — warm and smoky, a strong Russian accent, "
+     "slightly husky. A real ElevenLabs library voice."),
+    ("russian", "russian", "sage", "female", "Natasha",
+     "rl5Q2u6U81iTG1BKztyX",
+     "Natasha — confident and polished. A real "
+     "ElevenLabs library voice."),
+    ("russian", "russian", "shimmer", "female", "Tatyana",
+     "J60xcCIM7ET7HMi7hMZu",
+     "Tatyana — firm, direct, a little hard-edged. A "
+     "real ElevenLabs library voice."),
+    ("russian", "russian", "onyx", "male", "Alexey",
+     "XaEUesE01wKIKaa0xI0h",
+     "Alexey — English with a Russian accent. A real "
+     "ElevenLabs library voice."),
+    ("russian", "russian", "cedar", "male", "Maxim",
+     "IGRoDkfYV2Frq7Ly0PRu",
+     "Maxim — a strong Russian accent, baritone. A real "
+     "ElevenLabs library voice."),
+    ("russian", "russian", "fable", "male", "Viktor",
+     "Xh5OictnmgRO4dff7pLm",
+     "Viktor — bold, Slavic and impatient. A real "
+     "ElevenLabs library voice."),
+    ("russian", "russian", "ash", "male", "Vlad",
+     "XjdmlV0OFXfXE6Mg2Sb7",
+     "Vlad — mysterious and profound, a character "
+     "voice. A real ElevenLabs library voice."),
+    ("russian", "russian", "verse", "male", "Maksim",
+     "6sXsAlJKKBf265ucBSRt",
+     "Maksim — raw, unpolished and deep. A real "
+     "ElevenLabs library voice."),
+    ("southern", "southern", "marin", "female", "Ms. Walker",
+     "DLsHlh26Ugcm6ELvS0qi",
+     "Ms. Walker — warm, reassuring and round. A real "
+     "ElevenLabs library voice."),
+    ("southern", "southern", "coral", "female", "River",
+     "wkqe33083YLBV35we7yB",
+     "River — charismatic and upbeat, an authentic "
+     "Georgia Southern drawl. A real ElevenLabs library "
+     "voice."),
+    ("southern", "southern", "nova", "female",
+     "Kelli LaShae", "Z5JpFCNFIz8Nhe4KEikq",
+     "Kelli LaShae — a refined Mississippi drawl. A real "
+     "ElevenLabs library voice."),
+    ("southern", "southern", "sage", "female", "Josie",
+     "TfVjIROhkRShQb9pCFfK",
+     "Josie — smooth and sultry. A real ElevenLabs "
+     "library voice."),
+    ("southern", "southern", "shimmer", "female",
+     "Dr. Kendall", "BVA1oNX6xZt6o7QaUwxr",
+     "Dr. Kendall — a soft Southern voice, confident. A "
+     "real ElevenLabs library voice."),
+    ("southern", "southern", "echo", "male", "Havoc",
+     "dtVZnErhiiosqofxDzSH",
+     "Havoc — a gritty Southern narrator. A real "
+     "ElevenLabs library voice."),
+    ("southern", "southern", "ballad", "male", "Austin",
+     "Bj9UqZbhQsanLzgalpEG",
+     "Austin — deep and raspy, a gravelly good ol' boy. "
+     "A real ElevenLabs library voice."),
+    ("southern", "southern", "cedar", "male", "Jedediah",
+     "Cb8NLd0sUB8jI4MW2f9M",
+     "Jedediah — inviting and rich, a deep Texas twang. "
+     "A real ElevenLabs library voice."),
+    ("southern", "southern", "onyx", "male", "John Texas",
+     "7FroLDTDG92jPfUW6BlQ",
+     "John Texas — deep and smooth, gravelly — a tough "
+     "guy. A real ElevenLabs library voice."),
+    ("southern", "southern", "fable", "male", "Rhett Sutton",
+     "D4xQvkd2SmpDZJ8sEwvA",
+     "Rhett Sutton — slow and deep. A real ElevenLabs "
+     "library voice."),
+    ("gangster", "noir", "marin", "female", "Jean",
+     "eVItLK1UvXctxuaRV2Oq",
+     "Jean — an alluring, playful femme fatale. A noir "
+     "character voice from the ElevenLabs library."),
+    ("gangster", "noir", "coral", "female", "Juliet",
+     "Zcmn5ok6KSaf2Tikziif",
+     "Juliet — a dark villain: cold, a menacing boss. A "
+     "noir character voice from the ElevenLabs library."),
+    ("gangster", "noir", "nova", "female", "Rosie",
+     "V1sMnmZsNBJuEOA7aVqB",
+     "Rosie — smoky and warm, a dame from a bygone era. "
+     "A noir character voice from the ElevenLabs library."),
+    ("gangster", "noir", "sage", "female", "Aria",
+     "TC0Zp7WVFzhA8zpTlRqV",
+     "Aria — a sultry villain in dark velvet. A noir "
+     "character voice from the ElevenLabs library."),
+    ("gangster", "noir", "shimmer", "female", "Clara",
+     "YC9NjC58jpXEqLpIxUeA",
+     "Clara — a wicked villain: velvety, with a sinister "
+     "edge. A noir character voice from the ElevenLabs "
+     "library."),
+    ("gangster", "gangster", "onyx", "male", "Jerry B.",
+     "QzTKubutNn9TjrB7Xb2Q",
+     "Jerry B. — a New York Italian mobster. A real "
+     "ElevenLabs library voice."),
+    ("gangster", "gangster", "echo", "male", "Crazy Eddie",
+     "OTMqA7lryJHXgAnPIQYt",
+     "Crazy Eddie — a raspy gangster, a street crook. A "
+     "real ElevenLabs library voice."),
+    ("gangster", "gangster", "cedar", "male", "Gotham Boss",
+     "M9UAxraM2w5tCjpOaIB0",
+     "Gotham Boss — gritty, calm and powerful: kingpins "
+     "and mob enforcers. A real ElevenLabs library voice."),
+    ("gangster", "gangster", "ash", "male", "Frankie Slim",
+     "eWmswbut7I70CIuRsFwP",
+     "Frankie Slim — slick and mischievous. A real "
+     "ElevenLabs library voice."),
+    ("gangster", "gangster", "ballad", "male", "VocaVillain",
+     "JfPMeQaBXIO5i9J9MTwR",
+     "VocaVillain — a hoarse villain persona. A real "
+     "ElevenLabs library voice."),
 )
 
 
 def _pack_styles():
     out = []
-    for family in _PACK_FAMILIES:
-        key, label = family["key"], family["label"]
-        for gender, bases in (
-                ("female", _PACK_FEMALE_BASES),
-                ("male", _PACK_MALE_BASES[key])):
-            for base in bases:
-                out.append({
-                    "voice": f"{key}-{base}",
-                    "name": f"{label} {base.capitalize()}",
-                    "note": (
-                        f"A {'woman' if gender == 'female' else 'man'}'s "
-                        f"voice with a strong {label} accent — "
-                        "mean, hard-edged delivery."),
-                    "base": base,
-                    "instructions": family["instructions"],
-                    "accent": label,
-                    "gender": gender,
-                    "group": f"Meaner pack — {label} accent",
-                })
+    for fam_key, shelf, base, gender, el_name, el_id, \
+            note in _PACK_EL:
+        label, group = _PACK_SHELVES[shelf]
+        out.append({
+            "voice": f"{fam_key}-{base}",
+            "name": f"{label} — {el_name}",
+            "note": note,
+            "el_voice_id": el_id,
+            "accent": label,
+            "gender": gender,
+            "group": group,
+        })
     return out
 
 
@@ -424,11 +563,31 @@ def _set_voice_payload(uid: str, voice, avatar) -> dict:
     return voice_payload(uid, avatar)
 
 
-def _style_row(s, effective, default):
+def _pack_live() -> bool:
+    """Whether the meaner pack can actually speak
+    right now — og_voice_lab's pack-only gate (the
+    OG_VOICE_PACK_EL_ENABLED flag + the provider key),
+    read at payload time. A lazy import: the lab
+    module is heavy and this module loads first. Any
+    import trouble reads as not-live — the folder then
+    paints the pack as not switched on, which is the
+    honest failure direction."""
+    try:
+        import og_voice_lab
+        return bool(og_voice_lab.pack_enabled())
+    except Exception:
+        return False
+
+
+def _style_row(s, effective, default, pack_live=True):
     """One folder row. Classic rows carry exactly the
     Round 98 fields; pack rows add their group, accent
     and gender so a client can label them honestly
-    (the folder paints a header per group)."""
+    (the folder paints a header per group), plus an
+    "available" mark: False while the pack's
+    ElevenLabs lane is not switched on, so the folder
+    paints that honestly instead of offering a voice
+    that cannot speak."""
     row = {"voice": s["voice"], "name": s["name"],
            "note": s["note"],
            "current": s["voice"] == effective,
@@ -437,6 +596,7 @@ def _style_row(s, effective, default):
         row["group"] = s["group"]
         row["accent"] = s["accent"]
         row["gender"] = s["gender"]
+        row["available"] = bool(pack_live)
     return row
 
 
@@ -449,34 +609,42 @@ def voice_payload(uid: str, avatar=None) -> dict:
     default = AVATAR_VOICES[av]
     pick = stored_voice(uid)
     effective = pick or default
+    live = _pack_live()
     return {
         "ok": True,
         "voice": effective,
         "picked": pick,
         "avatar": av,
         "default_voice": default,
-        "styles": [_style_row(s, effective, default)
+        "styles": [_style_row(s, effective, default, live)
                    for s in ALL_STYLES],
     }
 
 
 def speech_for(voice_id) -> dict:
-    """What /tts sends upstream for one voice id: the
-    model, the base voice, and the delivery
-    instructions (pack styles only — None for the
-    classics, whose upstream body stays exactly the
-    Round 37/98 one). An id that names no style at
-    all resolves to the OG default on the classic
-    model — the fallback /tts has always applied to
-    a missing or invalid voice field."""
+    """What /tts must do for one voice id. Classics
+    (and an id that names no style at all) resolve to
+    the shipped OpenAI shape — the model, the voice,
+    no instructions — so their upstream body stays
+    exactly the Round 37/98 one; the unknown-id case
+    is the OG default on the classic model, the
+    fallback /tts has always applied to a missing or
+    invalid voice field. A PACK id resolves to the
+    ElevenLabs lane instead: {"provider":
+    "elevenlabs", "voice": <the entry's real
+    el_voice_id>}. The /tts route keys on the provider
+    tag — a pack id only ever reaches the ElevenLabs
+    seam, never the OpenAI body; the two engines are
+    never substituted for each other."""
     s = _BY_ID.get(voice_id) if isinstance(voice_id, str) else None
     if s is None:
         return {"model": CLASSIC_MODEL,
                 "voice": AVATAR_VOICES[DEFAULT_AVATAR],
                 "instructions": None}
-    if "base" in s:
-        return {"model": PACK_MODEL, "voice": s["base"],
-                "instructions": s["instructions"]}
+    if "el_voice_id" in s:
+        return {"provider": "elevenlabs",
+                "voice": s["el_voice_id"],
+                "model": None, "instructions": None}
     return {"model": CLASSIC_MODEL, "voice": s["voice"],
             "instructions": None}
 
