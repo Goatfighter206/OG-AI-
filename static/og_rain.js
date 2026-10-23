@@ -137,16 +137,21 @@
   var TRAIL_LO  = [240, 214, 128];  /* lifted amber, name-bright round    */
   /* cand-g1 (Ticket G — automatic light/dark): the DAY
      stops. On the light page the white-gold night stops
-     would wash out to nothing, so day rain burns in deep
-     bronze-gold — same family (R>=G>=B at every stop),
-     darker value, so the falls read on a light surface
-     instead of fighting it. The treatment is CONSTANT
-     within the mode (Ticket G's "lighter treatment"):
-     no time drift, no state tax — cand-h7's no-dimming
-     law holds in both modes. */
-  var HEAD_RGB_DAY = [148, 110, 18];   /* deep gold head, day */
-  var TRAIL_HI_DAY = [176, 138, 40];   /* bronze gold, day    */
-  var TRAIL_LO_DAY = [126, 96, 28];    /* deep amber, day     */
+     would wash out to nothing, so day rain burned in
+     deep bronze-gold. Ticket G2 (2026-10-22, Brent:
+     "change the day time to a dark gray" — "I don't
+     like the white" — refined 19:06: "Lighter gray")
+     replaces the warm-paper page with a LIGHT-GRAY one
+     (#a8a8ad), so the day stops stay in the bronze-gold
+     register — GOLD ON GRAY — a shade deeper than
+     cand-g1's paper stops, since the gray ground is
+     darker than the paper was: same family (R>=G>=B
+     at every stop), constant within the mode: no time
+     drift, no state tax — cand-h7's no-dimming law
+     holds in both modes. Night stops untouched. */
+  var HEAD_RGB_DAY = [133, 98, 12];    /* deep gold head, day */
+  var TRAIL_HI_DAY = [166, 128, 34];   /* bronze gold, day    */
+  var TRAIL_LO_DAY = [112, 84, 20];    /* deep amber, day     */
   var HEAD_ALPHA = 1.00;           /* caps, before canvas  */
   var TRAIL_ALPHA = 1.00;          /* opacity + mode mult  */
   var CANVAS_OPACITY_NIGHT = 1.00;
@@ -216,10 +221,11 @@
   function alphaMult() { return mode === 'day' ? 0.95 : 1.0; }
 
   /* The active palette stops for the current mode
-     (cand-g1): night burns white-gold on black, day
-     burns bronze-gold on the light page. One switch,
-     read at draw time, so OGRAIN.setMode re-treats the
-     field on the very next frame. */
+     (cand-g1; day stops re-aimed by Ticket G2): night
+     burns white-gold on black, day burns bronze-gold
+     on the light-gray page. One switch, read at draw
+     time, so OGRAIN.setMode re-treats the field on
+     the very next frame. */
   function curStops() {
     return mode === 'day'
       ? { head: HEAD_RGB_DAY, hi: TRAIL_HI_DAY, lo: TRAIL_LO_DAY }
