@@ -1,5 +1,6 @@
 /* og_theme.css — Ticket G (cand-g2, re-based from cand-g1
- * onto the post-E5 tree): the LIGHT face of OG.
+ * onto the post-E5 tree); Ticket G2 (2026-10-22, this
+ * candidate): the DAY face of OG.
  *
  * Loaded AFTER og_look.css and applied ONLY while the
  * rain module's mode attribute says day:
@@ -7,175 +8,200 @@
  * Night is not restyled here at all — the shipped dark
  * face stays exactly as it is, rule for rule.
  *
- * The look (Brent picked the direction 2026-10-19: "light
- * gold paper"): warm paper background, ink text, the same
- * gold as accent. Ticket H2 holds in daylight too — the
- * chat bubbles stay FULLY SOLID (OG bubble white, visitor
- * bubble solid gold), never a tint, never see-through,
- * and the rain never dims: in day the bronze-gold glyphs
- * simply draw over the paper (the canvas paints no
- * background of its own, day or night).
+ * The look: Ticket G shipped a warm-paper light face
+ * (#f7f2e4, white bubbles). Brent's G2 order (2026-10-22
+ * 18:59: "change the day time to a dark gray" — "I don't
+ * like the white"), refined 19:06 ("Lighter gray"),
+ * REPLACES it: the day face is a LIGHT-GRAY family —
+ * page #a8a8ad, surfaces a step lighter (#bcbcc0 /
+ * #b4b4ba / #c6c6cb) — neutral gray, never white, never
+ * the warm paper, and visibly lighter than the night
+ * black (#0a0a0a) it replaces by day. On the light
+ * gray the text flips dark (charcoal #1d1d20, gate-held
+ * >= 4.5:1 everywhere), gold text accents deepen to
+ * bronze (#463806 — the gold family at a value the
+ * gray can carry), and the gold itself stays gold
+ * where it rides a dark ground: the name pill keeps
+ * its charcoal chip with the GOLD name, the rain burns
+ * bronze-gold on the gray (og_rain.js day stops), and
+ * gold rims/bars keep the accent. Ticket H2 holds in
+ * daylight too — the chat bubbles stay FULLY SOLID
+ * (OG #636368, visitor #4e4e53, light text in both),
+ * never a tint, never see-through, and the rain never
+ * dims: the canvas paints no background of its own,
+ * day or night.
  *
- * RE-AIM (cand-g2): cand-g1's sheet was written against
- * the pre-E medallion page. Every rule below targets the
- * CURRENT presentation: the E5 standing bust figure
- * (#emptyState .og-ava-wrap, a transparent feathered
- * frame — nothing to recolor), the name pill as it exists
- * now (.og-name-bubble + .og-top-name + .og-task-pill in
- * the hero and the top bar), the shell, the chat, and the
- * menus. The dead medallion selectors from cand-g1
- * (.og-avatar-name-bubble / .og-avatar-name /
- * .og-task-pill-top) are gone — those classes are not in
- * the current markup. The profile sheet keeps its own
- * night styling in both modes (a page of its own; the
- * bubble rules below are scoped to the hero and the top
- * bar so it stays coherent). */
+ * RE-AIM (cand-g2, Ticket G): cand-g1's sheet was
+ * written against the pre-E medallion page. Every rule
+ * below targets the CURRENT presentation: the E5
+ * standing bust figure (#emptyState .og-ava-wrap, a
+ * transparent feathered frame — nothing to recolor),
+ * the name pill as it exists now (.og-name-bubble +
+ * .og-top-name + .og-task-pill in the hero and the top
+ * bar), the shell, the chat, and the menus. The profile
+ * sheet keeps its own night styling in both modes (a
+ * page of its own; the bubble rules below are scoped
+ * to the hero and the top bar so it stays coherent). */
 
 /* --- the page itself ------------------------------------ */
 html[data-og-rain-mode="day"] body {
-  background: #f7f2e4;
-  color: #211a06;
+  background: #a8a8ad;
+  color: #1d1d20;
 }
 
 /* --- hero (empty state) --------------------------------- */
-html[data-og-rain-mode="day"] .og-empty-name { color: #211a06; }
-html[data-og-rain-mode="day"] .og-empty-tag { color: #6d5c22; }
+html[data-og-rain-mode="day"] .og-empty-name { color: #463806; }
+html[data-og-rain-mode="day"] .og-empty-tag { color: #3d3b32; }
 html[data-og-rain-mode="day"] .og-row {
-  background: #fffdf6;
-  border-color: rgba(146,110,20,.45);
-  color: #2b2105;
-  box-shadow: 0 1px 4px rgba(120,90,10,.10);
+  background: #bcbcc0;
+  border-color: rgba(70,56,6,.35);
+  color: #1e1e21;
+  box-shadow: 0 1px 4px rgba(30,28,10,.18);
 }
-html[data-og-rain-mode="day"] .og-row-sub { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-row-sub { color: #3d3b32; }
 
 /* --- the name pill (hero + top bar) ---------------------- */
-/* Night pill is #1b1b1b with a gold rim and a gold pill
- * inside; in day it flips to warm paper-white with the
- * same gold rim, ink name, and a light-gold status pill
- * with deep-gold letters (contrast-held, see the gate). */
+/* The pill is the one dark chip the day face keeps —
+ * the same charcoal pill the night face wears, gold
+ * rim and all — so the OG name stays GOLD (#ffc107)
+ * and readable on the light page (contrast-held, see
+ * the gate). The status pill inside goes solid deep
+ * bronze with bright-gold letters. */
 html[data-og-rain-mode="day"] #emptyState .og-name-bubble,
 html[data-og-rain-mode="day"] #ogTopAvatarBar .og-name-bubble {
-  background: rgba(255,253,247,.96);
-  border-color: rgba(146,110,20,.55);
-  box-shadow: 0 4px 18px rgba(120,90,10,.18);
+  background: rgba(26,26,29,.97);
+  border-color: rgba(255,193,7,.55);
+  box-shadow: 0 4px 18px rgba(30,28,10,.28);
 }
 html[data-og-rain-mode="day"] #emptyState .og-top-name,
 html[data-og-rain-mode="day"] #ogTopAvatarBar .og-top-name {
-  color: #211a06;
+  color: #ffc107;
 }
 html[data-og-rain-mode="day"] #emptyState .og-task-pill,
 html[data-og-rain-mode="day"] #ogTopAvatarBar .og-task-pill {
-  background: rgba(255,193,7,.22);
-  border-color: rgba(146,110,20,.55);
-  color: #7d621a;
+  background: #6b5518;
+  border-color: rgba(255,233,168,.5);
+  color: #ffe9a8;
 }
 
 /* --- top bar --------------------------------------------- */
 html[data-og-rain-mode="day"] .og-circle-btn {
-  background: rgba(255,253,247,.92);
-  border-color: rgba(146,110,20,.5);
-  color: #8a6d1c;
-  box-shadow: 0 2px 10px rgba(120,90,10,.12);
+  background: rgba(188,188,192,.95);
+  border-color: rgba(70,56,6,.5);
+  color: #463806;
+  box-shadow: 0 2px 10px rgba(30,28,10,.20);
 }
 html[data-og-rain-mode="day"] .og-top-avatar-bar {
   background: radial-gradient(ellipse at 50% 0%,
-    rgba(247,242,228,.92), rgba(247,242,228,0) 70%);
+    rgba(168,168,173,.92), rgba(168,168,173,0) 70%);
 }
 
 /* --- composer dock + seat bar ---------------------------- */
 html[data-og-rain-mode="day"] #ogShellDock .input-wrapper {
-  background: #fffdf6;
-  border-color: rgba(146,110,20,.5);
-  box-shadow: 0 4px 18px rgba(120,90,10,.14);
+  background: #bcbcc0;
+  border-color: rgba(70,56,6,.4);
+  box-shadow: 0 4px 18px rgba(30,28,10,.20);
 }
-html[data-og-rain-mode="day"] #messageInput { color: #211a06; }
-html[data-og-rain-mode="day"] #messageInput::placeholder { color: #9a8a58; }
+html[data-og-rain-mode="day"] #messageInput { color: #1d1d20; }
+html[data-og-rain-mode="day"] #messageInput::placeholder { color: #5a584c; }
 html[data-og-rain-mode="day"] .og-plus-btn {
-  background: rgba(255,193,7,.18);
-  border-color: rgba(146,110,20,.5);
-  color: #8a6d1c;
+  background: rgba(70,56,6,.14);
+  border-color: rgba(70,56,6,.5);
+  color: #463806;
 }
-html[data-og-rain-mode="day"] #voiceBtn { color: #8a6d1c; }
+html[data-og-rain-mode="day"] #voiceBtn { color: #463806; }
 html[data-og-rain-mode="day"] .og-seat-bar {
-  background: rgba(255,253,247,.94);
-  border-color: rgba(146,110,20,.4);
-  box-shadow: 0 6px 20px rgba(120,90,10,.14);
+  background: rgba(188,188,192,.96);
+  border-color: rgba(70,56,6,.35);
+  box-shadow: 0 6px 20px rgba(30,28,10,.20);
 }
-html[data-og-rain-mode="day"] .og-seat { color: #6d5c22; }
+html[data-og-rain-mode="day"] .og-seat { color: #3d3b32; }
 html[data-og-rain-mode="day"] .og-seat-dot {
-  background: #fffdf6;
-  border-color: rgba(146,110,20,.6);
-  color: #7d621a;
+  background: #c6c6cb;
+  border-color: rgba(70,56,6,.55);
+  color: #463806;
 }
-html[data-og-rain-mode="day"] .og-token-line { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-token-line b { color: #926d0e; }
+html[data-og-rain-mode="day"] .og-token-line { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-token-line b { color: #463806; }
 
 /* --- chat bubbles: SOLID, per Ticket H2 ------------------ */
-/* Re-aimed (cand-g2): OG's messages ride .message.ai in
- * the current markup (cand-g1's .message.assistant hook
- * is gone), and the text color must be set on
- * .message-text itself — styles.css gives it its own
- * near-white rule, which a color on .message-content
- * cannot reach. */
+/* OG's messages ride .message.ai in the current markup,
+ * and the text color must be set on .message-text
+ * itself — styles.css gives it its own near-white rule,
+ * which a color on .message-content cannot reach.
+ * Ticket G2: both bubbles are SOLID mid-gray chips on
+ * the light page (OG #636368, visitor #4e4e53 with the
+ * gold rim the night face gives it), light text in
+ * both (contrast-held, see the gate). */
 html[data-og-rain-mode="day"] .message.ai .message-content {
-  background: #ffffff;
-  color: #241c05;
-  border-color: rgba(146,110,20,.35);
+  background: #636368;
+  color: #f2ecdc;
+  border-color: rgba(255,255,255,.25);
 }
 html[data-og-rain-mode="day"] .message.user .message-content {
-  background: #eec95c;
-  color: #241c05;
-  border-color: rgba(146,110,20,.5);
+  background: #4e4e53;
+  color: #f2ecdc;
+  border-color: rgba(255,193,7,.55);
 }
 html[data-og-rain-mode="day"] .message.ai .message-text,
 html[data-og-rain-mode="day"] .message.user .message-text {
-  color: #241c05;
+  color: #f2ecdc;
 }
 
 /* --- browser card in the thread -------------------------- */
 html[data-og-rain-mode="day"] #browserPanel {
-  background: #fffdf6;
-  box-shadow: 0 10px 30px rgba(120,90,10,.18);
+  background: #bcbcc0;
+  box-shadow: 0 10px 30px rgba(30,28,10,.25);
 }
-/* (cand-g1's .og-browser-head / .og-browser-state rules
- * are re-aimed: the card head is .og-card-head now.) */
-html[data-og-rain-mode="day"] .og-card-head-title { color: #211a06; }
-html[data-og-rain-mode="day"] .og-card-head-status { color: #7d621a; }
+/* (the card head is .og-card-head now.) */
+html[data-og-rain-mode="day"] .og-card-head-title { color: #1d1d20; }
+html[data-og-rain-mode="day"] .og-card-head-status { color: #463806; }
 
 /* --- menu + plan card ------------------------------------- */
 html[data-og-rain-mode="day"] .og-menu,
 html[data-og-rain-mode="day"] .og-plan-card {
-  background: #fffdf6;
-  color: #2b2105;
-  border-color: rgba(146,110,20,.45);
-  box-shadow: 0 18px 50px rgba(120,90,10,.25);
+  background: #b4b4ba;
+  color: #1d1d20;
+  border-color: rgba(70,56,6,.4);
+  box-shadow: 0 18px 50px rgba(30,28,10,.30);
 }
-html[data-og-rain-mode="day"] .og-menu-title { color: #211a06; }
-html[data-og-rain-mode="day"] .og-menu-status { color: #7a6a35; }
+html[data-og-rain-mode="day"] .og-menu-title { color: #17171a; }
+html[data-og-rain-mode="day"] .og-menu-status { color: #3d3b32; }
+/* Section heads + the plan card's own text (Ticket G2
+ * audit: these carry night colors of their own — #8f8f8f
+ * heads, #f5f5f5 plan name, gold plan action — that
+ * strand unreadable on the silver sheet if the day
+ * sheet does not re-aim them too). */
+html[data-og-rain-mode="day"] .og-menu-sec { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-plan-name { color: #17171a; }
+html[data-og-rain-mode="day"] .og-plan-usage { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-menu-item.og-plan-action { color: #463806; }
+html[data-og-rain-mode="day"] .og-menu-foot a { color: #463806; }
+html[data-og-rain-mode="day"] .og-row-ico { color: #4a473a; }
 html[data-og-rain-mode="day"] .og-menu-item {
-  background: #fdf6de;
-  border-color: rgba(146,110,20,.35);
-  color: #2b2105;
+  background: #c6c6cb;
+  border-color: rgba(70,56,6,.3);
+  color: #1d1d20;
 }
 /* The items ride in .og-menu-card shells (#171717 at
  * night): theme the shell too, or the card's dark ground
  * shows around the items and under in-card notes. */
 html[data-og-rain-mode="day"] .og-menu-card {
-  background: #fffdf6;
-  border-color: rgba(146,110,20,.35);
-  box-shadow: 0 4px 14px rgba(120,90,10,.10);
+  background: #bcbcc0;
+  border-color: rgba(70,56,6,.3);
+  box-shadow: 0 4px 14px rgba(30,28,10,.16);
 }
 html[data-og-rain-mode="day"] .og-menu-card .og-menu-item + .og-menu-item {
-  border-top-color: rgba(146,110,20,.25);
+  border-top-color: rgba(30,30,34,.14);
 }
-html[data-og-rain-mode="day"] .og-loc-menunote { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-menu-item-sub { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-menu .og-row-state { color: #7d621a; }
-html[data-og-rain-mode="day"] .og-menu-foot { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-menu-foot b { color: #926d0e; }
-html[data-og-rain-mode="day"] .og-plan-bar { background: rgba(146,110,20,.22); }
-html[data-og-rain-mode="day"] .og-plan-price { color: #926d0e; }
-html[data-og-rain-mode="day"] .og-plan-val { color: #926d0e; }
+html[data-og-rain-mode="day"] .og-loc-menunote { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-menu-item-sub { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-menu .og-row-state { color: #463806; }
+html[data-og-rain-mode="day"] .og-menu-foot { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-menu-foot b { color: #463806; }
+html[data-og-rain-mode="day"] .og-plan-bar { background: rgba(70,56,6,.22); }
+html[data-og-rain-mode="day"] .og-plan-price { color: #463806; }
+html[data-og-rain-mode="day"] .og-plan-val { color: #463806; }
 
 /* --- seat screens, profile sheet, dashboards: NOT themed --- */
 /* Scope, carried from cand-g1: self-contained sheets keep
@@ -184,42 +210,46 @@ html[data-og-rain-mode="day"] .og-plan-val { color: #926d0e; }
  * dark sheet with its own background), the profile sheet,
  * and the three dashboards. Their content is styled as a
  * unit; flipping only their background would strand their
- * light-on-dark internals. (cand-g1's seat-screen header
- * rules and its .og-feed-note-text / .og-approval-* rules
- * target classes the current tree no longer ships — the
- * approval cards are .og-approve-* now and render as
- * self-contained cards — so those rules are dropped, not
- * re-aimed.) */
+ * light-on-dark internals. (The market surfaces the
+ * dashboards render — .ogc-hub / .ogf-bank — carry their
+ * own day faces in og_markets.css, re-aimed to the same
+ * light-gray family by Ticket G2.) */
 
 /* --- Ticket N2: the work board + the Settings page -------- */
 /* The board rides inside the menu (its card is a .og-menu-card
  * and picks up the menu's day shell above); its rows are its
  * own classes, so they get day colors here. The Settings page
- * is the menu's own settings — it takes the light face too,
+ * is the menu's own settings — it takes the day face too,
  * like the menu it opens from. */
-html[data-og-rain-mode="day"] .og-work-group { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-work-title { color: #2b2105; }
-html[data-og-rain-mode="day"] .og-work-state { color: #926d0e; }
-html[data-og-rain-mode="day"] .og-work-sub { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-work-more { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-work-empty { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-work-bar { background: rgba(146,110,20,.22); }
-html[data-og-rain-mode="day"] .og-work-bar-fill { background: #926d0e; }
+html[data-og-rain-mode="day"] .og-work-group { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-work-title { color: #1d1d20; }
+html[data-og-rain-mode="day"] .og-work-state { color: #463806; }
+html[data-og-rain-mode="day"] .og-work-sub { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-work-more { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-work-empty { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-work-bar { background: rgba(70,56,6,.22); }
+html[data-og-rain-mode="day"] .og-work-bar-fill { background: #463806; }
 html[data-og-rain-mode="day"] .og-settings {
-  background: radial-gradient(120% 90% at 50% 0%, #fdf6de 0%, #f7f2e4 55%);
+  background: radial-gradient(120% 90% at 50% 0%, #c2c2c7 0%, #a8a8ad 55%);
 }
-html[data-og-rain-mode="day"] .og-settings-top h2 { color: #211a06; }
+html[data-og-rain-mode="day"] .og-settings-top h2 { color: #1d1d20; }
 html[data-og-rain-mode="day"] .og-settings-close {
-  background: #fffdf6; border-color: rgba(146,110,20,.45); color: #57470f;
+  background: #c6c6cb; border-color: rgba(70,56,6,.4); color: #2e2e33;
 }
-html[data-og-rain-mode="day"] .og-settings-sec { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-settings-note { color: #7a6a35; }
-html[data-og-rain-mode="day"] .og-settings .og-row-state { color: #926d0e; }
+html[data-og-rain-mode="day"] .og-settings-sec { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-settings-note { color: #3d3b32; }
+html[data-og-rain-mode="day"] .og-settings .og-row-state { color: #463806; }
 
 /* --- reconnect chip ---------------------------------------- */
+/* The chip's title/sub carry their own night colors in
+ * og_shell.css (#ffd54f / #bcbcbc) — re-aim them too,
+ * or the silver chip strands them unreadable (Ticket
+ * G2 audit catch, from the day screenshots). */
 html[data-og-rain-mode="day"] #ogReconnectChip {
-  background: rgba(255,253,247,.96);
-  border-color: rgba(146,110,20,.55);
-  color: #57470f;
-  box-shadow: 0 4px 16px rgba(120,90,10,.18);
+  background: rgba(188,188,192,.97);
+  border-color: rgba(70,56,6,.55);
+  color: #3a3406;
+  box-shadow: 0 4px 16px rgba(30,28,10,.22);
 }
+html[data-og-rain-mode="day"] .og-reconnect-title { color: #463806; }
+html[data-og-rain-mode="day"] .og-reconnect-sub { color: #3d3b32; }
