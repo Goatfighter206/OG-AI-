@@ -409,10 +409,14 @@ def collect_library(uid: str, request: Request):
 #
 # Brent (2026-10-11): the Feed is ordered by a per-user
 # algorithm instead of plain newest-first, and the filter
-# chips are gone. This function is the whole algorithm:
-# it scores ONLY the caller's own records (their library
+# chips are gone. This function is the ordering core: it
+# scores ONLY the caller's own records (their library
 # items + their notifications) and returns the rows in
 # final order — the client renders payload order verbatim.
+# (The panels leg, Brent 2026-10-16, extends feed_rows
+# below with og_algorithm's personalized content rows and
+# the daily fallback — the mailbox + library rows and
+# this scoring are unchanged by it.)
 # No learned model, no cross-user data, no fake
 # intelligence: the score is recency plus named,
 # time-equivalent boosts —
@@ -527,6 +531,41 @@ def feed_rows(uid: str, request: Request):
                                 read, ""),
         })
     rows.sort(key=lambda r: (-(r["score"]), -(r["ts"])))
+    # Panels algorithm leg (Brent's rules, 2026-10-16;
+    # og_algorithm.py): the Feed runs on the user's
+    # algorithm — personalized content first, then the
+    # daily fallback, never blank. Two more fail-soft
+    # legs in the V4 pattern:
+    #   1. PERSONALIZED CONTENT rows from the caller's
+    #      own signals (most-made creation kind, watch
+    #      digest), merged into the same score order.
+    #      The mailbox rows above are untouched.
+    #   2. THE DAY'S ROWS top the seat up to
+    #      og_algorithm.FEED_MIN_ROWS when the caller's
+    #      own rows run short — appended AFTER everything
+    #      personal, so personalized always renders
+    #      first; a caller with no records at all gets
+    #      the day's full pick instead of a blank seat.
+    try:
+        import og_algorithm
+        extra = og_algorithm.personal_rows(uid, items,
+                                           notify_items)
+        if extra:
+            rows.extend(extra)
+            rows.sort(key=lambda r: (-(r["score"]),
+                                     -(r["ts"])))
+    except Exception as e:
+        logger.warning(f"Feed algorithm leg failed: {e}")
+        degraded = True
+    try:
+        import og_algorithm
+        if len(rows) < og_algorithm.FEED_MIN_ROWS:
+            rows.extend(og_algorithm.daily_rows(
+                limit=og_algorithm.FEED_MIN_ROWS
+                - len(rows)))
+    except Exception as e:
+        logger.warning(f"Feed daily leg failed: {e}")
+        degraded = True
     line = None
     if isinstance(storage_line, dict):
         line = (f"Locker: {storage_line.get('used_human', '0 B')} "
