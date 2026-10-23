@@ -1032,6 +1032,39 @@ def _run_cloned_tts(voice_id: str, text: str) -> bytes:
     return _client.synth(voice_id, text)
 
 
+def pack_enabled() -> bool:
+    """Ticket R real-voice rebuild: the pack-only gate.
+    True exactly when the meaner pack's OWN switch is on
+    (OG_VOICE_PACK_EL_ENABLED truthy) AND the provider
+    key is present. DELIBERATELY narrower than
+    enabled(): the lab switch (OG_VOICE_ENABLED) also
+    lights cloning and SFX, which Brent has not approved
+    shipping — the pack never rides it. Read at request
+    time by the /tts pack branch and the Voice folder
+    payload, so flipping the Render env var takes
+    effect with no redeploy."""
+    flag = os.getenv("OG_VOICE_PACK_EL_ENABLED", "") \
+        .strip().lower() in ("1", "true", "yes", "on")
+    return flag and bool(_provider_key())
+
+
+def _run_library_tts(voice_id: str, text: str) -> bytes:
+    """ONE seam (Ticket R real-voice rebuild): speak text
+    in a LIBRARY voice (ElevenLabs TTS with that
+    voice_id) for the meaner pack's /tts branch, return
+    MP3 bytes. The pack's voices ARE library voices, so
+    this shares the cloned path's client, base URL,
+    model and output format — it clones, lists and
+    deletes nothing. The client is blocking urllib:
+    call through asyncio.to_thread (the Main Thread
+    rule). Raises _ProviderError on every failure; the
+    /tts route turns that into an honest 502 and never
+    falls back to another engine."""
+    if not _provider_key():
+        raise _ProviderError("auth", "no studio key configured")
+    return _client.synth(voice_id, text)
+
+
 _FAIL_DETAILS = {
     "auth": "The studio key got rejected — the voice lab "
             "needs a fix on OG's side. Nothing was charged.",
