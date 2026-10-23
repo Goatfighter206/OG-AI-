@@ -118,6 +118,28 @@ women, so the gangster family is 5M + 7F, the
 pack 42 styles and the folder 48. Stored picks
 remap by id, as before. Audition record:
 cand-voicepack-el/auditions2/REPORT.md.
+
+R5 addendum (Ticket R, 2026-10-23, still later):
+Brent cut the gangster family ENTIRELY — "Takeoff
+gangster, voices, both females and male" — and
+ordered two new families in its place: SEXY, ten
+women's voices in a moaning style (breathy /
+sensual library filings, MoanElisa first), and
+GHETTO, twenty voices (ten women's + ten men's)
+from urban / street / sassy-attitude library
+filings. Jean survives the cut — she re-enters
+under Sexy, the one gangster-shelf voice Brent
+liked — joined by three more of the noir shelf
+(Serafina, Aida, Alicia) under their own names;
+Aaliyah re-enters under Ghetto. Every other
+gangster el id is retired. The pack is now five
+families, 60 styles, the folder 66. Census +
+picks: the R5 sections of the Ticket R file.
+Stored picks remap by id where the id survives;
+a pick whose id retired reads as no pick (the
+store's standing guard) and the face falls back
+to its avatar default — never a crash, never a
+substituted engine.
 """
 
 import asyncio
@@ -219,6 +241,23 @@ STYLES = [
 # noir women in all, so this family breaks the 5 + 5
 # split on purpose: 5M + 7F, pack 42, folder 48.
 #
+# R5 (2026-10-23, Brent's ruling the same day):
+# the gangster family is REMOVED whole — all
+# twelve rows, both shelves. In its place: SEXY
+# (ten women, breathy / sensual filings — the
+# moaning style Brent named, carried by the
+# voices' own filed descriptors) and GHETTO
+# (twenty: ten women + ten men, urban / street /
+# sassy-attitude filings). The library's honest
+# limit stands on the record: its deep bench here
+# is sassy / street-attitude CHARACTERS, not
+# dialect-filed voices — the folder rows carry
+# the real filed names, nothing relabeled. Five
+# el ids carry over from the retired shelf (Jean,
+# Serafina, Aida, Alicia -> Sexy; Aaliyah ->
+# Ghetto); the other seven retire with it. Pack
+# 60, folder 66, five families.
+#
 # THE SIX CLASSICS DO NOT MOVE: no el_voice_id, no
 # provider tag — their upstream request stays
 # byte-identical to the Round 37/98 one (tts-1, no
@@ -234,16 +273,16 @@ _PACK_SHELVES = {
     "mexican": ("Mexican", "Meaner pack — Mexican accent"),
     "russian": ("Russian", "Meaner pack — Russian accent"),
     "southern": ("Southern", "Meaner pack — Southern accent"),
-    "gangster": ("Gangster", "Meaner pack — Gangster accent"),
-    "noir": ("Noir", "Meaner pack — Gangster noir"),
+    "sexy": ("Sexy", "Meaner pack — Sexy"),
+    "ghetto": ("Ghetto", "Meaner pack — Ghetto"),
 }
 
 # (id family, shelf, base, gender, library name,
 #  el_voice_id, folder note) — the census picks,
 #  cand-voicepack-el/REPORT.md §6, in folder order:
-#  each family women first (F1..F5), then men (M1..M5)
-#  — except gangster after R4: women F1..F7 (Jean kept,
-#  four re-picked, two added), then the re-picked men.
+#  each family women first, then men — Mexican /
+#  Russian / Southern F1..F5 + M1..M5; Sexy (R5)
+#  F1..F10, no men; Ghetto (R5) F1..F10 + M1..M10.
 _PACK_EL = (
     ("mexican", "mexican", "marin", "female", "Erika",
      "r3SDVYUIvcC4EweQtSj0",
@@ -366,54 +405,131 @@ _PACK_EL = (
      "D4xQvkd2SmpDZJ8sEwvA",
      "Rhett Sutton — slow and deep. A real ElevenLabs "
      "library voice."),
-    ("gangster", "noir", "marin", "female", "Jean",
-     "eVItLK1UvXctxuaRV2Oq",
-     "Jean — an alluring, playful femme fatale. A noir "
-     "character voice from the ElevenLabs library."),
-    ("gangster", "noir", "coral", "female", "Serafina",
-     "4tRn1lSkEn13EVTuqb0g",
-     "Serafina — a sensual temptress, mature. A noir "
-     "character voice from the ElevenLabs library."),
-    ("gangster", "noir", "nova", "female", "AImee",
-     "MBGgaJPW6debJHBqQsSJ",
-     "AImee — sensual and calm. A noir character "
-     "voice from the ElevenLabs library."),
-    ("gangster", "noir", "sage", "female", "Aida",
-     "CiwzbDpaN3pQXjTgx3ML",
-     "Aida — sultry, deep and silky. A noir character "
-     "voice from the ElevenLabs library."),
-    ("gangster", "noir", "shimmer", "female", "Alicia",
-     "DZ7MjaeWSDB7ixyC0ETX",
-     "Alicia — a sensual whisper, ASMR-soft. A noir "
-     "character voice from the ElevenLabs library."),
-    ("gangster", "noir", "alloy", "female",
-     "Elisabeth Carson", "Ffkx87A1wJSCEqxFOZjz",
-     "Elisabeth Carson — feminine and warm. A noir "
-     "character voice from the ElevenLabs library."),
-    ("gangster", "noir", "fable", "female", "Aaliyah",
-     "T3b0vsQ5dQwMZ5ckOwBk",
-     "Aaliyah — urban and confident. A noir character "
-     "voice from the ElevenLabs library."),
-    ("gangster", "gangster", "onyx", "male", "Antonio",
-     "s2wvuS7SwITYg8dqsJdn",
-     "Antonio — a grumpy grandpa: Italian-American "
-     "and gruff. A real ElevenLabs library voice."),
-    ("gangster", "gangster", "echo", "male", "The Duke",
-     "QyX5mnB5hVBPeNS1oyvU",
-     "The Duke — a gritty mob boss. A real ElevenLabs "
+    ("sexy", "sexy", "marin", "female", "MoanElisa",
+     "RhnjhPth7vQCdC4HFKLp",
+     "MoanElisa — sultry, dark and velvety, spicy; a "
+     "breathy, moaning style. A real ElevenLabs "
      "library voice."),
-    ("gangster", "gangster", "cedar", "male", "Branok",
-     "Vs5CmVCVJwW4odQS2pVf",
-     "Branok — evil and villainous, raspy. A real "
+    ("sexy", "sexy", "coral", "female", "Serafina",
+     "4tRn1lSkEn13EVTuqb0g",
+     "Serafina — a sensual temptress, mature. A real "
      "ElevenLabs library voice."),
-    ("gangster", "gangster", "ash", "male", "Damien",
-     "pHD4qotPFeOAuU1YsFjv",
-     "Damien — a high-pitched, confident villain. A "
+    ("sexy", "sexy", "nova", "female", "Valerie",
+     "7kTHQRfmpeNlB1V4xfvV",
+     "Valerie — sultry, seductive and romantic, "
+     "husky. A real ElevenLabs library voice."),
+    ("sexy", "sexy", "sage", "female", "Raina",
+     "WxqqAhUiswIRQNTBz2a5",
+     "Raina — seductive, soft and silky, whispery. "
+     "A real ElevenLabs library voice."),
+    ("sexy", "sexy", "shimmer", "female", "Aida",
+     "CiwzbDpaN3pQXjTgx3ML",
+     "Aida — sultry, deep and silky. A real "
+     "ElevenLabs library voice."),
+    ("sexy", "sexy", "alloy", "female", "Alicia",
+     "DZ7MjaeWSDB7ixyC0ETX",
+     "Alicia — a sensual whisper, ASMR-soft. A real "
+     "ElevenLabs library voice."),
+    ("sexy", "sexy", "fable", "female", "Jean",
+     "eVItLK1UvXctxuaRV2Oq",
+     "Jean — an alluring, playful femme fatale. A "
      "real ElevenLabs library voice."),
-    ("gangster", "gangster", "ballad", "male",
-     "Final Boss", "d3qrd1ge6zWDvUxIeXiH",
-     "Final Boss — an all-powerful villain, deep. A "
+    ("sexy", "sexy", "echo", "female", "Jessica",
+     "LEnmbrrxYsUYS7vsRRwD",
+     "Jessica — intimate and sensual, soft. A real "
+     "ElevenLabs library voice."),
+    ("sexy", "sexy", "ash", "female", "Anna",
+     "bv62BmVlrpG0pQegOpuN",
+     "Anna — sensual and seductive, soft. A real "
+     "ElevenLabs library voice."),
+    ("sexy", "sexy", "verse", "female", "Sloane",
+     "BAMYoBHLZM7lJgJAmFz0",
+     "Sloane — sultry, seductive and calm. A real "
+     "ElevenLabs library voice."),
+    ("ghetto", "ghetto", "marin", "female", "Aaliyah",
+     "T3b0vsQ5dQwMZ5ckOwBk",
+     "Aaliyah — urban and confident. A real "
+     "ElevenLabs library voice."),
+    ("ghetto", "ghetto", "coral", "female", "Bianca",
+     "2bk7ULW9HfwvcIbMWod0",
+     "Bianca — a sassy city girl. A real ElevenLabs "
+     "library voice."),
+    ("ghetto", "ghetto", "nova", "female", "Brooklyn",
+     "zWoalRDt5TZrmW4ROIA7",
+     "Brooklyn — an African American New Yorker: "
+     "urban, confident and slang-aware. A real "
+     "ElevenLabs library voice."),
+    ("ghetto", "ghetto", "sage", "female", "Kesa",
+     "A2YXU4WQdM14YT3hVcji",
+     "Kesa — Southern, sassy and outspoken. A real "
+     "ElevenLabs library voice."),
+    ("ghetto", "ghetto", "shimmer", "female", "Nadia",
+     "sSP3AkPGxKdmrKBm6ot7",
+     "Nadia — Black, confident and articulate. A "
      "real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "alloy", "female", "CiCi",
+     "fLQhkOW7F9KVKAjYCbhr",
+     "CiCi — sweet and loving, a Southern homegirl "
+     "voice. A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "fable", "female",
+     "Bianca K", "GBwcTzPhNA3UxDyL66FN",
+     "Bianca K — a Black voice with a little sass. "
+     "A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "ash", "female", "Kathie",
+     "o9B86nZP8mMLaT5FBEzP",
+     "Kathie — sassy and playful, with a spoiled "
+     "attitude. A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "verse", "female", "Ivanna",
+     "xFPwxsyzPJFEaL61n2ms",
+     "Ivanna — a gossip queen: sassy, bold and "
+     "playful. A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "ember", "female", "Aerisita",
+     "03vEurziQfq3V8WZhQvn",
+     "Aerisita — sassy and comedic, over-the-top "
+     "emotion. A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "onyx", "male",
+     "Ghetto Vocals", "wviQSyxmwqYdSDww6bhE",
+     "Ghetto Vocals — filed under that very name: a "
+     "calm urban narrative voice. A real ElevenLabs "
+     "library voice."),
+    ("ghetto", "ghetto", "echo", "male", "Alexander",
+     "dYcHQ0F5ki90WgfHiRL8",
+     "Alexander — deep, high-energy urban authority. "
+     "A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "cedar", "male",
+     "Carlos Smith", "TsMnIyjnlVjR3YuH6kw5",
+     "Carlos Smith — urban, confident and deep. A "
+     "real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "bronze", "male", "Jamal",
+     "Ybqj6CIlqb6M85s9Bl4n",
+     "Jamal — an urban American voice with a street "
+     "accent, expressive and confident. A real "
+     "ElevenLabs library voice."),
+    ("ghetto", "ghetto", "ballad", "male", "Jersey",
+     "pZAOODRR3C2t0ITvMXg4",
+     "Jersey — a smooth baritone, streetwise with a "
+     "touch of grit. A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "gold", "male", "Austin",
+     "5qCZ1fypgQ3vDZthoT9B",
+     "Austin — chill, with a gritty Detroit edge. A "
+     "real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "smoke", "male", "Murph",
+     "248nvfaZe8BXhKntjmpp",
+     "Murph — confident and bold, with attitude. A "
+     "real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "jet", "male", "Andray",
+     "FsK9b8Cv2pGkFUtfpOyM",
+     "Andray — friendly, energetic and upbeat. A "
+     "real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "slate", "male", "Chris O.",
+     "2rRUaEOGIGalXrcuLN55",
+     "Chris O. — a deep, confident Black broadcaster. "
+     "A real ElevenLabs library voice."),
+    ("ghetto", "ghetto", "flint", "male",
+     "Keylo Nsane", "U0zkfLcDk6nbg75zQcNs",
+     "Keylo Nsane — confident and expressive, "
+     "laid-back with natural grit. A real ElevenLabs "
+     "library voice."),
 )
 
 
