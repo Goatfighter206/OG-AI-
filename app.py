@@ -220,6 +220,7 @@ def _consume_tts_call(uid: str, weekly_limit: int = None) -> bool:
 # --- Image generation (Round 5): POST /image, one image per ask
 from og_image_gen import (IMAGE_CAPTIONS as _IMAGE_CAPTIONS,
     IMAGE_DOWN_LINE as _IMAGE_DOWN_LINE,
+    autosave_generated_image as _autosave_generated_image,
     clean_image_prompt as _clean_image_prompt,
     openai_generate_image as _openai_generate_image)
 
@@ -3124,7 +3125,26 @@ async def generate_image(raw_request: Request):
         0, cap_w - await asyncio.to_thread(
             _week_used, f"image:{uid}"))
     caption = _IMAGE_CAPTIONS[len(prompt) % len(_IMAGE_CAPTIONS)]
-    # Note the drawing in the visitor's thread (too big to store).
+    # Ticket P2: the picture saves itself to the visitor's
+    # locker (kind "image", tier-quota-counted), so it lands
+    # in the Library like everything else OG makes. The
+    # saver never raises; locker work is store work, so it
+    # rides to_thread like every other store call here, and
+    # a save outcome never costs the visitor the picture —
+    # a non-save is said plainly in the caption instead.
+    save = {"status": "off", "note": "", "record": None}
+    try:
+        save = await asyncio.to_thread(
+            _autosave_generated_image, uid, tier, image_src,
+            prompt)
+    except Exception as e:
+        logger.warning(f"Image autosave seam failed: {e}")
+    saved = save.get("status") == "saved"
+    response_text = caption
+    if save.get("note"):
+        response_text = caption + "\n" + save["note"]
+    # Note the drawing in the visitor's thread (the note is
+    # text; the picture bytes live in the locker, Ticket P2).
     def _note_image():
         now = datetime.now().isoformat()
         # DBPOOL batch-3: bounded wait — a skipped note is
@@ -3137,8 +3157,10 @@ async def generate_image(raw_request: Request):
             history = _load_hist(uid)
             history.append({"role": "user", "content": raw_prompt,
                             "timestamp": now})
+            saved_mark = (" — saved to your locker"
+                          if saved else "")
             history.append({"role": "assistant",
-                            "content": f"{caption}\n[🎨 OG drew an image: {prompt}]",
+                            "content": f"{caption}\n[🎨 OG drew an image: {prompt}{saved_mark}]",
                             "timestamp": now})
             _save_visitor_history_locked(uid, history)
         finally:
@@ -3148,7 +3170,9 @@ async def generate_image(raw_request: Request):
     except Exception as e:
         logger.warning(f"Could not note image in history: {e}")
     return _reply({"ok": True, "image": image_src, "model": model_used,
-                   "prompt": prompt, "response": caption,
+                   "prompt": prompt, "response": response_text,
+                   "image_saved": saved,
+                   "image_save_status": save.get("status", "off"),
                    "images_left": left,
                    "token_balance": await asyncio.to_thread(
                        _og_tokenpacks.balance, uid)})
