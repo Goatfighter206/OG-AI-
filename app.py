@@ -366,6 +366,7 @@ import og_video as _og_video
 # OG songs (Round 30, dark until OG_SONG_ENABLED + studio key).
 import og_songs as _og_songs
 import og_artifacts as _og_artifacts
+import og_mystery as _og_mystery
 import og_voice_style as _og_voice_style
 import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
@@ -2202,6 +2203,7 @@ def _build_agent() -> None:
     _og_watch.install_watch_tools(_built, lambda: _current_uid.get("uid", ""), lambda: _current_tier.get("tier", "free"))
     _og_songs.install_song_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_artifacts.install_artifact_tools(_built, lambda: _current_uid.get("uid", ""))
+    _og_mystery.install_mystery_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_selfcheck.install_selfcheck_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_fixqueue.install_fixqueue_tools(_built, lambda: _current_uid.get("uid", ""))
     logger.warning("_build_agent: installs complete, publishing")
@@ -3241,6 +3243,7 @@ _og_files.bind_app({
     "load_history": _load_visitor_history_locked,
     "save_history": _save_visitor_history_locked})
 _og_files.register_file_routes(app)
+_og_mystery.register_mystery_routes(app)
 
 _og_tiers.bind({"pro_token": PRO_TOKEN, "pro_link": PRO_UPGRADE_URL,
                 "webhook_enabled": WEBHOOK_ENABLED,
