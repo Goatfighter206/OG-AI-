@@ -454,6 +454,40 @@ def _budget_guard(fn, kind, blown=None):
     return _g
 
 
+# Maker-seam fix (2026-10-23, og-maker-seam-ticket-
+# 2026-10-22): the maker seats' claim ENTRIES join the
+# og_browser carve-out below — they are never wrapped.
+# Each is the A4c shape exactly (AST-audited 2026-10-23):
+# a deterministic parse over the visitor's own words
+# plus bounded reads of the visitor's OWN records
+# (pending state, own games/artifacts) — no deferral
+# funnel, no network, no LLM inside the entry, so the
+# cascade this budget cuts cannot rebuild through one,
+# and its cost is its own milliseconds whenever it runs.
+# These seats install LAST in app.py's build chain
+# (songs 20th, artifacts 21st, mystery 22nd of 23), so
+# in production — where the pass pays Postgres store
+# loads on a 0.1-CPU box and cannot reach them inside
+# 3 s — the guard answered "not mine" for them on
+# effectively every turn, on both chat paths, while
+# the seat gates (one seat, no chain, no budget begun
+# by a worker) could not see it: "let's play a murder
+# mystery" and "make me a budget page…" got persona
+# improvisation, no claim, no record (MM landing live
+# proof, 2026-10-23). og_userwatch rides the same
+# pattern and is named now so Ticket W claims the day
+# it lands; the census no-ops on absent modules.
+_MAKER_CLAIM_EXEMPT = frozenset({
+    ("og_mystery", "_claim_job"),
+    ("og_artifacts", "_claim_artifact"),
+    ("og_songs", "_claim_song"),
+    ("og_books", "_claim_book"),
+    ("og_podcast", "_claim_podcast"),
+    ("og_video", "_claim_job"),
+    ("og_userwatch", "_claim_job"),
+})
+
+
 def _wrap_claim_funnels() -> int:
     """Install-time census (run LAST by og_fixqueue's
     install, when every seat module is imported): wrap
@@ -520,6 +554,15 @@ def _wrap_claim_funnels() -> int:
                         # stay guarded, so the cascade this
                         # budget exists to cut cannot rebuild
                         # through this one entry.
+                        continue
+                    if (modname, attr) in _MAKER_CLAIM_EXEMPT:
+                        # Maker-seam carve-out (see
+                        # _MAKER_CLAIM_EXEMPT above): the
+                        # maker entries are A4c-shaped
+                        # bounded parses; cutting them
+                        # silently killed every "make me…"
+                        # claim in production. Their
+                        # deferral funnels stay guarded.
                         continue
                     fn = getattr(mod, attr, None)
                     if fn is None or not callable(fn):
