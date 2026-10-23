@@ -360,6 +360,7 @@ import og_register as _og_register
 import og_video as _og_video
 # OG songs (Round 30, dark until OG_SONG_ENABLED + studio key).
 import og_songs as _og_songs
+import og_artifacts as _og_artifacts
 import og_avatar as _og_avatar
 # Legal pages (/privacy, /terms): og_legal.py
 import og_legal as _og_legal
@@ -2194,6 +2195,7 @@ def _build_agent() -> None:
     _og_video.install_video_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_watch.install_watch_tools(_built, lambda: _current_uid.get("uid", ""), lambda: _current_tier.get("tier", "free"))
     _og_songs.install_song_tools(_built, lambda: _current_uid.get("uid", ""))
+    _og_artifacts.install_artifact_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_selfcheck.install_selfcheck_tools(_built, lambda: _current_uid.get("uid", ""))
     _og_fixqueue.install_fixqueue_tools(_built, lambda: _current_uid.get("uid", ""))
     logger.warning("_build_agent: installs complete, publishing")
@@ -3257,6 +3259,8 @@ _og_songs.bind_app({"load_usage": _load_usage_store,
     "tier_of": lambda uid, req: _tier_of(req.cookies, uid),
     "load_history": _load_visitor_history_locked})
 _og_songs.register_song_routes(app)
+_og_artifacts.bind_app({"get_tier": lambda: _current_tier.get("tier", "free")})
+_og_artifacts.register_artifact_routes(app)
 _og_avatar.register_avatar_routes(app)
 
 # Avatar identity (Ticket E6): the selfie avatar + rename
