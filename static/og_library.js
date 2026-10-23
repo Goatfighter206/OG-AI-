@@ -12,7 +12,7 @@ storageLine = $('libraryStorageLine');
 if (!panel || !list) return;
 var ICONS = { video: '🎬', song: '🎵', image: '🖼️', motion: '🎞️',
               file: '📄', project: '🎮', podcast: '🎙️', book: '📖',
-              sfx: '🔊' };
+              sfx: '🔊', page: '📋', document: '📝', table: '📊' };
 var STATE_LABEL = { queued: 'In line', drawing: 'Drawing',
   voicing: 'Voicing', stitching: 'Stitching',
   generating: 'Writing', paused_caps: 'Paused — weekly cap',
@@ -21,7 +21,8 @@ var STATE_LABEL = { queued: 'In line', drawing: 'Drawing',
 var TAB_LABEL = { video: 'Videos', song: 'Songs', image: 'Images',
                   file: 'Files', project: 'Projects',
                   podcast: 'Podcasts', book: 'Books', motion: 'Motion',
-                  sfx: 'Sound FX' };
+                  sfx: 'Sound FX', page: 'Pages',
+                  document: 'Documents', table: 'Tables' };
 var items = [], filter = 'all';
 function closeLibrary() {
 if (scrim) scrim.hidden = true;
@@ -62,6 +63,10 @@ parts.push(fmtSize(meta.size));
 }
 if (it.kind === 'project' && meta.files) {
 parts.push(meta.files + (meta.files === 1 ? ' file' : ' files'));
+}
+if ((it.kind === 'page' || it.kind === 'document'
+     || it.kind === 'table') && meta.revision > 1) {
+parts.push('revision ' + meta.revision);
 }
 if (it.kind === 'book' && meta.chapters_total) {
 parts.push(meta.chapters_done + ' of ' + meta.chapters_total
@@ -200,6 +205,33 @@ st.setAttribute('data-kind', 'sfx');
 st.textContent = 'Sound FX';
 anchor3.parentNode.insertBefore(st, anchor3.nextSibling);
 }
+})();
+/* Ticket P: the Pages / Documents / Tables tabs are
+   injected the same way — items of kind "page" /
+   "document" / "table" (OG-built artifacts, og_artifacts
+   via GET /library) already ride the aggregate and show
+   under All; these tabs are their filters. Each card's
+   Open action rides /artifacts/<id>, the artifact's own
+   owner-checked document. */
+(function () {
+var sfxTab = panel.querySelector('.og-library-tab[data-kind="sfx"]');
+var anchor4 = sfxTab
+  || panel.querySelector('.og-library-tab[data-kind="motion"]')
+  || panel.querySelector('.og-library-tab[data-kind="book"]');
+if (!anchor4) return;
+[['page', 'libraryTabPages', 'Pages'],
+ ['document', 'libraryTabDocuments', 'Documents'],
+ ['table', 'libraryTabTables', 'Tables']].forEach(function (spec) {
+if (panel.querySelector('.og-library-tab[data-kind="' + spec[0] + '"]')) return;
+var t = document.createElement('button');
+t.className = 'og-library-tab';
+t.id = spec[1];
+t.type = 'button';
+t.setAttribute('data-kind', spec[0]);
+t.textContent = spec[2];
+anchor4.parentNode.insertBefore(t, anchor4.nextSibling);
+anchor4 = t;
+});
 })();
 var tabs = panel.querySelectorAll('.og-library-tab');
 tabs.forEach(function (tab) {
