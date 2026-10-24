@@ -221,16 +221,30 @@
 
   function wire() {
     var pen = $('profilePenBtn'), panel = $('ogAvatarIdPanel');
+    function openPanel(focusName) {
+      if (!panel) return;
+      panel.hidden = false;
+      var inp = $('ogNameInput');
+      if (inp) {
+        inp.value = state.name;
+        if (focusName) {
+          try { inp.focus(); } catch (e) { }
+        }
+      }
+      try {
+        panel.scrollIntoView({ block: 'nearest' });
+      } catch (e) { }
+    }
     if (pen && panel) {
       pen.addEventListener('click', function () {
-        panel.hidden = !panel.hidden;
-        if (!panel.hidden) {
-          var inp = $('ogNameInput');
-          if (inp) {
-            inp.value = state.name;
-            try { inp.focus(); } catch (e) { }
-          }
-        }
+        if (panel.hidden) { openPanel(true); }
+        else { panel.hidden = true; }
+      });
+    }
+    var lookBtn = $('ogLookLikeYouBtn');
+    if (lookBtn && panel) {
+      lookBtn.addEventListener('click', function () {
+        openPanel(false);
       });
     }
     var save = $('ogNameSaveBtn');

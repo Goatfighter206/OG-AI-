@@ -669,6 +669,16 @@ function renderProfileSheet(bodyEl) {
   controls.appendChild(refreshBtn);
   sheet.appendChild(controls);
   refreshBtn.addEventListener('click', function () { load(); });
+  var lookBtn = h('button', 'og-sheet-btn og-sheet-look-btn',
+    'Make OG look like you');
+  lookBtn.type = 'button';
+  controls.appendChild(lookBtn);
+  lookBtn.addEventListener('click', function () {
+    OGDS.close();
+    if (window.ogOpenProfile) window.ogOpenProfile();
+    var b = document.getElementById('ogLookLikeYouBtn');
+    if (b) b.click();
+  });
 
   var tabDefs = [
     { id: 'today', label: 'Today',
