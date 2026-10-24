@@ -1273,37 +1273,6 @@ def register_notify_routes(app):
                   if s.get("endpoint") != endpoint])
         return {"ok": True}
 
-    @app.post("/notifications/devices")
-    async def notifications_devices(request: Request):
-        uid = _uid_of(request)
-        body = await _json_body(request)
-        token = body.get("token")
-        platform = body.get("platform")
-        surface = body.get("surface")
-        app_version = body.get("app_version")
-        if (not uid or not isinstance(token, str)
-                or not token.strip()
-                or platform not in DEVICE_PLATFORMS
-                or surface not in DEVICE_SURFACES):
-            return JSONResponse(
-                {"ok": False, "detail": "bad device"},
-                status_code=400)
-        # The token is never echoed back -- the response is
-        # the same bare {"ok": true} as subscribe.
-        _register_device(
-            uid, token.strip(), platform, surface,
-            app_version if isinstance(app_version, str) else "")
-        return {"ok": True}
-
-    @app.post("/notifications/devices/remove")
-    async def notifications_devices_remove(request: Request):
-        uid = _uid_of(request)
-        body = await _json_body(request)
-        token = body.get("token")
-        if uid and isinstance(token, str) and token:
-            _remove_device(uid, token)
-        return {"ok": True}
-
     @app.get("/sw.js")
     async def service_worker(request: Request):
         return PlainTextResponse(

@@ -1239,28 +1239,6 @@ def register_monitor_routes(app):
     skipped, never raised into the app."""
     from fastapi import Request
 
-    @app.get("/monitor/status")
-    def monitor_status(request: Request):
-        # Round 59: the caller's own price watches for the shell's
-        # Goals seat. Read-only over the EXISTING per-uid blob (no
-        # new store); gated by the Round 44 sign-in gate like every
-        # other non-public route.
-        uid = request.cookies.get("ogai_uid") or ""
-        if not uid:
-            return {"watches": [], "pending_alerts": 0}
-        out = []
-        for w in _watches(uid):
-            out.append({
-                "id": w.get("id"), "symbol": w.get("symbol"),
-                "kind": w.get("kind"), "terms": _watch_terms(w),
-                "base": w.get("base"), "status": w.get("status"),
-                "created": w.get("created"),
-                "fired_price": w.get("fired_price"),
-                "fired_at": w.get("fired_at"),
-            })
-        return {"watches": out,
-                "pending_alerts": len(_pending_alerts(uid))}
-
     @app.on_event("startup")
     async def _start_watch_loop():
         if _loop_started["on"]:

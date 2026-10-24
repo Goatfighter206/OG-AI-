@@ -1156,32 +1156,6 @@ def register_models3d_routes(app):
                 "pending": pending_view,
                 "job": _job_view(_store_latest_for_owner(_key(uid)))}
 
-    @app.post("/models3d/approve")
-    def models3d_approve(request: Request):
-        if not enabled():
-            return JSONResponse({"ok": False,
-                                 "error": "3d models are off"},
-                                status_code=404)
-        uid = _route_uid(request)
-        if not uid:
-            return {"ok": False, "error": "no visitor identity"}
-        ok, msg, rec = _approve(uid, _route_tier(uid, request))
-        return {"ok": ok,
-                "title": rec.get("title", "") if rec else "",
-                "error": "" if ok else msg}
-
-    @app.post("/models3d/decline")
-    def models3d_decline(request: Request):
-        if not enabled():
-            return JSONResponse({"ok": False,
-                                 "error": "3d models are off"},
-                                status_code=404)
-        uid = _route_uid(request)
-        if not uid:
-            return {"ok": False, "error": "no visitor identity"}
-        ok, msg = _decline(uid)
-        return {"ok": ok, "error": "" if ok else msg}
-
     @app.get("/models3d/download/{job_id}")
     def models3d_download(job_id: str, request: Request):
         uid = _route_uid(request)
@@ -1196,35 +1170,6 @@ def register_models3d_routes(app):
         return FileResponse(
             rec["file"], media_type="model/gltf-binary",
             filename=_slug(rec.get("title", "model")) + ".glb")
-
-    @app.post("/models3d/save/{job_id}")
-    def models3d_save(job_id: str, request: Request):
-        uid = _route_uid(request)
-        rec = _store_get(job_id) if uid else None
-        if not rec or rec.get("owner") != _key(uid) \
-                or rec.get("state") != "done" \
-                or not rec.get("file") \
-                or not os.path.exists(rec.get("file", "")):
-            raise HTTPException(status_code=404, detail="Not found")
-        if rec.get("saved"):
-            return {"ok": True, "already": True}
-        tier = _route_tier(uid, request)
-        try:
-            with open(rec["file"], "rb") as f:
-                data = f.read()
-            saved = _locker_save(
-                uid, tier,
-                _slug(rec.get("title", "model")) + ".glb", data)
-        except _LockerError as e:
-            return {"ok": False, "error": str(e)}
-        except Exception as e:
-            logger.warning(f"Model3D locker save failed: {e}")
-            return {"ok": False,
-                    "error": "The locker wouldn't take it just "
-                             "now — the download still works."}
-        rec["saved"] = True
-        _store_put(rec)
-        return {"ok": True, "name": saved.get("name", "")}
 
 
 # --- The seam ------------------------------------------------------------

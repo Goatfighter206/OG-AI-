@@ -1519,40 +1519,6 @@ def register_designer_routes(app):
                             filename=rec.get("name")
                             or "design.png")
 
-    @app.post("/designer/save/{job_id}")
-    def designer_save(job_id: str, request: Request):
-        uid = _route_uid(request)
-        rec = _store_get(job_id) if uid else None
-        if not rec or rec.get("owner") != _key(uid) \
-                or rec.get("state") != "done" \
-                or not rec.get("file") \
-                or not os.path.exists(rec.get("file", "")):
-            raise HTTPException(status_code=404,
-                                detail="Not found")
-        if rec.get("saved"):
-            return {"ok": True, "already": True,
-                    "name": rec.get("locker_name", "")}
-        tier = _route_tier(uid, request)
-        try:
-            with open(rec["file"], "rb") as f:
-                data = f.read()
-            saved = _locker_save(uid, tier,
-                                 rec.get("name") or "design.png",
-                                 data)
-        except _LockerError as e:
-            return {"ok": False, "error": str(e)}
-        except Exception as e:
-            logger.warning(f"Designer locker save failed: {e}")
-            return {"ok": False,
-                    "error": "The locker wouldn't take it just "
-                             "now — the download still works."}
-        rec["saved"] = True
-        rec["locker_id"] = saved.get("id", "")
-        rec["locker_name"] = saved.get("name", "")
-        rec["saved_error"] = ""
-        _store_put(rec)
-        return {"ok": True, "name": saved.get("name", "")}
-
 
 # --- The seam (installed fail-safe from og_fixqueue, the last install) ---------------------
 

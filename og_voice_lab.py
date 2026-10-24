@@ -1897,17 +1897,6 @@ def register_voice_lab_routes(app):
                 "job": _job_view(
                     _store_latest_for_owner(_key(uid)))}
 
-    @app.get("/voice-lab/voices")
-    def voice_lab_voices(request: Request):
-        if not enabled():
-            return _off()
-        uid = _route_uid(request)
-        if not uid:
-            return {"enabled": True, "voices": [],
-                    "builtin_options": list(BUILTIN_VOICES)}
-        return {"enabled": True, "voices": list_voices(uid),
-                "builtin_options": list(BUILTIN_VOICES)}
-
     @app.post("/voice-lab/samples")
     async def voice_lab_samples(request: Request):
         if not enabled():
@@ -1998,62 +1987,6 @@ def register_voice_lab_routes(app):
         ok, msg = delete_voice(uid, voice_id)
         return {"ok": ok, "error": "" if ok else msg,
                 "voices": list_voices(uid) if ok else None}
-
-    @app.post("/voice-lab/tts")
-    async def voice_lab_tts(request: Request):
-        """Speak text in one of the visitor's OWN cloned
-        voices (ElevenLabs TTS with that voice_id). One
-        `tts` charge per call, at call time — the /tts
-        posture. Owner-checked: another visitor's voice_id
-        answers 404."""
-        if not enabled():
-            return _off()
-        uid = _route_uid(request)
-        if not uid:
-            return {"ok": False, "error": "no visitor identity"}
-        try:
-            body = await request.json()
-        except Exception:
-            body = {}
-        if not isinstance(body, dict):
-            body = {}
-        voice_id = str(body.get("voice_id") or
-                       body.get("voice") or "").strip()
-        if voice_id.startswith("voice:"):
-            voice_id = voice_id[len("voice:"):]
-        text = str(body.get("text") or "").strip()[:600]
-        if not text:
-            return {"ok": False, "error": "No text to speak"}
-        if get_voice(uid, voice_id) is None:
-            raise HTTPException(status_code=404,
-                                detail="Not found")
-        tier = _route_tier(uid, request)
-        token_funded = False
-        if _tts_week_left(uid, tier) <= 0:
-            if not _tts_blocked(uid, tier):
-                token_funded = True
-            else:
-                return JSONResponse(
-                    {"ok": False,
-                     "error": _tiers.weekly_tts_detail(tier)},
-                    status_code=429)
-        if not token_funded:
-            _charge_tts(uid)
-        try:
-            data = _run_cloned_tts(voice_id, text)
-        except Exception as e:
-            logger.warning(f"Cloned TTS failed: {e}")
-            return JSONResponse(
-                {"ok": False, "error": "Voice service "
-                                       "unavailable"},
-                status_code=502)
-        if token_funded:
-            try:
-                import og_tokenpacks as _tp
-                _tp.debit(uid, int(_tp.RATES["tts"]), "tts")
-            except Exception:
-                pass
-        return Response(content=data, media_type="audio/mpeg")
 
     @app.get("/voice-lab/download/{job_id}")
     def voice_lab_download(job_id: str, request: Request):

@@ -1016,55 +1016,6 @@ def register_storage_routes(app):
             "near_full": bool(quota and used >= NEAR_FULL_RATIO * quota),
             "files": files})
 
-    @app.post("/storage/upload")
-    async def storage_upload(raw_request: _Req):
-        """Direct-to-locker upload (same kinds/size rules as the
-        Round 6 temp upload, plus the locker quota)."""
-        if not storage_enabled():
-            raise _not_found()
-        uid = _uid_of(raw_request) or uuid.uuid4().hex
-        tier = _tier_of(raw_request, uid)
-        if quota_bytes(tier) <= 0:
-            return JSONResponse(content={
-                "ok": False, "response":
-                "Yo, the free plan ain't got a locker — storage "
-                f"starts at Standard (5 GB): "
-                f"{_og_tiers.public_pro_url()}"}, status_code=403)
-        try:
-            form = await raw_request.form()
-        except Exception:
-            form = {}
-        upload = form.get("file")
-        if upload is None or not hasattr(upload, "read"):
-            return JSONResponse(content={
-                "ok": False, "response": _og_files.BAD_TYPE_LINE})
-        raw = await upload.read(_og_files._READ_CAP)
-        if len(raw) > _og_files._max_bytes(tier):
-            return JSONResponse(content={
-                "ok": False,
-                "response": f"Yo, that file's too heavy — I max out "
-                            f"at {_og_files._max_bytes(tier) // (1024 * 1024)} "
-                            f"MB on your plan. Shrink it down and "
-                            f"slide it again."})
-        try:
-            rec = save_bytes(uid, tier,
-                             getattr(upload, "filename", "") or "file",
-                             raw)
-        except QuotaExceeded as e:
-            return JSONResponse(content={"ok": False, "quota": True,
-                                         "response": str(e)})
-        except StorageError as e:
-            return JSONResponse(content={"ok": False,
-                                         "response": str(e)})
-        return JSONResponse(content={
-            "ok": True, "file": {"id": rec["id"], "name": rec["name"],
-                                 "size": int(rec["size"])},
-            "used": usage_bytes(uid), "quota": quota_bytes(tier),
-            "near_full": near_full(uid, tier),
-            "response": f"Locked in — '{rec['name']}' "
-                        f"({fmt_size(rec['size'])}) is in your "
-                        f"locker for good. 🗄️"})
-
     @app.post("/storage/save-temp")
     def storage_save_temp(raw_request: _Req):
         """Copy the current temp upload into the locker."""
@@ -1121,26 +1072,6 @@ def register_storage_routes(app):
             or "application/octet-stream",
             headers={"Content-Disposition":
                      f'attachment; filename="{rec["name"]}"'})
-
-    @app.post("/storage/delete/{fid}")
-    def storage_delete(fid: str, raw_request: _Req):
-        if not storage_enabled():
-            raise _not_found()
-        uid = _uid_of(raw_request)
-        rec = get_record(uid, fid) if uid else None
-        if not rec:
-            raise _not_found()
-        try:
-            gone = delete_record(uid, fid)
-        except StorageError as e:
-            return JSONResponse(content={"ok": False,
-                                         "response": str(e)})
-        return JSONResponse(content={
-            "ok": True,
-            "response": f"Done — '{gone['name']}' is out of your "
-                        f"locker. 🗄️✌️",
-            "used": usage_bytes(uid), "quota": quota_bytes(
-                _tier_of(raw_request, uid))})
 
 
 def _not_found():
