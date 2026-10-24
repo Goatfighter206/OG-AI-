@@ -1,2 +1,0 @@
-SETUP_OG_GANGSTER.bat
-    
