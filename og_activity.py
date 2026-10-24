@@ -501,7 +501,21 @@ def install_activity_observer(agent_instance, get_uid):
         def detect_wrapped(message):
             _t0 = time.time()
             try:
-                return prev_detect(message)
+                # Ticket D: this wrapper is the outermost
+                # detect — the one seat that sees the whole
+                # chain — so the smarter door coordinates
+                # here: pass 1 (glance/regulars shortlist),
+                # the full sweep as fallback (see og_door).
+                # The observer still routes nothing itself:
+                # the door returns the chain's own intent,
+                # and any door error falls back to the plain
+                # chain inside og_door.coordinate.
+                try:
+                    import og_door
+                    return og_door.coordinate(
+                        prev_detect, message, get_uid)
+                except Exception:
+                    return prev_detect(message)
             finally:
                 try:
                     _timing.detect_s = time.time() - _t0

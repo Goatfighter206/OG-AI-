@@ -361,6 +361,88 @@ class _claim_call:
         return False
 
 
+# --- Ticket D: the smarter door's guard hooks --------------
+# The door itself (glance / regulars / coordination) lives in
+# og_door; THIS module owns the thread-local pass state the
+# census guards consult, because the guards are the one
+# place every claim entry already passes through. A door
+# pass has two phases: PASS 1 (shortlist) — wrapped claim
+# entries whose module is not on the turn's shortlist answer
+# "not mine" at once (the shape-aware blown value, exactly
+# like a blown budget), nested refusals mark the pass
+# probe-inconclusive so a running seat's deferral probes
+# cannot be misread as "nobody else wants this" (precedence
+# is preserved: the seat yields, the sweep decides); and
+# the SWEEP — the same state with pass1 off, where every
+# entry runs, its result memoized per pass so the cascade's
+# repeated subtrees (measured 2026-10-23: ~89,000 funnel
+# calls for one plain message, two-thirds of the phase in
+# og_garble repairs inside recursive probes) collapse to
+# one real run per (entry, message, uid). With no door
+# pass armed (suites, direct calls) every hook below is an
+# exact pass-through, like the budgets themselves.
+
+_CENSUS_REGISTRY = set()
+
+
+def door_registry():
+    """(modname, attr) of every census-wrapped claim entry
+    — og_door's glance harvest reads the fleet from here."""
+    return sorted(_CENSUS_REGISTRY)
+
+
+class _DoorPass:
+    __slots__ = ("allowed", "uid", "pass1", "memo", "skips",
+                 "nested_skips", "claimed")
+
+    def __init__(self, allowed, uid):
+        self.allowed = allowed
+        self.uid = uid
+        self.pass1 = True
+        self.memo = {}
+        self.skips = 0
+        self.nested_skips = 0
+        self.claimed = set()
+
+
+_door_local = threading.local()
+
+
+def door_state():
+    """This thread's armed door pass, or None."""
+    return getattr(_door_local, "state", None)
+
+
+def door_begin(allowed, uid):
+    """Arm a door pass on this thread; returns the state,
+    or None when a pass is already armed (the caller then
+    runs the plain chain inside the outer pass)."""
+    if getattr(_door_local, "state", None) is not None:
+        return None
+    st = _DoorPass(set(allowed), uid)
+    _door_local.state = st
+    return st
+
+
+def door_to_sweep(st) -> None:
+    """Flip a pass to its sweep phase: every entry runs
+    (memoized); no entry is refused again this pass. The
+    memo is CLEARED at the flip: a pass-1 result may have
+    been computed with its deferral probes refused (the
+    seat yielded on partial information), so it must never
+    be reused as a sweep result — the sweep recomputes
+    under full information, then memoizes its own."""
+    st.pass1 = False
+    st.memo.clear()
+
+
+def door_end(st) -> None:
+    """Disarm the pass this thread armed (identity-checked:
+    a nested coordinator never clears the outer pass)."""
+    if getattr(_door_local, "state", None) is st:
+        _door_local.state = None
+
+
 def claim_budget_open() -> bool:
     """True while claims may proceed: no budget begun on
     this thread, or its deadline has not passed yet."""
@@ -421,26 +503,89 @@ def _tuple_contract(fn) -> bool:
     return shapes == {"tuple"}
 
 
-def _budget_guard(fn, kind, blown=None):
+def _budget_guard(fn, kind, blown=None, modname=None,
+                  attr=None, is_tuple=False):
     # Every wrapped call runs inside _claim_call() so the
     # og_db mid-flight choke can tell claim-machinery
     # loads from every other load (see in_claim_call).
+    # Ticket D: when a door pass is armed on this thread
+    # the claim entries additionally consult it (shortlist
+    # refusal in pass 1, per-pass memo in both phases);
+    # the funnel kinds convert a probe that touched a
+    # refused entry into the fleet's own "claimed
+    # elsewhere" signals, so precedence survives pass 1.
     if kind == "claim":
         def _g(*a, **k):
             if not claim_budget_open():
                 return blown
+            st = door_state()
+            if st is None:
+                with _claim_call():
+                    return fn(*a, **k)
+            if st.pass1 and modname not in st.allowed:
+                if _call_depth() > 0:
+                    st.nested_skips += 1
+                else:
+                    st.skips += 1
+                return blown
+            key = None
+            try:
+                key = (modname, attr, a,
+                       tuple(sorted(k.items())))
+                hash(key)
+            except Exception:
+                key = None
+            if key is not None and key in st.memo:
+                return st.memo[key]
             with _claim_call():
-                return fn(*a, **k)
+                r = fn(*a, **k)
+            if key is not None:
+                st.memo[key] = r
+            try:
+                if (r[0] if is_tuple else r):
+                    st.claimed.add(modname)
+            except Exception:
+                pass
+            return r
     elif kind == "defer":
         def _g(message, uid):
             if not claim_budget_open():
                 return True
+            st = door_state()
+            if st is not None and st.pass1:
+                before = st.nested_skips
+                try:
+                    with _claim_call():
+                        r = fn(message, uid)
+                except _ClaimBudgetBlown:
+                    # A nested probe answered "claimed
+                    # elsewhere" because the door refused
+                    # one of its seats: that IS a defer.
+                    return True
+                if st.nested_skips > before:
+                    # A probe was refused mid-check: the
+                    # honest answer is "someone else may
+                    # want this" — defer; the sweep decides.
+                    return True
+                return r
             with _claim_call():
                 return fn(message, uid)
     elif kind == "blown":
         def _g(message, uid):
             if not claim_budget_open():
                 raise _ClaimBudgetBlown()
+            st = door_state()
+            if st is not None and st.pass1:
+                before = st.nested_skips
+                with _claim_call():
+                    r = fn(message, uid)
+                if r is None and st.nested_skips > before:
+                    # The probe could not see every seat:
+                    # answer exactly like a blown budget —
+                    # "claimed elsewhere", which every real
+                    # call site already swallows.
+                    raise _ClaimBudgetBlown()
+                return r
             with _claim_call():
                 return fn(message, uid)
     else:  # garble text/info: the no-repair answer
@@ -516,7 +661,8 @@ def _wrap_claim_funnels() -> int:
                     continue
                 if getattr(fn, "__module__", None) != modname:
                     continue
-                _g = _budget_guard(fn, kind)
+                _g = _budget_guard(fn, kind, modname=modname,
+                                   attr=attr)
                 _g.__module__ = modname
                 setattr(mod, attr, _g)
                 wrapped += 1
@@ -574,12 +720,16 @@ def _wrap_claim_funnels() -> int:
                     # Step 6: a tuple-contract entry steps
                     # aside as (None, None); a single entry
                     # as None — the shape-aware "not mine".
+                    _is_tuple = _tuple_contract(fn)
                     _g = _budget_guard(
                         fn, "claim",
-                        blown=(None, None) if _tuple_contract(fn)
-                        else None)
+                        blown=(None, None) if _is_tuple
+                        else None,
+                        modname=modname, attr=attr,
+                        is_tuple=_is_tuple)
                     _g.__module__ = modname
                     setattr(mod, attr, _g)
+                    _CENSUS_REGISTRY.add((modname, attr))
                     wrapped += 1
         except Exception as e:
             logger.warning(f"Claim-budget wrap skipped: {e}")
