@@ -242,11 +242,15 @@ body:has(.og-menu.open) #ogTopAvatarBar { display: none !important; }
     object-fit: cover;
 }
 /* Calm state treatments on the three showcase stills.
-   thinking: a slow, small tilt — transform only, NO
-   brightness/contrast pulse (that pulse was the ring
-   flash's still-side mechanism). talking: no keyframe
-   flap at all — the audio-driven mouth (og_mouth.js)
-   does the talking; the still stays calm. listening: the
+   thinking: NO keyframe motion (AVATAR MOTION step,
+   2026-10-23) — the old slow tilt (ogThinkCalm) was the
+   last fixed-period loop on a showcase face, and Brent's
+   standard retires it: while OG composes, the face keeps
+   og_idle's procedural life (breath, drift, weight
+   shift) and the presence pill names the phase. talking:
+   no keyframe flap at all — the audio-driven mouth
+   (og_mouth.js) does the talking; the still stays calm.
+   listening: the
    ogIdle2 blink-dip loop and the hard ring retire for a
    steady, softer ring (the hero's lives on its wrapper,
    above, via the body mood class — the (1,2,1) hero rule
@@ -274,14 +278,10 @@ body:has(.og-menu.open) #ogTopAvatarBar { display: none !important; }
 #emptyState .og-name-bubble[data-state="rest"] .og-task-pill { display: none; }
 #emptyState .og-name-bubble[data-state="busy"] .og-hero-name { display: none; }
 
-@keyframes ogThinkCalm {
-    0%, 100% { transform: rotate(-1.6deg) translateY(0); }
-    50% { transform: rotate(1.2deg) translateY(-1px); }
-}
 .og-ava-wrap img.og-avatar.thinking,
 .og-top-ava img.og-avatar.thinking,
 .og-profile-ava img.og-avatar.thinking {
-    animation: ogThinkCalm 2.8s ease-in-out infinite;
+    animation: none; /* og_idle carries the thinking face */
 }
 .og-ava-wrap img.og-avatar.talking,
 .og-top-ava img.og-avatar.talking,
@@ -297,3 +297,21 @@ body:has(.og-menu.open) #ogTopAvatarBar { display: none !important; }
    ring-shaped box-shadow on the still — gone with the
    circle; the hero listens with a calm still, like the
    other E4 treatments. Top/profile keep their ring. */
+
+/* --- AVATAR MOTION step (2026-10-23): the menu avatar.
+   The small face in the ☰ menu header (img.og-avatar-sm,
+   the page's only one) sat OUTSIDE every protection
+   above: styles.css ran it on canned keyframe loops —
+   ogIdle2 (5.6 s, with the brightness blink-dips Ticket
+   H3 banned) at rest, ogThink2 (1.1 s) while thinking,
+   and a 0.38 s ogTalk2 bounce loop the whole time OG
+   speaks (Fix B audit, ITEM #1). Brent's standard —
+   natural and real, never a repeating loop — retires
+   all three: the menu face is a calm still in every
+   mood. (Ties with the styles.css rules are won by this
+   sheet's later position; the win one-shot and the
+   listening ring in styles.css are untouched — an
+   earned one-shot beat is feedback, not a loop.) --- */
+img.og-avatar-sm { animation: none; }
+body.og-mood-thinking img.og-avatar-sm,
+body.og-mood-talking img.og-avatar-sm { animation: none; }

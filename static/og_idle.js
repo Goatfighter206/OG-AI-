@@ -16,12 +16,19 @@
                     single breath, so no two breaths match.
                     Ticket E4 (Brent's drill, 2026-10-21):
                     the breath rides the FACE inside the ring
-                    — the still itself rises (up to 2.4 px)
-                    and swells (1.2-2.6%) on the breath phase
-                    while the wrapper (and the ring on it)
-                    stays steady — at medallion size the old
-                    wrapper-scale breath (<=1.3%) was under a
-                    pixel and read as frozen;
+                    — the still itself rises and swells on
+                    the breath phase while the wrapper (and
+                    the ring on it) stays steady — at
+                    medallion size the old wrapper-scale
+                    breath (<=1.3%) was under a pixel and
+                    read as frozen. AVATAR MOTION step
+                    (2026-10-23): the rise (up to 4.2 px) and
+                    swell (2.0-4.0%) are sized to READ at
+                    phone scale — see the amplitude note
+                    below. While real voice plays (the
+                    og_r97 meter active) the face's breath
+                    eases to ~1/3 so the artwork holds
+                    steady under the speech-driven mouth;
      head drift   — six slow sines with incommensurate
                     periods (7.3-17.9 s) summed for rotate /
                     translate — the sum's true period is far
@@ -35,10 +42,19 @@
                     module writes transforms only; the
                     avatar's brightness never changes.
 
-   Amplitudes are capped small (alive, not distracting):
-   |translate| <= ~4 px, |rotate| <= ~1.8 deg, scale within
-   [1, 1.013] plus the eased shift. One rAF loop, transform
-   strings only; pauses on a hidden tab; never starts under
+   Amplitudes (AVATAR MOTION step, 2026-10-23 — Brent's
+   standard: "move naturally and real, not on a loop"):
+   the E-era caps (|translate| <= ~4 px peaks, ~1-2 px
+   typical) measured BELOW casual perception on the phone
+   — OG read as a still photo (the E-lane Cause C finding).
+   The caps are now sized for a face you can SEE living at
+   arm's length, still short of cartoon: wrapper translate
+   peaks ~7 px (typical ~2.5-3 px), |rotate| peaks ~2.4 deg,
+   breath rise up to 4.2 px with a 2.0-4.0% swell on the
+   still. Every component stays aperiodic (re-drawn breath,
+   incommensurate drift, random-walk shift) — bigger, never
+   loopier. One rAF loop, transform strings only; pauses
+   on a hidden tab; never starts under
    prefers-reduced-motion (and stops if that flips on).
    While it runs it retires the legacy keyframe idle on the
    showcase stills ONLY (state classes thinking/talking/
@@ -100,7 +116,7 @@
       /* breathing: phase advances on a period that is
          re-drawn, with a new depth, at every cycle end */
       bPhase: rr(0, 6.283), bPeriod: rr(3400, 5200),
-      bAmp: rr(0.006, 0.013),
+      bAmp: rr(0.010, 0.020),
       /* drift: fixed incommensurate periods, random phases */
       ph: [rr(0, 6.283), rr(0, 6.283), rr(0, 6.283),
            rr(0, 6.283), rr(0, 6.283), rr(0, 6.283)],
@@ -129,14 +145,14 @@
       if (g.bPhase >= 6.28318) {
         g.bPhase -= 6.28318;
         g.bPeriod = rr(3400, 5200);
-        g.bAmp = rr(0.006, 0.013);
+        g.bAmp = rr(0.010, 0.020);
       }
       var breath01 = (1 - Math.cos(g.bPhase)) / 2;
 
       /* weight shift: new target, new easing constant */
       if (t >= g.nextShift) {
-        g.tx = rr(-2.2, 2.2); g.ty = rr(-1.6, 1.6);
-        g.tr = rr(-0.9, 0.9);
+        g.tx = rr(-3.4, 3.4); g.ty = rr(-2.4, 2.4);
+        g.tr = rr(-1.1, 1.1);
         g.tau = rr(1400, 2600);
         g.nextShift = t + rr(5000, 11000);
       }
@@ -146,12 +162,12 @@
       g.sr += (g.tr - g.sr) * k;
 
       /* head drift: summed incommensurate sines */
-      var dx = 1.5 * Math.sin(t / 8900 * 6.28318 + g.ph[2]) +
-               0.7 * Math.sin(t / 15700 * 6.28318 + g.ph[3]);
-      var dy = 1.1 * Math.sin(t / 10300 * 6.28318 + g.ph[4]) +
-               0.6 * Math.sin(t / 17900 * 6.28318 + g.ph[5]);
-      var rot = 0.55 * Math.sin(t / 7300 * 6.28318 + g.ph[0]) +
-                0.35 * Math.sin(t / 11700 * 6.28318 + g.ph[1]);
+      var dx = 2.6 * Math.sin(t / 8900 * 6.28318 + g.ph[2]) +
+               1.2 * Math.sin(t / 15700 * 6.28318 + g.ph[3]);
+      var dy = 1.9 * Math.sin(t / 10300 * 6.28318 + g.ph[4]) +
+               1.0 * Math.sin(t / 17900 * 6.28318 + g.ph[5]);
+      var rot = 0.80 * Math.sin(t / 7300 * 6.28318 + g.ph[0]) +
+                0.50 * Math.sin(t / 11700 * 6.28318 + g.ph[1]);
 
       var x = dx + g.sx, y = dy + g.sy, r = rot + g.sr,
           s = 1;
@@ -163,23 +179,43 @@
         scale: +s.toFixed(4) };
 
       /* Ticket E4: the breath itself rides the still INSIDE
-         the wrapper — chest rise (translateY up to -2.4 px)
-         + swell (1 + depth, depth = bAmp*2 = 1.2-2.6%) on
-         the breath phase, so the face visibly breathes
-         while the wrapper and its ring hold steady. Only
-         while the still is the face showing (a playing
-         clip owns the frame instead); a mood-class CSS
-         animation on the still overrides this inline
-         transform while it runs, as before. */
+         the wrapper — chest rise (translateY) + swell
+         (1 + depth, depth = bAmp*2) on the breath phase,
+         so the face visibly breathes while the wrapper and
+         its ring hold steady. Only while the still is the
+         face showing (a playing clip owns the frame
+         instead); a mood-class CSS animation on the still
+         overrides this inline transform while it runs, as
+         before.
+         AVATAR MOTION step (2026-10-23): the rise rides
+         the same per-breath depth draw as the swell —
+         bAmp IS this breath's depth, re-drawn every
+         cycle: rise peak = 2.2 + bAmp*100 = 3.2-4.2 px,
+         swell 2.0-4.0% — no two breaths match in period,
+         rise, or swell, and the sizes read at phone
+         scale. While real voice is playing (the og_r97 wave
+         meter active), the breath on the still eases to
+         ~1/3: the mouth is drawn on the wrapper over this
+         still, and a face that holds steadier while he
+         talks keeps the speech-driven mouth registered
+         (and reads natural — people don't bob on their
+         breath mid-sentence). The wrapper's own drift is
+         untouched: it carries face and mouth together. */
       if (g.img) {
         var vidPlaying = g.vid && !g.vid.hidden &&
           g.vid.readyState >= 2 && !g.vid.paused;
         var stillShown = g.img.style.visibility !== "hidden" &&
           g.img.offsetWidth > 0;
         if (stillShown && !vidPlaying) {
+          var bFac = 1;
+          try {
+            if (window.ogWaveMeter && ogWaveMeter.active())
+              bFac = 0.35;
+          } catch (e) { bFac = 1; }
           g.img.style.transform = "translate3d(0," +
-            (-(breath01 * 2.4)).toFixed(2) + "px,0) scale(" +
-            (1 + breath01 * g.bAmp * 2).toFixed(4) + ")";
+            (-(breath01 * (2.2 + g.bAmp * 100) * bFac)).toFixed(2) +
+            "px,0) scale(" +
+            (1 + breath01 * g.bAmp * 2 * bFac).toFixed(4) + ")";
         } else if (g.img.style.transform) {
           g.img.style.transform = "";
         }
