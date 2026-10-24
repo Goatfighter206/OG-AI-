@@ -66,13 +66,19 @@
 
   /* Per-face geometry: [selector, mouth centre x/y as
      canvas fractions, radius coefficients, jaw-drop
-     coefficient, canvas corner radius]. The hero entry
-     is Ticket E5's (see header); the other two keep the
-     E4 medallion numbers byte-for-byte. */
+     coefficient, canvas corner radius]. All three faces
+     carry the E4 medallion numbers: the CIRCLE + BLINK
+     step (2026-10-24, Brent: "make it look like he's in
+     a circle not a square") retired Ticket E5's standing
+     figure and put the hero back in the same circle +
+     reframe as the top bar and profile, so the hero's
+     E5 geometry (mx .500 / my .588, rad '0') retires
+     with the figure and the measured medallion anchor
+     governs all three faces identically. */
   var FACES = [
-    { sel: '#emptyState .og-ava-wrap', mx: 0.500, my: 0.588,
-      rx0: 0.040, rx1: 0.051, ry0: 0.004, ry1: 0.036,
-      drop: 0.015, rad: '0' },
+    { sel: '#emptyState .og-ava-wrap', mx: 0.505, my: 0.610,
+      rx0: 0.021, rx1: 0.027, ry0: 0.003, ry1: 0.027,
+      drop: 0.011, rad: '50%' },
     { sel: '.og-top-ava', mx: 0.505, my: 0.610,
       rx0: 0.021, rx1: 0.027, ry0: 0.003, ry1: 0.027,
       drop: 0.011, rad: '50%' },
