@@ -738,9 +738,6 @@ def parse_maps_intent(message):
         or _parse_landmark(low, message)
 
 
-def message_needs_maps(message):
-    return parse_maps_intent(message) is not None
-
 
 # ---------------------------------------------------------------------------
 # Location-switch asks (Round 73): "turn my location on" / "location off"

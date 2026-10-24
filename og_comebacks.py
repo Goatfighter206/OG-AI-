@@ -133,14 +133,3 @@ def comeback_directive(message) -> str:
         f"word, as your opening: \"{line}\" — then keep helping "
         "as usual, same personality, one best answer.")
 
-
-def install_comeback_tools(agent_instance, get_uid=None) -> bool:
-    """Install the combined R65 prompt seam (language +
-    comebacks share ONE wrapper so they can never double-wrap
-    or strip each other — see og_language). Delegates there."""
-    try:
-        import og_language as _lang
-        return _lang.install_language_tools(agent_instance, get_uid)
-    except Exception as e:
-        logger.warning(f"Comeback install skipped: {e}")
-        return False

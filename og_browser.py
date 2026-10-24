@@ -2662,22 +2662,6 @@ def _claim_job(message: str, uid: str) -> Optional[Dict]:
 # _dark_text lives in og_browser_claim.py (R75 motion).
 
 
-def _plan_math_text(plan: Dict, tier: str) -> str:
-    if plan["mode"] == "tier":
-        # Round 47: per-session truth — one session also stops
-        # at the browser service's own 15-minute session cap, so
-        # the honest per-session number is the smaller of the
-        # day's remaining pool and that cap.
-        per_session = min(int(plan["budget"]),
-                          _STEEL_SESSION_CAP_MIN)
-        return (f"Your {tier} plan carries {plan['cap']} browser "
-                f"minutes a day and you've used {plan['used']}, so "
-                f"this session can run up to {per_session} minutes "
-                "at a time (hard stop at the day's cap).")
-    return ("Your plan doesn't carry browser minutes, BUT you get "
-            "one free taste: a single 10-minute session, hard stop, "
-            "once ever. This would be that taste.")
-
 
 def _do_start(uid: str, job: Dict) -> List[Dict]:
     """Round 27 AUTO-OPEN: a start ask fires the session with

@@ -86,11 +86,6 @@ def swearing_on() -> bool:
     return (os.environ.get(ENV_VAR) or "").strip().lower() != "off"
 
 
-def clean_directive() -> str:
-    """The runtime directive to append when swearing is OFF;
-    empty string when ON (assembly stays byte-identical)."""
-    return "" if swearing_on() else CLEAN_DIRECTIVE
-
 
 def _base_prompt(prompt: str) -> str:
     """Strip our own directive suffix (if present) so the

@@ -1679,10 +1679,6 @@ def _ensure_memory_store():
     if not os.path.exists(MEMORY_STORE_FILE):
         _save_memory_store_file({})
 
-def _load_memory_store() -> Dict:
-    """The JSON file store, whole (the no-DB backend's shape)."""
-    return _load_memory_store_file()
-
 def _load_memory_store_file() -> Dict:
     """Load per-visitor conversation threads from the JSON memory store."""
     if os.path.exists(MEMORY_STORE_FILE):

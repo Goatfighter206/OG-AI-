@@ -168,11 +168,6 @@ _RIDE_OPTION_RE = re.compile(
 _driver_factory = None
 
 
-def set_driver_factory(fn):
-    """Tests inject a fake driver factory here: fn(uid) -> driver."""
-    global _driver_factory
-    _driver_factory = fn
-
 
 def _get_driver(uid: str):
     if _driver_factory is not None:

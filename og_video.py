@@ -245,14 +245,6 @@ def _usage_get(key: str):
     return dict(entry) if isinstance(entry, dict) else None
 
 
-def _videos_used_today(uid: str) -> int:
-    """Today's slice of the usage entry (substrate reader — the
-    cap itself is weekly, Round 55)."""
-    entry = _usage_get(f"video:{uid}")
-    if not entry or entry.get("date") != _today():
-        return 0
-    return int(entry.get("count", 0))
-
 
 def _videos_used_week(uid: str) -> int:
     """Story videos this visitor has rendered in the trailing

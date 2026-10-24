@@ -1256,9 +1256,6 @@ def _other_pending_newer(uid: str, mine: Dict) -> bool:
     return False
 
 
-def _is_explicit(message: str) -> bool:
-    return bool(parse_clone(message) or parse_sfx(message))
-
 
 def _claim_voice(message: str, uid: str) -> Optional[Dict]:
     if not uid:

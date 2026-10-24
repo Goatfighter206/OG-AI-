@@ -153,9 +153,6 @@ except Exception:  # cryptography missing — passkeys honestly dark
     _CRYPTO_OK = False
 
 
-def webauthn_available() -> bool:
-    return _CRYPTO_OK
-
 
 # --- Durable store (og_notify pattern: one key -> JSON blob) -------------------
 

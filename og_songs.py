@@ -195,14 +195,6 @@ def _usage_get(key: str):
     return dict(entry) if isinstance(entry, dict) else None
 
 
-def _songs_used_today(uid: str) -> int:
-    """Today's slice of the usage entry (substrate reader — the
-    cap itself is weekly, Round 55)."""
-    entry = _usage_get(f"song:{uid}")
-    if not entry or entry.get("date") != _today():
-        return 0
-    return int(entry.get("count", 0))
-
 
 def _songs_used_week(uid: str) -> int:
     """Sung tracks this visitor has generated in the trailing

@@ -885,15 +885,3 @@ def pooled_connect(conninfo, connect_timeout=DB_CONNECT_TIMEOUT):
     conn, transient = _pool_checkout(conninfo, connect_timeout)
     return _PooledConnection(conninfo, conn, transient)
 
-
-def pool_snapshot():
-    """{conninfo-tail: {idle, total}} for diagnostics. Keys are
-    truncated so no credential material rides along."""
-    out = {}
-    with _POOLS_LOCK:
-        items = list(_POOLS.items())
-    for conninfo, pool in items:
-        with pool.cond:
-            out[str(conninfo)[-24:]] = {
-                "idle": len(pool.idle), "total": pool.total}
-    return out

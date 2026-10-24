@@ -162,18 +162,6 @@ class SelfLearningSystem:
             finally:
                 q.task_done()
 
-    def flush_deferred_learning(self, timeout: float = 10.0) -> bool:
-        """True once every exchange queued so far has been
-        learned (or immediately, when nothing is queued).
-        For shutdown and the suites — the serving path
-        never calls this."""
-        q = self._learn_queue
-        if q is None:
-            return True
-        done = threading.Event()
-        q.put(done)
-        return done.wait(timeout)
-
     def _learn_from_conversation_now(self, user_message: str, agent_response: str,
                                  was_helpful: bool = True, user_feedback: str = None):
         """
