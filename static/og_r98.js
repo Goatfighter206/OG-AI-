@@ -139,6 +139,7 @@
     + 'background:transparent;border:none;border-top:1px solid #232323;'
     + 'padding:12px 0;font-family:inherit;color:#ececec}'
     + '.og98-row:hover{background:rgba(255,193,7,.06)}'
+    + '.og98-row.cur{background:rgba(255,214,10,.08)}'
     + '.og98-row.off{opacity:.55}'
     + '.og98-main{flex:1;text-align:left;cursor:pointer;min-width:0}'
     // R3 amendment, button look FINAL (Brent's pick,
@@ -157,7 +158,7 @@
     + 'border:none;border-radius:50%;background:#ffd60a;'
     + 'color:#000;font-size:17px;line-height:1;'
     + 'display:inline-flex;align-items:center;'
-    + 'justify-content:center;padding:0 0 0 3px;'
+    + 'justify-content:center;padding:0;'
     + 'font-family:inherit;cursor:pointer;margin-top:2px}'
     + '.og98-test:disabled{opacity:.5;cursor:default}'
     + '.og98-select{flex:none;min-height:44px;'
@@ -172,6 +173,8 @@
     + 'vertical-align:2px}'
     + '.og98-tag.cur{border:1px solid rgba(255,193,7,.65);color:#ffc107}'
     + '.og98-tag.def{border:1px solid #3a3a3a;color:#999}'
+    + '.og98-curcap{color:#ffd60a;font-weight:700;'
+    + 'font-size:.9em;margin-top:2px}'
     + '.og98-group{color:#ffc107;font-weight:700;font-size:.98em;'
     + 'padding:18px 0 2px;border-top:1px solid #232323;margin-top:4px}';
   try {
@@ -433,19 +436,28 @@
         // that honestly — dimmed, tagged — and let a
         // tap explain instead of storing a pick that
         // cannot speak. (A stored pick that is
-        // unavailable still shows ✓ Current AND the
-        // tag: it is the user's pick, it just can't
-        // speak right now.)
+        // unavailable still shows as the current row
+        // AND the tag: it is the user's pick, it just
+        // can't speak right now.)
         var off = s.available === false;
-        if (off) row.className = 'og98-row off';
+        // R3 fix round (Brent's phone drill, 2026-10-23):
+        // the row's current mark derives from the
+        // payload's own effective voice (d.voice — the
+        // id the chat seam actually speaks with), the
+        // per-style flag only as fallback. One source of
+        // truth, so the Selected pill can never sit
+        // unflipped on the very row the payload names
+        // as current.
+        var isCur = (d && d.voice) ? (s.voice === d.voice)
+          : !!s.current;
+        row.className = 'og98-row' + (isCur ? ' cur' : '')
+          + (off ? ' off' : '');
         // The row's main area is the select target —
         // tapping it picks, exactly as the whole row
         // did before R2.
         var main = el('div', 'og98-main', '');
         var nameLine = el('div', 'og98-name', s.name);
-        if (s.current) {
-          nameLine.appendChild(el('span', 'og98-tag cur', '✓ Current'));
-        } else if (s.is_default) {
+        if (!isCur && s.is_default) {
           nameLine.appendChild(el('span', 'og98-tag def', 'Default'));
         }
         if (off) {
@@ -453,6 +465,16 @@
             'Not switched on'));
         }
         main.appendChild(nameLine);
+        if (isCur) {
+          // Option 1 mock, Brent's pick: the current
+          // row carries the gold "Currently selected"
+          // caption under its name. (The R2-era
+          // "✓ Current" tag is retired by the fix
+          // round — the approved mock has the caption
+          // and the tinted row, no tag.)
+          main.appendChild(el('div', 'og98-curcap',
+            'Currently selected'));
+        }
         main.appendChild(el('p', 'og98-note', s.note));
         main.addEventListener('click', function () {
           if (off) {
@@ -475,7 +497,19 @@
         // behavior; on an unavailable row both explain
         // instead of firing (Play inside testVoice,
         // Select right here, same words as the row).
-        var testBtn = el('button', 'og98-test', '▶');
+        // R3 fix round: the Play glyph is an inline
+        // SVG triangle, never a text '▶' — the bare
+        // U+25B6 character renders as the blue-gray
+        // Apple color emoji on iOS (Brent's phone
+        // drill, 2026-10-23) while desktop Chrome
+        // paints it as a plain text glyph, which is
+        // why the lab gate never saw it. A black-fill
+        // SVG path is the same black triangle on
+        // every platform.
+        var testBtn = el('button', 'og98-test', '');
+        testBtn.innerHTML = '<svg viewBox="0 0 24 24" '
+          + 'width="17" height="17" aria-hidden="true">'
+          + '<path d="M8 5v14l11-7z" fill="#000"/></svg>';
         testBtn.type = 'button';
         testBtn.setAttribute('aria-label', 'Play ' + s.name);
         testBtn.addEventListener('click', function (ev) {
@@ -484,11 +518,11 @@
         });
         row.appendChild(testBtn);
         var selBtn = el('button',
-          'og98-select' + (s.current ? ' cur' : ''),
-          s.current ? 'Selected' : 'Select');
+          'og98-select' + (isCur ? ' cur' : ''),
+          isCur ? 'Selected' : 'Select');
         selBtn.type = 'button';
         selBtn.setAttribute('aria-label', 'Select ' + s.name);
-        if (s.current) selBtn.setAttribute('aria-pressed', 'true');
+        if (isCur) selBtn.setAttribute('aria-pressed', 'true');
         selBtn.addEventListener('click', function (ev) {
           if (ev && ev.stopPropagation) ev.stopPropagation();
           if (off) {
