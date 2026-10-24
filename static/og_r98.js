@@ -83,6 +83,39 @@
  * handler can see it. A test is a real /tts call, so
  * it meters exactly like a spoken reply — same door,
  * same cap, no side channel.
+ *
+ * Ticket R3 (Brent, 2026-10-23, during the EL ear
+ * drill): "The voice tester should be on
+ * speakerphone." The preview must come out of the
+ * phone's loudspeaker at media volume — not the
+ * earpiece, not whisper-quiet. The R2 shape created
+ * a THROWAWAY Audio element per test, inside the
+ * fetch's .then(): born outside the tap gesture and
+ * never reused, which is exactly the playback shape
+ * iOS treats as ambient-class (low, earpiece-prone,
+ * silent-switch food). The tester now owns ONE
+ * persistent element for the folder's life: born
+ * synchronously inside the tap handler, reused for
+ * every clip, played with a plain play() — the one
+ * path iOS routes to the loudspeaker. Never a
+ * WebAudio route: the analyser graph (og_r97)
+ * belongs to chat's element and stays chat's alone;
+ * chat playback is untouched by this ticket.
+ *
+ * R3 amendment (Brent, 2026-10-23 10:52, same
+ * drill): "I wanna play button and select button
+ * on every voice." Every row now carries TWO
+ * explicit buttons: ▶ Play (the tester above —
+ * plays the sample, never selects) and Select
+ * (stores the pick through the very same pick()
+ * the row tap uses; the active row's button reads
+ * "Selected" in the solid-gold state, beside
+ * the name's ✓ Current tag). The row's main area
+ * still selects on tap, exactly as since R2. On
+ * an unavailable row BOTH buttons explain on the
+ * status line instead of firing — Play via
+ * testVoice's availability branch, Select via the
+ * same off-check the row tap makes.
  */
 (function () {
   'use strict';
@@ -93,7 +126,7 @@
   // Ticket R2: the one sample line every voice's Test
   // button speaks — identical words for all 46 voices,
   // so the comparison is voice-only.
-  var SAMPLE_LINE = 'Yo, this is OG — say the word and I\'m on it, G.';
+  var SAMPLE_LINE = 'This is OG — say the word and I\'m on it.';
 
   var css = ''
     + '.og98-body{padding:4px 2px 14px;color:#ececec}'
@@ -108,11 +141,31 @@
     + '.og98-row:hover{background:rgba(255,193,7,.06)}'
     + '.og98-row.off{opacity:.55}'
     + '.og98-main{flex:1;text-align:left;cursor:pointer;min-width:0}'
-    + '.og98-test{flex:none;background:transparent;'
-    + 'border:1px solid rgba(255,193,7,.65);color:#ffc107;'
-    + 'border-radius:999px;padding:6px 12px;font-family:inherit;'
-    + 'font-weight:700;font-size:.85em;cursor:pointer;margin-top:2px}'
+    // R3 amendment, button look FINAL (Brent's pick,
+    // 2026-10-23 11:00 — Option 1 "Gold pills" from
+    // the voice-button-options preview; the 10:55
+    // visual hold is lifted): Play is a round gold
+    // button with a black ▶; Select is a gold-outlined
+    // pill with gold text; the active row's Select is
+    // a solid gold pill with black "Selected". ~44px
+    // touch targets, same look on classic and pack
+    // rows; unavailable rows keep the row dimming.
+    // Values match the approved preview exactly
+    // (gold #ffd60a). All button visuals live in the
+    // .og98-test / .og98-select rules below.
+    + '.og98-test{flex:none;width:44px;height:44px;'
+    + 'border:none;border-radius:50%;background:#ffd60a;'
+    + 'color:#000;font-size:17px;line-height:1;'
+    + 'display:inline-flex;align-items:center;'
+    + 'justify-content:center;padding:0 0 0 3px;'
+    + 'font-family:inherit;cursor:pointer;margin-top:2px}'
     + '.og98-test:disabled{opacity:.5;cursor:default}'
+    + '.og98-select{flex:none;min-height:44px;'
+    + 'padding:0 18px;border-radius:999px;'
+    + 'border:2px solid #ffd60a;background:transparent;'
+    + 'color:#ffd60a;font-family:inherit;font-weight:700;'
+    + 'font-size:15px;cursor:pointer;margin-top:2px}'
+    + '.og98-select.cur{background:#ffd60a;color:#000}'
     + '.og98-name{font-size:1.02em;font-weight:700}'
     + '.og98-tag{display:inline-block;margin-left:8px;padding:2px 9px;'
     + 'border-radius:999px;font-size:.78em;font-weight:700;'
@@ -264,10 +317,35 @@
     // Ticket R2: preview playback state — one test at
     // a time; starting a new one (or repainting, or
     // leaving the folder) stops the old one cold.
+    // Ticket R3: the element itself is PERSISTENT —
+    // stopTest silences and unloads it but never
+    // throws it away, so the element iOS met inside
+    // the first tap is the element every clip plays
+    // on (the loudspeaker route sticks to it).
     var testAudio = null;
+    var testUrl = null;
     var testBtnEl = null;
+    function testElement() {
+      if (!testAudio) {
+        testAudio = new Audio();
+        testAudio.preload = 'auto';
+      }
+      return testAudio;
+    }
     function stopTest() {
-      if (testAudio) { try { testAudio.pause(); } catch (e) {} testAudio = null; }
+      if (testAudio) {
+        try { testAudio.pause(); } catch (e) {}
+        testAudio.onended = null;
+        testAudio.onerror = null;
+        if (testUrl) {
+          try { URL.revokeObjectURL(testUrl); } catch (e) {}
+          testUrl = null;
+        }
+        try {
+          testAudio.removeAttribute('src');
+          testAudio.load();
+        } catch (e) {}
+      }
       if (testBtnEl) { testBtnEl.disabled = false; testBtnEl = null; }
     }
     // The preview: the standard line through the real
@@ -285,6 +363,11 @@
         return;
       }
       stopTest();
+      // Ticket R3: birth (or re-touch) the persistent
+      // element HERE — synchronously inside the tap —
+      // so iOS counts it as gesture-fed media playback
+      // and keeps it on the loudspeaker route.
+      testElement();
       testBtnEl = btn;
       btn.disabled = true;
       status.textContent = 'Playing ' + s.name + '…';
@@ -295,20 +378,26 @@
       // line or start playing over the new state.
       ttsWithPick(SAMPLE_LINE, s.voice).then(function (blob) {
         if (testBtnEl !== btn) return;
-        var url = URL.createObjectURL(blob);
-        var audio = new Audio(url);
-        testAudio = audio;
+        // Ticket R3: the clip plays on the ONE
+        // persistent element born inside the tap —
+        // never a throwaway element, never WebAudio.
+        var audio = testElement();
+        testUrl = URL.createObjectURL(blob);
         audio.onended = function () {
           if (testBtnEl !== btn) return;
           stopTest();
           status.textContent = '';
-          try { URL.revokeObjectURL(url); } catch (e) {}
         };
         audio.onerror = function () {
           if (testBtnEl !== btn) return;
           stopTest();
           status.textContent = 'Couldn\'t play that test — try again.';
         };
+        try { audio.src = testUrl; } catch (e) {
+          stopTest();
+          status.textContent = 'Couldn\'t play that test — try again.';
+          return;
+        }
         var p = audio.play();
         if (p && p.catch) p.catch(function () {
           if (testBtnEl !== btn) return;
@@ -374,17 +463,42 @@
           pick(s.voice);
         });
         row.appendChild(main);
-        // Ticket R2: the Test button sits right next
-        // to the voice. Its click is stopped dead so
-        // it can never fall through to selecting.
-        var testBtn = el('button', 'og98-test', '▶ Test');
+        // Tickets R2 + R3 amendment: TWO explicit
+        // buttons sit right next to the voice. ▶ Play
+        // is the tester (R2's Test button, renamed by
+        // the amendment) — it plays the sample and
+        // never selects. Select stores the pick
+        // through the same pick() the row tap uses,
+        // and the active row's Select reads
+        // "Selected". Both clicks are stopped dead
+        // so neither can fall through to the other's
+        // behavior; on an unavailable row both explain
+        // instead of firing (Play inside testVoice,
+        // Select right here, same words as the row).
+        var testBtn = el('button', 'og98-test', '▶');
         testBtn.type = 'button';
-        testBtn.setAttribute('aria-label', 'Hear ' + s.name);
+        testBtn.setAttribute('aria-label', 'Play ' + s.name);
         testBtn.addEventListener('click', function (ev) {
           if (ev && ev.stopPropagation) ev.stopPropagation();
           testVoice(s, testBtn);
         });
         row.appendChild(testBtn);
+        var selBtn = el('button',
+          'og98-select' + (s.current ? ' cur' : ''),
+          s.current ? 'Selected' : 'Select');
+        selBtn.type = 'button';
+        selBtn.setAttribute('aria-label', 'Select ' + s.name);
+        if (s.current) selBtn.setAttribute('aria-pressed', 'true');
+        selBtn.addEventListener('click', function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          if (off) {
+            status.textContent = 'That voice isn\'t '
+              + 'switched on yet.';
+            return;
+          }
+          pick(s.voice);
+        });
+        row.appendChild(selBtn);
         listBox.appendChild(row);
       });
     }
