@@ -204,6 +204,9 @@ KINDS = ("watch_match", "price_alert", "video_done",
          # Ticket P: an OG-built artifact (page/document/
          # table) is ready or was updated in place.
          "artifact_done",
+         # Ticket W: a general watch's scheduled report
+         # (og_userwatch) — the Feed is its home.
+         "watch_report",
          "storage_warning", "notice",
          "approval_needed", "signin_needed", "system_check",
          "fix_needed",

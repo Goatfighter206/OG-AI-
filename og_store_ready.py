@@ -396,6 +396,8 @@ def purge_account(email: str, uid: str, ip: str = "") -> dict:
     _step(results, "artifacts", lambda: _artifacts.purge_owner(uid))
     import og_mystery as _mystery
     _step(results, "mystery", lambda: _mystery.purge_owner(uid))
+    import og_userwatch as _userwatch
+    _step(results, "userwatch", lambda: _userwatch.purge_owner(uid))
     import og_wallet as _wallet
     _step(results, "wallet", lambda: _wallet.purge_owner(uid))
     import og_gps as _gps
