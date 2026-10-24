@@ -5,7 +5,6 @@ OG's avatar works like Maya's: ONE character (the Round 24 OG —
 hoodie, chain, scars; the anime set was rejected) with short
 looping video variants per state, swapped by what OG is doing:
 
-    idle      — breathing / blinking / talking-idle loop
     working   — at the computer, composing / running tools
     hood      — under a car hood (making_something variant)
     drinking  — actively drinking out of the cup (milestone beat)
@@ -27,7 +26,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_STATES = ("idle", "working", "hood", "drinking")
+_STATES = ("working", "hood", "drinking")
 _cache = {}
 
 
