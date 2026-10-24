@@ -816,6 +816,15 @@ return ogAudioEl;
 let audioUnlocked = false;
 const OG_SILENT_CLIP = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
 function unlockAudio() {
+/* Fix B (2026-10-23): prime the voice graph inside the
+   gesture. og_r97's analyser context must be created
+   and resumed while this tap is live — iOS WebKit
+   leaves a context born in async code suspended, and
+   then neither the routed voice nor the mouth ever
+   runs. Before the unlocked early-return so every
+   gesture re-attempts it (e.g. after iOS interrupts
+   the context mid-session). */
+try { if (window.ogWaveMeter && ogWaveMeter.prime) ogWaveMeter.prime(ogAudio()); } catch (e) {}
 /* Round 321 (V3): silent-clip unlock (real content). */
 if (audioUnlocked) return;
 try {
@@ -2356,7 +2365,7 @@ paint();
 <script src="/static/og_notification_settings.js?v=98"></script>
 <script src="/static/og_browser_input.js?v=112"></script>
 <script src="/static/og_shell.js?v=101"></script>
-<script src="/static/og_tokens.js?v=104"></script>
+<script src="/static/og_tokens.js?v=105"></script>
 <script src="/static/og_dashboards.js?v=4"></script>
 <script src="/static/og_markets.js?v=4"></script>
 <script src="/static/og_rain.js?v=8"></script>

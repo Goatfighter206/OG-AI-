@@ -94,6 +94,24 @@
     } catch (e) { /* never throws */ }
   }
 
+  /* Fix B (2026-10-23): gesture priming. The graph used
+     to be born inside playBlob — after the async /tts
+     fetch, outside any user gesture — so on iOS WebKit
+     the context started suspended and an out-of-gesture
+     resume() could not run it: the voice element, routed
+     through that graph, and the mouth's analyser both
+     sat behind a context that never ran (the lab never
+     saw it: Chromium forgives an out-of-gesture resume
+     once the page has had any tap). prime() is the same
+     ensureGraph, called from the page's gesture funnel
+     (unlockAudio) so the context is created and resumed
+     while a real tap is live; start() later only arms
+     it. If Web Audio is unavailable prime is a no-op
+     and playback stays exactly as it was. */
+  function prime(el) {
+    try { ensureGraph(el); } catch (e) { /* never throws */ }
+  }
+
   /* Ticket E4: the mouth driver (og_mouth.js) reads the
      SAME analyser — a time-domain RMS of the real TTS
      signal, so the mouth tracks the actual speech
@@ -117,5 +135,6 @@
   }
 
   window.ogWaveMeter = { start: start, stop: stop,
+    prime: prime,
     level: level, active: function () { return running; } };
 })();
