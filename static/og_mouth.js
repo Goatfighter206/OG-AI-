@@ -23,23 +23,34 @@
      or the meter active) plus a short settle; at rest
      this module does nothing at all.
 
-   Geometry (poster fractions, read off og_avatar's
-   poster.webp): the mouth line centres at (0.49, 0.612) of
-   the artwork. Each face remaps that point through its own
-   presentation:
-   - top bar / profile (E4): the look layer's head-and-
-     shoulders reframe (scale .75 about the centre, lifted
-     5%): MX = .5 + (.49 - .5) * .75 = .492, MY = .534.
-   - hero (Ticket E5): no circle, no reframe — the tall
-     86 x 122 wrap frames the artwork by object-fit: cover
-     (full height visible; the sides crop symmetrically:
-     visible artwork x in [0.148, 0.852]): MX =
-     (.49 - .148) / .704 = .486, MY = .612. The size
-     coefficients scale with the face itself (cheeks
-     ~46 px across here vs ~19 px in the 68 px medallion,
-     a factor ~1.9 on the coefficients after the canvas
-     growth), so the drawn mouth keeps the same
-     proportion of the face it had in E4.
+   Geometry — RE-MEASURED for Fix B round 2 (2026-10-23,
+   Brent's phone drill: "look at where his mouth is
+   talking from — that's not right"). The E4 constants
+   rested on a poster reading of (0.49, 0.612) remapped
+   through the look layer's documented medallion reframe
+   — but the reframe math does not describe the live top
+   bar: measured in the rendered page (canvas-pixel
+   centroid of the drawn mouth vs the artwork's lip line
+   in the same screenshots), the old medallion anchor
+   painted the mouth ~0.076 of the face height too high —
+   over the philtrum, not on the lips. Round 2 anchors
+   every face to measurements, not derivations:
+   - the artwork's lip line: poster gradient peak
+     (0.50, 0.594); hero wrap, grounded in a rendered
+     screenshot: (0.502, 0.585).
+   - hero: MX = .500, MY = .588 (the two readings'
+     midpoint; the hero's object-fit: cover presentation
+     matched its derivation, so this is a small
+     correction from .486 / .612).
+   - top bar / profile: the lips sit at canvas fractions
+     (0.505, 0.621) in the live page; MY = .610 puts the
+     fully-open centre (MY + drop) on the lip line and
+     the closed sliver a hair above it; MX = .505.
+   The size coefficients scale with the face itself
+   (cheeks ~46 px across here vs ~19 px in the 68 px
+   medallion, a factor ~1.9 on the coefficients after
+   the canvas growth), so the drawn mouth keeps the same
+   proportion of the face it had in E4.
    The drawn cavity widens/deepens with openness and its
    centre drops a touch as the jaw opens. One canvas per
    showcase wrapper (hero / top bar / profile — the same
@@ -59,13 +70,13 @@
      is Ticket E5's (see header); the other two keep the
      E4 medallion numbers byte-for-byte. */
   var FACES = [
-    { sel: '#emptyState .og-ava-wrap', mx: 0.486, my: 0.612,
+    { sel: '#emptyState .og-ava-wrap', mx: 0.500, my: 0.588,
       rx0: 0.040, rx1: 0.051, ry0: 0.004, ry1: 0.036,
       drop: 0.015, rad: '0' },
-    { sel: '.og-top-ava', mx: 0.492, my: 0.534,
+    { sel: '.og-top-ava', mx: 0.505, my: 0.610,
       rx0: 0.021, rx1: 0.027, ry0: 0.003, ry1: 0.027,
       drop: 0.011, rad: '50%' },
-    { sel: '.og-profile-ava', mx: 0.492, my: 0.534,
+    { sel: '.og-profile-ava', mx: 0.505, my: 0.610,
       rx0: 0.021, rx1: 0.027, ry0: 0.003, ry1: 0.027,
       drop: 0.011, rad: '50%' }
   ];

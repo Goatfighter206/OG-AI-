@@ -565,6 +565,7 @@ if (voiceChatOn) setTimeout(startListening, 350);
 }
 function stopSpeaking() {
 speechGen++;
+if (activeSpeechSess) { activeSpeechSess.dead = true; activeSpeechSess = null; }
 if (currentAudio) { try { currentAudio.pause(); } catch (e) {} currentAudio = null; }
 if (window.ogWaveMeter) ogWaveMeter.stop();
 speakingNow = false;
@@ -702,6 +703,10 @@ bubble.innerHTML = `
                 </div>`;
 messagesArea.appendChild(bubble);
 ogFollowBottom(false);
+/* Fix B round 2: the speech session opens with the
+   stream — passages feed it as they complete (below),
+   so the voice starts while the text is still coming. */
+const sess = beginStreamSpeech();
 const textEl = bubble.querySelector('.message-text');
 setMood('talking');
 updateStatus('OG is typing...');
@@ -743,6 +748,7 @@ if (eventName === 'chunk') {
 full += payload.text || '';
 textEl.textContent = full;
 ogFollowSoon(false);
+streamSpeechFeed(sess, full);
 } else if (eventName === 'done') {
 doneData = payload;
 reading = false;
@@ -754,22 +760,22 @@ reading = false;
 }
 } catch (e) {
 try { reader.cancel(); } catch (e2) {}
-if (!full) { bubble.remove(); setMood(''); throw new Error('Stream dropped'); }
+if (!full) { streamSpeechAbort(sess); bubble.remove(); setMood(''); throw new Error('Stream dropped'); }
 streamError = true;
 }
 bubble.remove();
 if (streamError && !doneData) {
 addMessage('ai', full);
-speakReply(full);
-updateStatus('Online & Ready');
+const spokePartial = streamSpeechEnd(sess, full, full);
+if (!spokePartial) { speakReply(full); updateStatus('Online & Ready'); }
 return true;
 }
 const finalText = (doneData && doneData.response) || full;
 addMessage('ai', finalText, doneData ? doneData.timestamp : null);
 if (doneData && doneData.upgrade_url) showUpgradeCta();
 if (doneData && 'free_tokens_left' in doneData) updateTokenStatus(doneData.free_tokens_left);
-speakReply(finalText);
-updateStatus('Online & Ready');
+const spokeFinal = streamSpeechEnd(sess, full, finalText);
+if (!spokeFinal) { speakReply(finalText); updateStatus('Online & Ready'); }
 return true;
 }
 function cleanForSpeech(text) {
@@ -881,8 +887,116 @@ document.getElementById('voiceBtn').classList.remove('speaking');
 setMood(voiceChatOn ? 'listening' : '');
 /* Round 321 (V3): fetch failure vs play() block labels. */
 speakFailKind = speakBlocked ? failKind : '';
-updateStatus(speakBlocked ? (failKind === 'fetch' ? '🔇 Voice service hiccup — tap 🔊 to retry' : '🔇 Sound blocked — tap 🔊 on my reply to hear me') : (voiceChatOn ? 'Listening...' : 'Online & Ready'));
+updateStatus(speakBlocked ? (failKind === 'fetch' ? '🔇 Voice service hiccup — tap the status line to retry' : '🔇 Sound blocked — tap anywhere to hear me') : (voiceChatOn ? 'Listening...' : 'Online & Ready'));
 maybeResumeListening();
+}
+/* Fix B round 2 (2026-10-23, Brent's phone drill: "make
+   him automatically talk out loud with the text come out
+   at the same time"): a streamed reply SPEAKS WHILE IT
+   STREAMS. speakReply(finalText) waited for the whole
+   reply, then paid a /tts fetch, so the voice always
+   trailed the text. This session feeds the reply's
+   completed passages to the same speech machinery
+   (fetchTTSPromise + playBlob on the singleton element,
+   ogWaveMeter-routed, so the mouth follows the voice)
+   as they complete; the tail flushes when the stream
+   ends. If the stream's canonical final text differs
+   from what streamed, the session is dropped and
+   speakReply speaks the canonical text whole (the
+   pre-round-2 behavior). stopSpeaking cancels a session
+   like any speech (same speechGen discipline); a new
+   turn's session supersedes a stale one. */
+let activeSpeechSess = null;
+function beginStreamSpeech() {
+if (activeSpeechSess) activeSpeechSess.dead = true;
+const sess = { dead: false, open: true, started: false,
+draining: false, failed: '', queue: [], fed: 0,
+gen: speechGen };
+activeSpeechSess = sess;
+return sess;
+}
+function streamSpeechFeed(sess, fullText) {
+if (!sess || sess.dead || !sess.open) return;
+const parts = speechPassages(cleanForSpeech(fullText));
+/* every passage but the last is final — the last pack
+   can still grow as more text lands */
+const finals = Math.max(0, parts.length - 1);
+while (sess.fed < finals) { sess.queue.push(parts[sess.fed]); sess.fed++; }
+if (sess.queue.length) drainStreamSpeech(sess);
+}
+function streamSpeechEnd(sess, streamedText, finalText) {
+if (!sess || sess.dead) return false;
+sess.open = false;
+/* match on the SPOKEN content, not the raw strings:
+   the stream's canonical text can differ from the
+   chunked text by whitespace the register added —
+   what must match is the passage list it cleans to */
+const parts = speechPassages(cleanForSpeech(finalText));
+const streamedParts = speechPassages(cleanForSpeech(streamedText));
+if (JSON.stringify(parts) !== JSON.stringify(streamedParts)) {
+sess.dead = true;
+if (activeSpeechSess === sess) activeSpeechSess = null;
+return false;
+}
+lastReplyText = finalText;
+while (sess.fed < parts.length) { sess.queue.push(parts[sess.fed]); sess.fed++; }
+if (!sess.started && !sess.queue.length) {
+if (activeSpeechSess === sess) activeSpeechSess = null;
+return false;
+}
+drainStreamSpeech(sess);
+return true;
+}
+function streamSpeechAbort(sess) {
+if (!sess) return;
+sess.dead = true;
+sess.open = false;
+if (activeSpeechSess === sess) activeSpeechSess = null;
+}
+async function drainStreamSpeech(sess) {
+if (sess.draining) return;
+sess.draining = true;
+let nextFetch = null;
+while (!sess.dead && sess.gen === speechGen) {
+if (!sess.queue.length) {
+if (!sess.open) break;
+await new Promise(r => setTimeout(r, 50));
+continue;
+}
+const passage = sess.queue.shift();
+if (!sess.started) {
+sess.started = true;
+speakingNow = true;
+document.getElementById('voiceBtn').classList.add('speaking');
+updateStatus('OG is talking...');
+setMood('talking');
+}
+try {
+const fetchP = nextFetch || fetchTTSPromise(passage);
+nextFetch = sess.queue.length ? fetchTTSPromise(sess.queue[0]) : null;
+const blob = await fetchP;
+if (sess.dead || sess.gen !== speechGen) break;
+const heard = await playBlob(blob);
+if (!heard) { sess.failed = 'play'; break; }
+} catch (e) { sess.failed = 'fetch'; break; }
+}
+sess.draining = false;
+if (sess.dead || sess.gen !== speechGen) return;
+if (!sess.open && !sess.queue.length) finishStreamSpeech(sess);
+else if (sess.failed) finishStreamSpeech(sess);
+}
+function finishStreamSpeech(sess) {
+if (activeSpeechSess === sess) activeSpeechSess = null;
+sess.dead = true;
+if (sess.started) {
+speakingNow = false;
+document.getElementById('voiceBtn').classList.remove('speaking');
+setMood(voiceChatOn ? 'listening' : '');
+}
+speakFailKind = sess.failed || '';
+if (sess.failed) updateStatus(sess.failed === 'fetch' ? '🔇 Voice service hiccup — tap the status line to retry' : '🔇 Sound blocked — tap anywhere to hear me');
+else if (sess.started) updateStatus(voiceChatOn ? 'Listening...' : 'Online & Ready');
+if (sess.started || sess.failed) maybeResumeListening();
 }
 /* Round 321 (V3): status line replays; a tap retries. */
 function replayLastReply() {
@@ -978,17 +1092,13 @@ messageDiv.innerHTML = `
 messagesArea.appendChild(messageDiv);
 ogFollowBottom(role === 'user');
 if (role === 'ai') {
-const spkBtn = document.createElement('button');
-spkBtn.type = 'button';
-spkBtn.className = 'og-speak-btn';
-spkBtn.title = 'Hear OG say this';
-spkBtn.setAttribute('aria-label', 'Hear OG say this reply');
-spkBtn.textContent = '🔊';
-const spkText = String(content);
-lastReplyText = spkText;
-spkBtn.addEventListener('click', () => { unlockAudio(); speakReply(spkText); });
-const mc = messageDiv.querySelector('.message-content');
-if (mc) mc.appendChild(spkBtn);
+/* Fix B round 2: the per-message speaker button is
+   REMOVED (Brent's drill directive — replies speak
+   automatically, synced with the text; no tap-to-speak
+   button lives under a reply). lastReplyText still
+   updates here: the status line's tap-to-replay and
+   the sound-blocked tap-anywhere retry read it. */
+lastReplyText = String(content);
 setMood('nod');
 setTimeout(() => { if (!speakingNow) setMood(voiceChatOn ? 'listening' : ''); }, 620);
 }
@@ -2371,7 +2481,7 @@ paint();
 <script src="/static/og_rain.js?v=8"></script>
 <script src="/static/og_theme.js?v=2"></script>
 <script src="/static/og_idle.js?v=3"></script>
-<script src="/static/og_mouth.js?v=2"></script>
+<script src="/static/og_mouth.js?v=3"></script>
 <script src="/static/og_avatarid.js?v=1"></script>
 <script src="/static/og_perform.js?v=1"></script>
 <script src="/static/og_workboard.js?v=1"></script>
